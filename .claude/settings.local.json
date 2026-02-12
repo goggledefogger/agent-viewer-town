@@ -18,7 +18,19 @@
       "Bash(npx vite build:*)",
       "Bash(git -C /Users/Danny/Source/agent-viewer-town init)",
       "Bash(git -C /Users/Danny/Source/agent-viewer-town add:*)",
-      "Bash(git -C /Users/Danny/Source/agent-viewer-town commit -m \"$\\(cat <<''EOF''\nInitial scaffold: monorepo with server, client, shared packages\n\n- NPM workspaces monorepo with packages/shared, packages/server, packages/client\n- Server: Express + WebSocket + Chokidar file watcher for ~/.claude/ directory\n- Client: Vite + React with SVG pixel-art scene and sidebar\n- Shared types: AgentState, TaskState, TeamState, WSMessage\n- 5 SVG pixel-art animal characters \\(Beaver, Owl, Fox, Bear, Rabbit\\) with 3 evolution stages\n- Machine/pipe/gear animations connecting agent workstations\n- Task board and message log sidebar with MTG-inspired card styling\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git -C /Users/Danny/Source/agent-viewer-town commit -m \"$\\(cat <<''EOF''\nInitial scaffold: monorepo with server, client, shared packages\n\n- NPM workspaces monorepo with packages/shared, packages/server, packages/client\n- Server: Express + WebSocket + Chokidar file watcher for ~/.claude/ directory\n- Client: Vite + React with SVG pixel-art scene and sidebar\n- Shared types: AgentState, TaskState, TeamState, WSMessage\n- 5 SVG pixel-art animal characters \\(Beaver, Owl, Fox, Bear, Rabbit\\) with 3 evolution stages\n- Machine/pipe/gear animations connecting agent workstations\n- Task board and message log sidebar with MTG-inspired card styling\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(npm run build:*)",
+      "Bash(git -C /Users/Danny/Source/agent-viewer-town status)",
+      "Bash(git -C /Users/Danny/Source/agent-viewer-town diff --stat)",
+      "Bash(git -C /Users/Danny/Source/agent-viewer-town log --oneline -5)",
+      "Bash(git push:*)",
+      "Bash(git -C /Users/Danny/Source/agent-viewer-town checkout chore/dependency-updates)",
+      "Bash(npm test:*)",
+      "Bash(git -C /Users/Danny/Source/agent-viewer-town diff HEAD --stat)",
+      "Bash(gh pr create:*)",
+      "Bash(git -C /Users/Danny/Source/agent-viewer-town log:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(git -C /Users/Danny/Source/agent-viewer-town checkout --theirs package.json package-lock.json)"
     ]
   }
 }

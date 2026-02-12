@@ -8,10 +8,19 @@ const EMPTY_STATE: TeamState = {
   messages: [],
 };
 
-export function useWebSocket(url: string): TeamState {
+export type ConnectionStatus = 'connected' | 'disconnected' | 'reconnecting';
+
+export interface WebSocketState {
+  team: TeamState;
+  connectionStatus: ConnectionStatus;
+}
+
+export function useWebSocket(url: string): WebSocketState {
   const [state, setState] = useState<TeamState>(EMPTY_STATE);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hasConnectedOnce = useRef(false);
 
   const connect = useCallback(() => {
     const ws = new WebSocket(url);
@@ -19,6 +28,8 @@ export function useWebSocket(url: string): TeamState {
 
     ws.onopen = () => {
       console.log('[ws] connected');
+      setConnectionStatus('connected');
+      hasConnectedOnce.current = true;
     };
 
     ws.onmessage = (event) => {
@@ -32,6 +43,7 @@ export function useWebSocket(url: string): TeamState {
 
     ws.onclose = () => {
       console.log('[ws] disconnected, reconnecting in 2s...');
+      setConnectionStatus(hasConnectedOnce.current ? 'reconnecting' : 'disconnected');
       reconnectTimer.current = setTimeout(connect, 2000);
     };
 
@@ -48,7 +60,7 @@ export function useWebSocket(url: string): TeamState {
     };
   }, [connect]);
 
-  return state;
+  return { team: state, connectionStatus };
 }
 
 function applyMessage(state: TeamState, msg: WSMessage): TeamState {
