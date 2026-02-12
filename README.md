@@ -133,6 +133,11 @@ npm run dev -w packages/client
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+## Repository
+
+- **Default branch**: `main`
+- **GitHub**: https://github.com/goggledefogger/agent-viewer-town
+
 ## License
 
 MIT
