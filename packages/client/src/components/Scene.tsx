@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { TeamState, AgentState } from '@agent-viewer/shared';
 import { AgentCharacter } from './AgentCharacter';
 import { Machine } from './Machine';
@@ -149,11 +150,102 @@ function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number
   );
 }
 
+/** Detail popover shown when clicking an agent */
+function AgentDetail({ agent, x, y, onClose }: { agent: AgentState; x: number; y: number; onClose: () => void }) {
+  const name = agent.name;
+  const action = agent.currentAction || (agent.status === 'done' ? 'Done' : agent.status === 'working' ? 'Working...' : 'Idle');
+  const role = agent.isSubagent ? 'Subagent' : agent.role.charAt(0).toUpperCase() + agent.role.slice(1);
+  const statusColor = agent.status === 'working' ? '#4169E1' : agent.status === 'done' ? '#28A745' : '#94a3b8';
+
+  // Word-wrap the name/description into lines of ~40 chars
+  const lines: string[] = [];
+  const words = name.split(/\s+/);
+  let currentLine = '';
+  for (const word of words) {
+    if (currentLine.length + word.length + 1 > 44) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = currentLine ? currentLine + ' ' + word : word;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+
+  const actionLines: string[] = [];
+  const actionWords = action.split(/\s+/);
+  let actionLine = '';
+  for (const word of actionWords) {
+    if (actionLine.length + word.length + 1 > 44) {
+      actionLines.push(actionLine);
+      actionLine = word;
+    } else {
+      actionLine = actionLine ? actionLine + ' ' + word : word;
+    }
+  }
+  if (actionLine) actionLines.push(actionLine);
+
+  const lineHeight = 11;
+  const headerHeight = 18;
+  const bodyHeight = (lines.length + actionLines.length + 1) * lineHeight + 8;
+  const totalHeight = headerHeight + bodyHeight + 8;
+  const boxWidth = 240;
+
+  // Position: above the agent, clamped to viewport
+  const popX = Math.max(boxWidth / 2 + 5, Math.min(900 - boxWidth / 2 - 5, x));
+  const popY = Math.max(totalHeight + 10, y - 70);
+
+  return (
+    <g>
+      {/* Transparent backdrop to catch clicks for closing */}
+      <rect width="900" height="600" fill="transparent" onClick={onClose} style={{ cursor: 'default' }} />
+      <g transform={`translate(${popX}, ${popY - totalHeight})`}>
+        {/* Shadow */}
+        <rect x={-boxWidth / 2 - 2} y="-2" width={boxWidth + 4} height={totalHeight + 4} rx="8" fill="rgba(0,0,0,0.4)" />
+        {/* Background */}
+        <rect x={-boxWidth / 2} y="0" width={boxWidth} height={totalHeight} rx="6" fill="#0f3460" stroke="#4169E1" strokeWidth="1.5" />
+        {/* Header bar */}
+        <rect x={-boxWidth / 2} y="0" width={boxWidth} height={headerHeight} rx="6" fill="#16213e" />
+        <rect x={-boxWidth / 2} y="12" width={boxWidth} height="6" fill="#16213e" />
+        {/* Role + status */}
+        <text x={-boxWidth / 2 + 8} y="13" fill={statusColor} fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold">
+          {role}
+        </text>
+        <circle cx={boxWidth / 2 - 12} cy="9" r="4" fill={statusColor} opacity="0.8" />
+        {/* Name lines */}
+        {lines.map((line, i) => (
+          <text key={`n${i}`} x={-boxWidth / 2 + 8} y={headerHeight + 12 + i * lineHeight}
+                fill="#e2e8f0" fontSize="7.5" fontFamily="'Courier New', monospace">
+            {line}
+          </text>
+        ))}
+        {/* Divider */}
+        <line x1={-boxWidth / 2 + 8} y1={headerHeight + 6 + lines.length * lineHeight}
+              x2={boxWidth / 2 - 8} y2={headerHeight + 6 + lines.length * lineHeight}
+              stroke="#334155" strokeWidth="0.5" />
+        {/* Action lines */}
+        {actionLines.map((line, i) => (
+          <text key={`a${i}`} x={-boxWidth / 2 + 8} y={headerHeight + 16 + (lines.length + i) * lineHeight}
+                fill="#94a3b8" fontSize="7" fontFamily="'Courier New', monospace">
+            {line}
+          </text>
+        ))}
+        {/* Pointer arrow */}
+        <polygon
+          points={`${x - popX - 5},${totalHeight} ${x - popX + 5},${totalHeight} ${x - popX},${totalHeight + 6}`}
+          fill="#0f3460" stroke="#4169E1" strokeWidth="1"
+        />
+        <rect x={x - popX - 6} y={totalHeight - 1} width="12" height="2" fill="#0f3460" />
+      </g>
+    </g>
+  );
+}
+
 export function Scene({ state }: SceneProps) {
   const mainAgents = state.agents.filter((a) => !a.isSubagent);
   const subagents = state.agents.filter((a) => a.isSubagent);
   // Solo mode: one main agent, possibly with subagents
   const isSoloMode = mainAgents.length <= 1;
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   if (!state.name && state.agents.length === 0) {
     return (
@@ -207,17 +299,61 @@ export function Scene({ state }: SceneProps) {
           <rect key={i} x={sx} y={sy} width="2" height="2" fill="#ffffff" opacity={0.4 + (i % 3) * 0.2} />
         ))}
 
-        {/* Machine connections between agents (team mode or parent+subagents) */}
-        {state.agents.length > 1 && <Machine agents={state.agents} messages={state.messages} />}
+        {/* Machine connections between agents (team mode) */}
+        {!isSoloMode && state.agents.length > 1 && <Machine agents={state.agents} messages={state.messages} />}
+
+        {/* Subagent tether lines — energy connections from parent to subagents */}
+        {isSoloMode && subagents.length > 0 && subagents.map((sub, si) => {
+          const parentPos = SOLO_POSITION;
+          const subOffset = SUBAGENT_OFFSETS[si % SUBAGENT_OFFSETS.length];
+          const subPos = { x: parentPos.x + subOffset.x, y: parentPos.y + subOffset.y };
+          const mx = (parentPos.x + subPos.x) / 2;
+          const my = (parentPos.y + subPos.y) / 2 - 20;
+          const d = `M ${parentPos.x} ${parentPos.y} Q ${mx} ${my} ${subPos.x} ${subPos.y}`;
+          const isActive = sub.status === 'working';
+          const color = isActive ? '#4169E1' : (sub.status === 'done' ? '#28A745' : '#334155');
+
+          return (
+            <g key={`tether-${sub.id}`}>
+              {/* Pipe background */}
+              <path d={d} fill="none" stroke="#334155" strokeWidth="4" strokeLinecap="round" opacity="0.4" />
+              <path d={d} fill="none" stroke="#1e293b" strokeWidth="2" strokeLinecap="round" />
+              {/* Animated flow line */}
+              <path
+                d={d}
+                fill="none"
+                stroke={color}
+                strokeWidth="1.5"
+                strokeDasharray={isActive ? '3 6' : '2 10'}
+                opacity={isActive ? 0.7 : 0.3}
+                style={isActive ? { animation: 'conveyor-move 0.6s linear infinite' } : undefined}
+              />
+              {/* Energy pulse when active */}
+              {isActive && (
+                <circle r="3" fill={color} opacity="0.8">
+                  <animateMotion dur="1.5s" repeatCount="indefinite">
+                    <mpath href={`#tether-path-${si}`} />
+                  </animateMotion>
+                </circle>
+              )}
+              <path id={`tether-path-${si}`} d={d} fill="none" stroke="none" />
+            </g>
+          );
+        })}
 
         {/* Agent characters at their stations */}
         {state.agents.map((agent, i) => {
           const subIdx = agent.isSubagent ? subagents.indexOf(agent) : 0;
           const pos = getStationPos(agent, i, isSoloMode, subIdx);
-          const scale = agent.isSubagent ? 0.8 : 1;
+          // For subagents: translate to position, scale down, translate back.
+          // This ensures scaling happens around the agent's center, not SVG origin.
+          const subScale = agent.isSubagent
+            ? `translate(${pos.x}, ${pos.y}) scale(0.8) translate(${-pos.x}, ${-pos.y})`
+            : undefined;
           return (
-            <g key={agent.id} transform={agent.isSubagent ? `scale(${scale})` : undefined}
-               style={agent.isSubagent ? { transformOrigin: `${pos.x}px ${pos.y}px` } : undefined}>
+            <g key={agent.id} transform={subScale}
+               onClick={(e) => { e.stopPropagation(); setSelectedAgentId(agent.id === selectedAgentId ? null : agent.id); }}
+               style={{ cursor: 'pointer' }}>
               <AgentCharacter
                 agent={agent}
                 x={pos.x}
@@ -227,6 +363,15 @@ export function Scene({ state }: SceneProps) {
             </g>
           );
         })}
+
+        {/* Agent detail popover (click to expand) */}
+        {selectedAgentId && (() => {
+          const agent = state.agents.find((a) => a.id === selectedAgentId);
+          if (!agent) return null;
+          const subIdx = agent.isSubagent ? subagents.indexOf(agent) : 0;
+          const pos = getStationPos(agent, state.agents.indexOf(agent), isSoloMode, subIdx);
+          return <AgentDetail agent={agent} x={pos.x} y={pos.y} onClose={() => setSelectedAgentId(null)} />;
+        })()}
       </svg>
     </div>
   );

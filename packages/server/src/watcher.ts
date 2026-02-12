@@ -80,6 +80,8 @@ interface TrackedSession {
   lastToolUseAt?: number;
   /** Name of the pending tool (for display) */
   pendingToolName?: string;
+  /** True for internal subagents (acompact, etc.) that shouldn't be shown as characters */
+  isInternalSubagent?: boolean;
 }
 
 export function startWatcher(stateManager: StateManager) {
@@ -333,6 +335,25 @@ export function startWatcher(stateManager: StateManager) {
         if (isInitial && ageSeconds > 300) return;
       } catch { /* default to idle */ }
 
+      // Filter out internal subagents (acompact = conversation compaction summarizer).
+      // Instead of showing them as regular subagents, trigger the compact indicator on the parent.
+      if (subagentId.startsWith('agent-acompact')) {
+        if (parentSessionId) {
+          stateManager.updateAgentActivityById(parentSessionId, 'working', 'Compacting conversation...');
+        }
+        // Track the file so we can clear the compacting status when it finishes
+        trackedSessions.set(filePath, {
+          sessionId: subagentId,
+          filePath,
+          isSolo: true,
+          dirSlug,
+          lastActivity: subMtime,
+          isInternalSubagent: true,
+        });
+        console.log(`[watcher] Internal subagent (acompact) detected for parent=${parentSessionId.slice(0, 8)}, showing compacting status`);
+        return;
+      }
+
       // Extract a meaningful name from the subagent's first user message (the prompt)
       let subagentName = subagentId.slice(0, 12);
       for (const line of linesToScan) {
@@ -584,6 +605,20 @@ export function startWatcher(stateManager: StateManager) {
         }
       }
 
+      // Progress entries (bash_progress, etc.) mean the tool is actively running.
+      // Reset the waiting-for-input timer — definitely NOT waiting for approval.
+      if (parsed.type === 'progress') {
+        hadMeaningfulActivity = true;
+        if (currentTracked) {
+          // Push the lastToolUseAt forward so the delayed timeout doesn't fire
+          currentTracked.lastToolUseAt = Date.now();
+        }
+        // Optionally update the action display
+        if (parsed.toolName && currentTracked?.isSolo) {
+          stateManager.setAgentWaitingById(currentTracked.sessionId, false);
+        }
+      }
+
       // tool_result clears the "waiting for input" state but keeps the last action visible
       if (parsed.type === 'agent_activity') {
         hadMeaningfulActivity = true;
@@ -626,7 +661,9 @@ export function startWatcher(stateManager: StateManager) {
     // periodic staleness check alone. Capture the exact timestamp so we only
     // trigger for THIS specific tool_use (not a later one that happened to set
     // a new lastToolUseAt).
-    if (currentTracked?.lastToolUseAt && currentTracked.isSolo) {
+    // Skip for subagents and internal subagents — they don't need user input.
+    const trackedAgent = currentTracked ? stateManager.getAgentById(currentTracked.sessionId) : undefined;
+    if (currentTracked?.lastToolUseAt && currentTracked.isSolo && !trackedAgent?.isSubagent && !currentTracked.isInternalSubagent) {
       const sessionId = currentTracked.sessionId;
       const capturedToolUseAt = currentTracked.lastToolUseAt;
       setTimeout(() => {
@@ -668,7 +705,9 @@ export function startWatcher(stateManager: StateManager) {
       const idleSeconds = (now - tracked.lastActivity) / 1000;
 
       // Check for "waiting for input": tool_use seen but no tool_result followed
-      if (tracked.lastToolUseAt) {
+      // Skip for subagents and internal subagents — they don't need user input
+      const trackedAgentForStale = stateManager.getAgentById(tracked.sessionId);
+      if (tracked.lastToolUseAt && !trackedAgentForStale?.isSubagent && !tracked.isInternalSubagent) {
         const waitingSeconds = (now - tracked.lastToolUseAt) / 1000;
         if (waitingSeconds >= WAITING_FOR_INPUT_DELAY_S) {
           stateManager.setAgentWaitingById(
@@ -677,6 +716,12 @@ export function startWatcher(stateManager: StateManager) {
             tracked.pendingToolName
           );
         }
+      }
+
+      // Internal subagents (acompact): just clean up tracking when done, no display
+      if (tracked.isInternalSubagent && idleSeconds >= IDLE_THRESHOLD_S) {
+        trackedSessions.delete(tracked.filePath);
+        continue;
       }
 
       // Mark as idle after inactivity (but don't remove the session)

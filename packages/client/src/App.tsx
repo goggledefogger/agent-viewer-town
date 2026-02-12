@@ -77,9 +77,33 @@ export default function App() {
           <SessionPicker sessions={sessions} onSelect={selectSession} />
         </div>
         <div className="header-stats">
-          <span className="header-stat">
-            <span className="header-stat-value">{state.agents.length}</span> {state.agents.length === 1 ? 'agent' : 'agents'}
-          </span>
+          {(() => {
+            const mainAgents = state.agents.filter((a) => !a.isSubagent);
+            const subs = state.agents.filter((a) => a.isSubagent);
+            const workingSubs = subs.filter((a) => a.status === 'working').length;
+            const doneSubs = subs.filter((a) => a.status === 'done').length;
+            return (
+              <>
+                <span className="header-stat">
+                  <span className="header-stat-value">{mainAgents.length}</span> {mainAgents.length === 1 ? 'agent' : 'agents'}
+                </span>
+                {subs.length > 0 && (
+                  <>
+                    <span className="header-stat-divider" />
+                    <span className="header-stat">
+                      <span className="header-stat-value">{workingSubs}</span>
+                      <span className="header-stat-total">/{subs.length}</span> sub
+                    </span>
+                    {doneSubs > 0 && (
+                      <span className="header-stat" style={{ color: 'var(--color-green)', fontSize: '10px' }}>
+                        ({doneSubs} done)
+                      </span>
+                    )}
+                  </>
+                )}
+              </>
+            );
+          })()}
           <span className="header-stat-divider" />
           <span className="header-stat">
             <span className="header-stat-value">{tasksByStatus.in_progress}</span> active

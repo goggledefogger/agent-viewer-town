@@ -84,7 +84,7 @@ export function teamMemberToAgent(member: TeamConfig['members'][0]): AgentState 
 }
 
 export interface ParsedTranscriptLine {
-  type: 'message' | 'tool_call' | 'agent_activity' | 'compact' | 'thinking' | 'unknown';
+  type: 'message' | 'tool_call' | 'agent_activity' | 'compact' | 'thinking' | 'progress' | 'unknown';
   agentName?: string;
   toolName?: string;
   message?: MessageState;
@@ -234,8 +234,8 @@ export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
     return null;
   }
 
-  // Detect conversation compacting (system event with subtype "compact_boundary")
-  if (data.type === 'system' && data.subtype === 'compact_boundary') {
+  // Detect conversation compacting (full compact or microcompact)
+  if (data.type === 'system' && (data.subtype === 'compact_boundary' || data.subtype === 'microcompact_boundary')) {
     return { type: 'compact' };
   }
 
@@ -268,6 +268,20 @@ export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
   // Detect tool results (agent activity indicator)
   if (data.type === 'tool_result' || data.type === 'tool_output') {
     return { type: 'agent_activity', agentName };
+  }
+
+  // Detect progress entries (bash_progress, hook_progress, etc.)
+  // These indicate the tool is actively running — NOT waiting for user input
+  if (data.type === 'progress') {
+    const progressData = data.data as Record<string, unknown> | undefined;
+    const progressType = progressData?.type;
+    if (progressType === 'bash_progress') {
+      return { type: 'progress', toolName: 'Running command...' };
+    }
+    if (progressType === 'agent_progress') {
+      return { type: 'progress', toolName: 'Agent working...' };
+    }
+    return { type: 'progress' };
   }
 
   // Detect assistant entries (thinking/responding between tool calls)
