@@ -159,6 +159,67 @@ function parseSendMessageInput(
   };
 }
 
+/**
+ * Create a human-readable description from a tool_use block.
+ * e.g. "Editing watcher.ts" instead of just "Edit"
+ */
+function describeToolAction(block: { name: string; input?: Record<string, unknown> }): string {
+  const input = block.input;
+  if (!input) return block.name;
+
+  switch (block.name) {
+    case 'Edit':
+    case 'Write':
+    case 'Read': {
+      const fp = typeof input.file_path === 'string' ? input.file_path : '';
+      const filename = fp.split('/').pop() || fp;
+      const verb = block.name === 'Edit' ? 'Editing' : block.name === 'Write' ? 'Writing' : 'Reading';
+      return filename ? `${verb} ${filename}` : block.name;
+    }
+    case 'Bash': {
+      const cmd = typeof input.command === 'string' ? input.command : '';
+      const desc = typeof input.description === 'string' ? input.description : '';
+      if (desc) return desc.slice(0, 60);
+      if (cmd) {
+        const short = cmd.split('&&')[0].split('|')[0].trim().slice(0, 50);
+        return `Running: ${short}`;
+      }
+      return 'Running command';
+    }
+    case 'Grep':
+    case 'Glob': {
+      const pattern = typeof input.pattern === 'string' ? input.pattern : '';
+      return pattern ? `Searching: ${pattern.slice(0, 40)}` : `Searching files`;
+    }
+    case 'Task': {
+      const desc = typeof input.description === 'string' ? input.description : '';
+      return desc ? `Spawning: ${desc.slice(0, 40)}` : 'Spawning agent';
+    }
+    case 'TaskCreate': {
+      const subj = typeof input.subject === 'string' ? input.subject : '';
+      return subj ? `Creating task: ${subj.slice(0, 40)}` : 'Creating task';
+    }
+    case 'TaskUpdate': {
+      const status = typeof input.status === 'string' ? input.status : '';
+      return status ? `Updating task → ${status}` : 'Updating task';
+    }
+    case 'SendMessage':
+    case 'SendMessageTool': {
+      const to = typeof input.recipient === 'string' ? input.recipient : 'team';
+      return `Messaging ${to}`;
+    }
+    case 'WebSearch': {
+      const q = typeof input.query === 'string' ? input.query : '';
+      return q ? `Searching: ${q.slice(0, 40)}` : 'Web search';
+    }
+    case 'WebFetch': {
+      return 'Fetching web page';
+    }
+    default:
+      return block.name;
+  }
+}
+
 export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
   let data: Record<string, unknown>;
   try {
@@ -184,12 +245,12 @@ export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
     }
   }
 
-  // Return first tool_use block as a tool_call event
+  // Return first tool_use block as a tool_call event with descriptive action
   if (toolBlocks.length > 0) {
     return {
       type: 'tool_call',
       agentName,
-      toolName: toolBlocks[0].name,
+      toolName: describeToolAction(toolBlocks[0]),
     };
   }
 

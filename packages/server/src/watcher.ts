@@ -1,7 +1,7 @@
 import chokidar from 'chokidar';
 import { join, basename, dirname } from 'path';
 import { homedir } from 'os';
-import { readdir, access, constants } from 'fs/promises';
+import { readdir, access, constants, stat as fsStat } from 'fs/promises';
 import { StateManager } from './state';
 import {
   parseTeamConfig,
@@ -99,8 +99,11 @@ export function startWatcher(stateManager: StateManager) {
     debouncer.debounce(`team:${fp}`, () => handleTeamConfig(fp));
   });
   teamWatcher.on('unlink', (fp: string) => {
-    console.log(`[watcher] Team config removed: ${fp}`);
-    stateManager.reset();
+    if (basename(fp) !== 'config.json') return;
+    const teamName = basename(dirname(fp));
+    console.log(`[watcher] Team config removed: ${fp} (team: ${teamName})`);
+    // Only reset team-related state, not solo sessions
+    stateManager.clearTeamAgents();
   });
   teamWatcher.on('error', (err: unknown) => {
     console.warn('[watcher] Team watcher error:', err instanceof Error ? err.message : err);
@@ -183,14 +186,10 @@ export function startWatcher(stateManager: StateManager) {
   // JSONL transcript watcher - now with session detection
   // ================================================================
   const transcriptWatcher = chokidar.watch(PROJECTS_DIR, {
-    ignoreInitial: false, // Changed: detect existing sessions on startup
+    ignoreInitial: false, // Detect existing sessions on startup
     persistent: true,
-    depth: 4, // Increased: catch subagent transcripts at {project}/{session}/subagents/*.jsonl
+    depth: 4, // Catch subagent transcripts at {project}/{session}/subagents/*.jsonl
     awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 200 },
-    ignored: (path: string, stats?: { isDirectory(): boolean }) => {
-      if (stats?.isDirectory()) return false;
-      return !path.endsWith('.jsonl');
-    },
   });
 
   transcriptWatcher.on('ready', () => {
@@ -198,15 +197,18 @@ export function startWatcher(stateManager: StateManager) {
   });
 
   transcriptWatcher.on('add', async (filePath: string) => {
+    if (!filePath.endsWith('.jsonl')) return; // Filter to JSONL only
     fileOffsets.set(filePath, 0);
     await detectSession(filePath);
   });
 
   transcriptWatcher.on('change', (filePath: string) => {
+    if (!filePath.endsWith('.jsonl')) return; // Filter to JSONL only
     transcriptDebouncer.debounce(`transcript:${filePath}`, () => handleTranscriptChange(filePath));
   });
 
   transcriptWatcher.on('unlink', (filePath: string) => {
+    if (!filePath.endsWith('.jsonl')) return;
     fileOffsets.delete(filePath);
     const tracked = trackedSessions.get(filePath);
     if (tracked) {
@@ -229,7 +231,21 @@ export function startWatcher(stateManager: StateManager) {
    * Read the first line of a newly detected JSONL file to extract session metadata.
    * For solo sessions (no teamName), create a synthetic agent.
    */
+  /** Max age in seconds for a session to be considered "active" on initial scan */
+  const MAX_SESSION_AGE_S = 300; // 5 minutes
+
   async function detectSession(filePath: string) {
+    // Check file freshness — skip old sessions on initial scan
+    try {
+      const stats = await fsStat(filePath);
+      const ageSeconds = (Date.now() - stats.mtimeMs) / 1000;
+      if (ageSeconds > MAX_SESSION_AGE_S) {
+        return; // Skip stale sessions
+      }
+    } catch {
+      return;
+    }
+
     const firstLine = await readFirstLine(filePath);
     if (!firstLine) return;
 

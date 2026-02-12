@@ -183,6 +183,25 @@ export class StateManager {
     return this.sessions;
   }
 
+  /** Switch the active displayed session */
+  selectSession(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+
+    this.state.session = session;
+    if (!session.isTeam) {
+      // For solo sessions, show only that session's agent
+      this.state.name = session.projectName;
+      const soloAgent = this.state.agents.find((a) => a.id === sessionId);
+      if (soloAgent) {
+        this.state.agents = [soloAgent];
+      }
+      this.state.tasks = [];
+    }
+    this.broadcastFullState();
+    this.broadcastSessionsList();
+  }
+
   getSessionsList(): SessionListEntry[] {
     const entries: SessionListEntry[] = [];
     for (const session of this.sessions.values()) {
@@ -207,6 +226,20 @@ export class StateManager {
 
   broadcastFullState() {
     this.broadcast({ type: 'full_state', data: this.state });
+  }
+
+  /** Remove only team-config agents (not solo session agents) */
+  clearTeamAgents() {
+    // Keep agents whose ID matches a known solo session
+    const soloSessionIds = new Set(
+      [...this.sessions.values()]
+        .filter((s) => !s.isTeam)
+        .map((s) => s.sessionId)
+    );
+    this.state.agents = this.state.agents.filter((a) => soloSessionIds.has(a.id));
+    this.state.tasks = [];
+    this.state.name = '';
+    this.broadcastFullState();
   }
 
   reset() {

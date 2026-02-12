@@ -173,7 +173,7 @@ describe('parseTranscriptLine', () => {
     const result = parseTranscriptLine(line);
     expect(result).not.toBeNull();
     expect(result!.type).toBe('tool_call');
-    expect(result!.toolName).toBe('Read');
+    expect(result!.toolName).toBe('Reading file.ts');
   });
 
   it('detects tool_result', () => {

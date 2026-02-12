@@ -44,6 +44,22 @@ wss.on('connection', (ws: WebSocket) => {
     }
   });
 
+  // Handle incoming messages from clients
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === 'select_session' && typeof msg.sessionId === 'string') {
+        console.log(`[ws] Client selected session: ${msg.sessionId}`);
+        stateManager.selectSession(msg.sessionId);
+        // Send updated state to this client
+        ws.send(JSON.stringify({ type: 'full_state', data: stateManager.getState() }));
+        ws.send(JSON.stringify({ type: 'sessions_list', data: stateManager.getSessionsList() }));
+      }
+    } catch {
+      // Ignore invalid messages
+    }
+  });
+
   ws.on('close', () => {
     console.log('[ws] client disconnected');
     unsubscribe();
