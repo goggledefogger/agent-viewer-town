@@ -7,7 +7,7 @@ interface SceneProps {
   state: TeamState;
 }
 
-// Layout positions for agent workstations
+// Layout positions for agent workstations (team mode)
 const STATION_POSITIONS: Record<string, { x: number; y: number }> = {
   lead:        { x: 450, y: 200 },
   researcher:  { x: 200, y: 120 },
@@ -16,32 +16,83 @@ const STATION_POSITIONS: Record<string, { x: number; y: number }> = {
   planner:     { x: 200, y: 380 },
 };
 
-function getStationPos(role: string, index: number) {
+// Center position for solo agent
+const SOLO_POSITION = { x: 450, y: 300 };
+
+function getStationPos(role: string, index: number, isSolo: boolean) {
+  if (isSolo) return SOLO_POSITION;
   return STATION_POSITIONS[role] || { x: 200 + index * 180, y: 250 };
 }
 
 function AgentTooltip({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
+  const hasAction = !!agent.currentAction;
+  const tooltipHeight = hasAction ? 64 : 52;
+  const actionText = agent.currentAction
+    ? (agent.currentAction.length > 26 ? agent.currentAction.slice(0, 25) + '\u2026' : agent.currentAction)
+    : '';
+
   return (
     <g transform={`translate(${x}, ${y - 65})`}>
       <rect
-        x="-70"
-        y="-40"
-        width="140"
-        height="52"
+        x="-80"
+        y={-tooltipHeight + 12}
+        width="160"
+        height={tooltipHeight}
         rx="6"
         fill="#16213e"
         stroke="#4169E1"
         strokeWidth="1.5"
         opacity="0.95"
       />
-      <text x="0" y="-24" textAnchor="middle" fill="#FFD700" fontSize="9" fontFamily="'Courier New', monospace" fontWeight="bold">
+      <text x="0" y={hasAction ? -36 : -24} textAnchor="middle" fill="#FFD700" fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold">
         {agent.name}
       </text>
-      <text x="0" y="-12" textAnchor="middle" fill="#94a3b8" fontSize="8" fontFamily="'Courier New', monospace">
+      <text x="0" y={hasAction ? -24 : -12} textAnchor="middle" fill="#94a3b8" fontSize="7.5" fontFamily="'Courier New', monospace">
         Role: {agent.role} | {agent.status}
       </text>
-      <text x="0" y="0" textAnchor="middle" fill="#28A745" fontSize="8" fontFamily="'Courier New', monospace">
+      {hasAction && (
+        <text x="0" y="-12" textAnchor="middle" fill="#e2e8f0" fontSize="7.5" fontFamily="'Courier New', monospace">
+          {actionText}
+        </text>
+      )}
+      <text x="0" y={hasAction ? 0 : 0} textAnchor="middle" fill="#28A745" fontSize="7.5" fontFamily="'Courier New', monospace">
         Tasks done: {agent.tasksCompleted}
+      </text>
+    </g>
+  );
+}
+
+/** Speech bubble for solo agent showing current action */
+function SoloSpeechBubble({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
+  const text = agent.currentAction || (agent.status === 'working' ? 'Working...' : 'Idle');
+  const maxLen = 40;
+  const display = text.length > maxLen ? text.slice(0, maxLen - 1) + '\u2026' : text;
+  const boxWidth = Math.max(100, display.length * 5 + 28);
+
+  return (
+    <g transform={`translate(${x}, ${y - 65})`}>
+      <rect
+        x={-boxWidth / 2}
+        y="-16"
+        width={boxWidth}
+        height="24"
+        rx="6"
+        fill="#16213e"
+        stroke="#4169E1"
+        strokeWidth="1.5"
+        opacity="0.95"
+      />
+      <polygon points="-5,8 5,8 0,14" fill="#16213e" stroke="#4169E1" strokeWidth="1.5" />
+      {/* Cover the stroke line inside the bubble where the pointer meets */}
+      <rect x="-6" y="6" width="12" height="3" fill="#16213e" />
+      <text x="0" y="0" textAnchor="middle" fill="#e2e8f0" fontSize="8" fontFamily="'Courier New', monospace">
+        {display}
+        {agent.status === 'working' && (
+          <tspan fill="#e2e8f0">
+            <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite" />
+            {'_'}
+          </tspan>
+        )}
       </text>
     </g>
   );
@@ -49,13 +100,14 @@ function AgentTooltip({ agent, x, y }: { agent: AgentState; x: number; y: number
 
 export function Scene({ state }: SceneProps) {
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
+  const isSolo = state.agents.length === 1;
 
-  if (!state.name) {
+  if (!state.name && state.agents.length === 0) {
     return (
       <div className="scene-container no-team">
         <h2>The Workshop in the Woods</h2>
-        <p>Waiting for an agent team to start...<br />
-        Use <code>TeamCreate</code> in Claude Code to begin.</p>
+        <p>Waiting for a session to start...<br />
+        Launch Claude Code to begin.</p>
       </div>
     );
   }
@@ -102,12 +154,12 @@ export function Scene({ state }: SceneProps) {
           <rect key={i} x={sx} y={sy} width="2" height="2" fill="#ffffff" opacity={0.4 + (i % 3) * 0.2} />
         ))}
 
-        {/* Machine connections between agents */}
-        <Machine agents={state.agents} messages={state.messages} />
+        {/* Machine connections between agents (only for team mode) */}
+        {!isSolo && <Machine agents={state.agents} messages={state.messages} />}
 
         {/* Agent characters at their stations */}
         {state.agents.map((agent, i) => {
-          const pos = getStationPos(agent.role, i);
+          const pos = getStationPos(agent.role, i, isSolo);
           return (
             <g
               key={agent.id}
@@ -120,7 +172,10 @@ export function Scene({ state }: SceneProps) {
                 x={pos.x}
                 y={pos.y}
               />
-              {hoveredAgent === agent.id && (
+              {/* Solo mode: always show speech bubble */}
+              {isSolo && <SoloSpeechBubble agent={agent} x={pos.x} y={pos.y} />}
+              {/* Team mode: show tooltip on hover */}
+              {!isSolo && hoveredAgent === agent.id && (
                 <AgentTooltip agent={agent} x={pos.x} y={pos.y} />
               )}
             </g>
