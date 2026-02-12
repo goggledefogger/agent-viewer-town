@@ -216,6 +216,9 @@ export function startWatcher(stateManager: StateManager) {
 
   transcriptWatcher.on('change', (filePath: string) => {
     if (!filePath.endsWith('.jsonl')) return; // Filter to JSONL only
+    // Only process real-time changes after the initial scan is complete.
+    // During initial scan, detectSession already reads metadata and sets offsets.
+    if (!transcriptWatcherReady) return;
     transcriptDebouncer.debounce(`transcript:${filePath}`, () => handleTranscriptChange(filePath));
   });
 
