@@ -24,7 +24,7 @@ const IDLE_THRESHOLD_S = 60;
 /** How often to check for stale sessions (ms) */
 const STALENESS_CHECK_INTERVAL_MS = 15_000;
 /** Seconds after a tool_use with no tool_result before marking "waiting for input" */
-const WAITING_FOR_INPUT_DELAY_S = 60;
+const WAITING_FOR_INPUT_DELAY_S = 15;
 
 function createDebouncer(delayMs: number) {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -340,22 +340,23 @@ export function startWatcher(stateManager: StateManager) {
     const { lines, newOffset } = await readNewLines(filePath, offset);
     fileOffsets.set(filePath, newOffset);
 
-    // Update last activity time for the tracked session
     const currentTracked = trackedSessions.get(filePath);
-    if (currentTracked) {
-      currentTracked.lastActivity = Date.now();
-      stateManager.updateSessionActivity(currentTracked.sessionId);
-    }
+
+    // Only update last activity when there are actual new lines to process
+    // (prevents empty file touches from making old sessions look active)
+    let hadMeaningfulActivity = false;
 
     for (const line of lines) {
       const parsed = parseTranscriptLine(line);
       if (!parsed) continue;
 
       if (parsed.type === 'message' && parsed.message) {
+        hadMeaningfulActivity = true;
         stateManager.addMessage(parsed.message);
       }
 
       if (parsed.type === 'tool_call' && parsed.toolName) {
+        hadMeaningfulActivity = true;
         // Record that a tool_use was seen — may trigger "waiting for input" later
         if (currentTracked) {
           currentTracked.lastToolUseAt = Date.now();
@@ -399,6 +400,7 @@ export function startWatcher(stateManager: StateManager) {
 
       // tool_result clears the "waiting for input" state but keeps the last action visible
       if (parsed.type === 'agent_activity') {
+        hadMeaningfulActivity = true;
         if (currentTracked) {
           currentTracked.lastToolUseAt = undefined;
           currentTracked.pendingToolName = undefined;
@@ -416,6 +418,25 @@ export function startWatcher(stateManager: StateManager) {
           }
         }
       }
+    }
+
+    // Only update session activity timestamp when we processed meaningful events
+    if (hadMeaningfulActivity && currentTracked) {
+      currentTracked.lastActivity = Date.now();
+      stateManager.updateSessionActivity(currentTracked.sessionId);
+    }
+
+    // After processing all lines, schedule a delayed check for pending tool_use
+    // without a tool_result — this catches permission prompts faster than the
+    // periodic staleness check alone.
+    if (currentTracked?.lastToolUseAt && currentTracked.isSolo) {
+      const agentName = getSoloAgentName(currentTracked.sessionId);
+      setTimeout(() => {
+        // Re-check: if lastToolUseAt is still set (no tool_result arrived), mark waiting
+        if (currentTracked.lastToolUseAt) {
+          stateManager.setAgentWaiting(agentName, true, currentTracked.pendingToolName);
+        }
+      }, WAITING_FOR_INPUT_DELAY_S * 1000);
     }
 
     function findWorkingAgentName(): string | undefined {
