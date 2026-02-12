@@ -1,7 +1,7 @@
 import chokidar from 'chokidar';
 import { join, basename, dirname } from 'path';
 import { homedir } from 'os';
-import { readdir } from 'fs/promises';
+import { readdir, access, constants } from 'fs/promises';
 import { StateManager } from './state';
 import {
   parseTeamConfig,
@@ -15,23 +15,68 @@ const CLAUDE_DIR = join(homedir(), '.claude');
 const TEAMS_DIR = join(CLAUDE_DIR, 'teams');
 const TASKS_DIR = join(CLAUDE_DIR, 'tasks');
 
+function createDebouncer(delayMs: number) {
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  function debounce(key: string, fn: () => void) {
+    const existing = timers.get(key);
+    if (existing) clearTimeout(existing);
+    timers.set(
+      key,
+      setTimeout(() => {
+        timers.delete(key);
+        fn();
+      }, delayMs)
+    );
+  }
+
+  function clear() {
+    for (const timer of timers.values()) clearTimeout(timer);
+    timers.clear();
+  }
+
+  return { debounce, clear };
+}
+
+async function isReadable(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath, constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function startWatcher(stateManager: StateManager) {
   const fileOffsets = new Map<string, number>();
+  const debouncer = createDebouncer(150);
+  const transcriptDebouncer = createDebouncer(300);
 
-  // Watch team configs
-  const teamWatcher = chokidar.watch(join(TEAMS_DIR, '*/config.json'), {
+  // Watch team configs (chokidar v4: watch dir, filter via ignored)
+  const teamWatcher = chokidar.watch(TEAMS_DIR, {
     ignoreInitial: false,
     persistent: true,
+    depth: 1,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
+    ignored: (path: string, stats?: { isDirectory(): boolean }) => {
+      if (stats?.isDirectory()) return false;
+      return basename(path) !== 'config.json';
+    },
   });
 
-  teamWatcher.on('add', handleTeamConfig);
-  teamWatcher.on('change', handleTeamConfig);
-  teamWatcher.on('unlink', () => {
+  teamWatcher.on('add', (fp: string) => debouncer.debounce(`team:${fp}`, () => handleTeamConfig(fp)));
+  teamWatcher.on('change', (fp: string) => debouncer.debounce(`team:${fp}`, () => handleTeamConfig(fp)));
+  teamWatcher.on('unlink', (fp: string) => {
+    console.log(`[watcher] Team config removed: ${fp}`);
     stateManager.reset();
+  });
+  teamWatcher.on('error', (err: unknown) => {
+    console.warn('[watcher] Team watcher error:', err instanceof Error ? err.message : err);
   });
 
   async function handleTeamConfig(filePath: string) {
+    if (!(await isReadable(filePath))) return;
+
     const config = await parseTeamConfig(filePath);
     if (!config) return;
 
@@ -39,33 +84,42 @@ export function startWatcher(stateManager: StateManager) {
     stateManager.setTeamName(teamName);
     stateManager.setAgents(config.members.map(teamMemberToAgent));
 
-    // Also scan for existing tasks
     await scanTasks(teamName);
   }
 
-  // Watch task files
-  const taskWatcher = chokidar.watch(join(TASKS_DIR, '*/*.json'), {
+  // Watch task files (chokidar v4: watch dir, filter via ignored)
+  const taskWatcher = chokidar.watch(TASKS_DIR, {
     ignoreInitial: false,
     persistent: true,
+    depth: 1,
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 100 },
+    ignored: (path: string, stats?: { isDirectory(): boolean }) => {
+      if (stats?.isDirectory()) return false;
+      return !path.endsWith('.json');
+    },
   });
 
-  taskWatcher.on('add', handleTaskFile);
-  taskWatcher.on('change', handleTaskFile);
+  taskWatcher.on('add', (fp: string) => debouncer.debounce(`task:${fp}`, () => handleTaskFile(fp)));
+  taskWatcher.on('change', (fp: string) => debouncer.debounce(`task:${fp}`, () => handleTaskFile(fp)));
+  taskWatcher.on('unlink', (fp: string) => {
+    const taskId = basename(fp).replace('.json', '');
+    console.log(`[watcher] Task file removed: ${fp} (id: ${taskId})`);
+    stateManager.removeTask(taskId);
+    stateManager.reconcileAgentStatuses();
+  });
+  taskWatcher.on('error', (err: unknown) => {
+    console.warn('[watcher] Task watcher error:', err instanceof Error ? err.message : err);
+  });
 
   async function handleTaskFile(filePath: string) {
     if (basename(filePath) === 'config.json') return;
-    const task = await parseTaskFile(filePath);
-    if (task) {
-      stateManager.updateTask(task);
+    if (!(await isReadable(filePath))) return;
 
-      // Update agent status based on task ownership
-      if (task.owner && task.status === 'in_progress') {
-        stateManager.updateAgentActivity(task.owner, 'working', task.subject);
-      } else if (task.owner && task.status === 'completed') {
-        stateManager.updateAgentActivity(task.owner, 'idle');
-      }
-    }
+    const task = await parseTaskFile(filePath);
+    if (!task) return;
+
+    stateManager.updateTask(task);
+    stateManager.reconcileAgentStatuses();
   }
 
   async function scanTasks(teamName: string) {
@@ -77,27 +131,44 @@ export function startWatcher(stateManager: StateManager) {
           await handleTaskFile(join(taskDir, file));
         }
       }
-    } catch {
-      // task dir may not exist yet
+    } catch (err) {
+      if (isNodeError(err) && err.code !== 'ENOENT') {
+        console.warn(`[watcher] Error scanning tasks in ${taskDir}:`, err.message);
+      }
     }
   }
 
-  // Watch JSONL transcript files for message activity
-  const transcriptWatcher = chokidar.watch(
-    [join(CLAUDE_DIR, 'projects/*/*.jsonl'), join(CLAUDE_DIR, 'projects/*/subagents/*.jsonl')],
-    {
-      ignoreInitial: true,
-      persistent: true,
-      awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 200 },
-    }
-  );
+  // Watch JSONL transcript files (chokidar v4: watch dir, filter via ignored)
+  const PROJECTS_DIR = join(CLAUDE_DIR, 'projects');
+  const transcriptWatcher = chokidar.watch(PROJECTS_DIR, {
+    ignoreInitial: true,
+    persistent: true,
+    depth: 2,
+    awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 200 },
+    ignored: (path: string, stats?: { isDirectory(): boolean }) => {
+      if (stats?.isDirectory()) return false;
+      return !path.endsWith('.jsonl');
+    },
+  });
 
   transcriptWatcher.on('add', (filePath: string) => {
     fileOffsets.set(filePath, 0);
   });
 
-  transcriptWatcher.on('change', async (filePath: string) => {
-    const offset = fileOffsets.get(filePath) || 0;
+  transcriptWatcher.on('change', (filePath: string) => {
+    transcriptDebouncer.debounce(`transcript:${filePath}`, () => handleTranscriptChange(filePath));
+  });
+
+  transcriptWatcher.on('unlink', (filePath: string) => {
+    fileOffsets.delete(filePath);
+  });
+
+  transcriptWatcher.on('error', (err: unknown) => {
+    console.warn('[watcher] Transcript watcher error:', err instanceof Error ? err.message : err);
+  });
+
+  async function handleTranscriptChange(filePath: string) {
+    const offset = fileOffsets.get(filePath) ?? 0;
     const { lines, newOffset } = await readNewLines(filePath, offset);
     fileOffsets.set(filePath, newOffset);
 
@@ -110,17 +181,24 @@ export function startWatcher(stateManager: StateManager) {
       }
 
       if (parsed.type === 'tool_call' && parsed.toolName) {
-        // Show tool activity for agents
-        const state = stateManager.getState();
-        for (const agent of state.agents) {
-          if (agent.status === 'working') {
+        if (parsed.agentName) {
+          const state = stateManager.getState();
+          const agent = state.agents.find((a) => a.name === parsed.agentName);
+          if (agent && agent.status === 'working') {
             stateManager.updateAgentActivity(agent.name, 'working', parsed.toolName);
-            break;
+          }
+        } else {
+          const state = stateManager.getState();
+          for (const agent of state.agents) {
+            if (agent.status === 'working') {
+              stateManager.updateAgentActivity(agent.name, 'working', parsed.toolName);
+              break;
+            }
           }
         }
       }
     }
-  });
+  }
 
   console.log(`[watcher] Watching ${TEAMS_DIR}`);
   console.log(`[watcher] Watching ${TASKS_DIR}`);
@@ -128,9 +206,19 @@ export function startWatcher(stateManager: StateManager) {
 
   return {
     close: () => {
+      debouncer.clear();
+      transcriptDebouncer.clear();
       teamWatcher.close();
       taskWatcher.close();
       transcriptWatcher.close();
     },
   };
+}
+
+interface NodeError extends Error {
+  code: string;
+}
+
+function isNodeError(err: unknown): err is NodeError {
+  return err instanceof Error && 'code' in err;
 }
