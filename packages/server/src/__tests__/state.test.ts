@@ -270,6 +270,103 @@ describe('StateManager', () => {
     });
   });
 
+  describe('ID-based agent updates (cross-session safety)', () => {
+    it('updateAgentActivityById targets the correct agent when names collide', () => {
+      // Two sessions for the same project — agents have the same name
+      const agent1 = makeAgent('session-main', 'llm-music', { status: 'idle' });
+      const agent2 = makeAgent('session-feature', 'llm-music', { status: 'idle' });
+
+      sm.registerAgent(agent1);
+      sm.registerAgent(agent2);
+
+      sm.addSession(makeSession('session-main', 'llm-music', { lastActivity: 1000, gitBranch: 'main' }));
+      sm.addSession(makeSession('session-feature', 'llm-music', { lastActivity: 2000, gitBranch: 'feature/ai-chat' }));
+
+      // session-feature is active (higher lastActivity)
+      expect(sm.getState().agents[0].id).toBe('session-feature');
+
+      // Update the feature session agent by ID
+      sm.updateAgentActivityById('session-feature', 'working', 'Editing file.ts');
+
+      // Feature agent should be updated
+      const featureAgent = sm.getAgentById('session-feature');
+      expect(featureAgent?.status).toBe('working');
+      expect(featureAgent?.currentAction).toBe('Editing file.ts');
+
+      // Main agent should NOT be affected
+      const mainAgent = sm.getAgentById('session-main');
+      expect(mainAgent?.status).toBe('idle');
+      expect(mainAgent?.currentAction).toBeUndefined();
+    });
+
+    it('setAgentWaitingById targets the correct agent when names collide', () => {
+      const agent1 = makeAgent('session-main', 'llm-music', { status: 'working' });
+      const agent2 = makeAgent('session-feature', 'llm-music', { status: 'working' });
+
+      sm.registerAgent(agent1);
+      sm.registerAgent(agent2);
+
+      sm.addSession(makeSession('session-main', 'llm-music', { lastActivity: 1000, gitBranch: 'main' }));
+      sm.addSession(makeSession('session-feature', 'llm-music', { lastActivity: 2000, gitBranch: 'feature/ai-chat' }));
+
+      // Set waiting on feature session only
+      sm.setAgentWaitingById('session-feature', true, 'AskUserQuestion');
+
+      const featureAgent = sm.getAgentById('session-feature');
+      expect(featureAgent?.waitingForInput).toBe(true);
+
+      const mainAgent = sm.getAgentById('session-main');
+      expect(mainAgent?.waitingForInput).toBeFalsy();
+    });
+
+    it('updateAgentActivityById broadcasts update when agent is displayed', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      messages = []; // clear setup messages
+      sm.updateAgentActivityById('s1', 'working', 'Running tests');
+
+      const updates = messages.filter((m) => m.type === 'agent_update');
+      expect(updates).toHaveLength(1);
+      if (updates[0].type === 'agent_update') {
+        expect(updates[0].data.status).toBe('working');
+      }
+    });
+
+    it('updateAgentActivityById does not broadcast when agent is not displayed', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.registerAgent(makeAgent('s2', 'agent-b'));
+
+      sm.addSession(makeSession('s1', 'project-a', { lastActivity: 1000 }));
+      sm.addSession(makeSession('s2', 'project-b', { lastActivity: 2000 }));
+      // s2 is displayed
+
+      messages = [];
+      sm.updateAgentActivityById('s1', 'working', 'Editing');
+
+      const updates = messages.filter((m) => m.type === 'agent_update');
+      expect(updates).toHaveLength(0);
+
+      // But registry was updated
+      const agent = sm.getAgentById('s1');
+      expect(agent?.status).toBe('working');
+    });
+
+    it('setAgentWaitingById clears flag correctly', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a', { status: 'working', waitingForInput: true }));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.setAgentWaitingById('s1', false);
+
+      const agent = sm.getAgentById('s1');
+      expect(agent?.waitingForInput).toBe(false);
+    });
+
+    it('getAgentById returns undefined for unknown ID', () => {
+      expect(sm.getAgentById('nonexistent')).toBeUndefined();
+    });
+  });
+
   describe('sessions list broadcast completeness', () => {
     it('sessions_list always includes all registered sessions', () => {
       // Register 5 sessions

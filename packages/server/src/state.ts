@@ -58,6 +58,11 @@ export class StateManager {
     this.broadcastFullState();
   }
 
+  /** Get an agent from the full registry by ID */
+  getAgentById(id: string): AgentState | undefined {
+    return this.allAgents.get(id);
+  }
+
   /** Add agent to registry only — does NOT add to displayed state.agents */
   registerAgent(agent: AgentState) {
     this.allAgents.set(agent.id, agent);
@@ -164,6 +169,31 @@ export class StateManager {
     }
   }
 
+  /**
+   * Update agent activity by ID instead of name.
+   * This is essential for solo sessions where multiple sessions in the same
+   * project would have agents with the same name (slug).
+   */
+  updateAgentActivityById(agentId: string, status: 'idle' | 'working' | 'done', action?: string) {
+    const agent = this.allAgents.get(agentId);
+    if (!agent) return;
+    agent.status = status;
+    agent.currentAction = action;
+    if (status === 'idle' || status === 'done') {
+      agent.waitingForInput = false;
+    }
+    // Also update in the displayed state if this agent is currently shown
+    const displayed = this.state.agents.find((a) => a.id === agentId);
+    if (displayed) {
+      displayed.status = status;
+      displayed.currentAction = action;
+      if (status === 'idle' || status === 'done') {
+        displayed.waitingForInput = false;
+      }
+      this.broadcast({ type: 'agent_update', data: displayed });
+    }
+  }
+
   setAgentWaiting(agentName: string, waiting: boolean, action?: string) {
     // Update in the full registry
     for (const agent of this.allAgents.values()) {
@@ -179,6 +209,25 @@ export class StateManager {
       agent.waitingForInput = waiting;
       if (action) agent.currentAction = action;
       this.broadcast({ type: 'agent_update', data: agent });
+    }
+  }
+
+  /**
+   * Set agent waiting state by ID instead of name.
+   * This is essential for solo sessions where multiple sessions in the same
+   * project would have agents with the same name (slug).
+   */
+  setAgentWaitingById(agentId: string, waiting: boolean, action?: string) {
+    const agent = this.allAgents.get(agentId);
+    if (!agent) return;
+    agent.waitingForInput = waiting;
+    if (action) agent.currentAction = action;
+    // Also update in the displayed state if this agent is currently shown
+    const displayed = this.state.agents.find((a) => a.id === agentId);
+    if (displayed) {
+      displayed.waitingForInput = waiting;
+      if (action) displayed.currentAction = action;
+      this.broadcast({ type: 'agent_update', data: displayed });
     }
   }
 

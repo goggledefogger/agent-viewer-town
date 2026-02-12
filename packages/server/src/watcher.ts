@@ -23,8 +23,13 @@ const PROJECTS_DIR = join(CLAUDE_DIR, 'projects');
 const IDLE_THRESHOLD_S = 60;
 /** How often to check for stale sessions (ms) */
 const STALENESS_CHECK_INTERVAL_MS = 15_000;
-/** Seconds after a tool_use with no tool_result before marking "waiting for input" */
-const WAITING_FOR_INPUT_DELAY_S = 15;
+/**
+ * Seconds after a tool_use with no tool_result before heuristically marking
+ * "waiting for input". Set higher to avoid false positives from long tool
+ * executions (builds, tests, etc.). Tools like AskUserQuestion are detected
+ * immediately regardless of this delay.
+ */
+const WAITING_FOR_INPUT_DELAY_S = 45;
 
 function createDebouncer(delayMs: number) {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -76,7 +81,10 @@ interface TrackedSession {
 export function startWatcher(stateManager: StateManager) {
   const fileOffsets = new Map<string, number>();
   const debouncer = createDebouncer(150);
-  const transcriptDebouncer = createDebouncer(300);
+  const transcriptDebouncer = createDebouncer(100);
+
+  /** Track which sessionIds have been registered to prevent race-condition double-registration */
+  const registeredSessions = new Set<string>();
 
   /** Map from JSONL file path to session tracking info */
   const trackedSessions = new Map<string, TrackedSession>();
@@ -193,7 +201,9 @@ export function startWatcher(stateManager: StateManager) {
     ignoreInitial: false, // Detect existing sessions on startup
     persistent: true,
     depth: 4, // Catch subagent transcripts at {project}/{session}/subagents/*.jsonl
-    awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 200 },
+    // No awaitWriteFinish here — we want real-time change events for live
+    // activity detection (gear spinning, action bubbles). readNewLines() already
+    // handles partial writes by only processing complete lines.
   });
 
   let transcriptWatcherReady = false;
@@ -282,6 +292,22 @@ export function startWatcher(stateManager: StateManager) {
     const relPath = filePath.slice(PROJECTS_DIR.length + 1); // strip prefix + /
     const dirSlug = relPath.split('/')[0] || '';
 
+    // IMPORTANT: For top-level transcript files (not subagent files), the filename
+    // IS the session ID. The JSONL metadata's sessionId may reference a PARENT session
+    // (e.g., for compacted/continued sessions). Use the filename as the authoritative
+    // session ID in that case.
+    const relSegments = relPath.split('/');
+    if (relSegments.length === 2) {
+      // Top-level file: {dirSlug}/{sessionId}.jsonl
+      const filenameId = basename(filePath, '.jsonl');
+      if (filenameId && filenameId !== meta.sessionId) {
+        meta.sessionId = filenameId;
+      }
+    } else if (relSegments.length >= 4 && relSegments[2] === 'subagents') {
+      // Subagent file: {dirSlug}/{parentSessionId}/subagents/{agentId}.jsonl
+      // The sessionId in metadata is correct (it's the parent session ID)
+    }
+
     // Determine initial status and last activity from file modification time
     let initialStatus: 'working' | 'idle' = 'idle';
     let fileMtime = Date.now();
@@ -309,11 +335,14 @@ export function startWatcher(stateManager: StateManager) {
       meta.projectName = cleanProjectName(dirSlug);
     }
 
-    // Register the session
-    const existingSessions = stateManager.getSessions();
-    if (!existingSessions.has(meta.sessionId)) {
+    // Register or update the session.
+    // Use registeredSessions to prevent race conditions where multiple async
+    // detectSession calls for the same sessionId both pass the `has()` check.
+    const alreadyRegistered = registeredSessions.has(meta.sessionId);
+    if (!alreadyRegistered) {
+      registeredSessions.add(meta.sessionId);
       console.log(
-        `[watcher] New session detected: ${meta.sessionId} (${meta.isTeam ? 'team' : 'solo'}) - ${meta.projectName} [${initialStatus}]`
+        `[watcher] New session detected: ${meta.sessionId} (${meta.isTeam ? 'team' : 'solo'}) - ${meta.projectName} [${initialStatus}] branch=${meta.gitBranch || 'n/a'}`
       );
 
       // For solo sessions, register agent in the registry
@@ -330,6 +359,13 @@ export function startWatcher(stateManager: StateManager) {
 
       // Register the session (auto-selects if it's the first or most active)
       stateManager.addSession(meta);
+    } else {
+      // Session already known (e.g. from another JSONL file like a subagent transcript).
+      // Update lastActivity if this file is more recent.
+      const existingSession = stateManager.getSessions().get(meta.sessionId);
+      if (existingSession && fileMtime > existingSession.lastActivity) {
+        existingSession.lastActivity = fileMtime;
+      }
     }
   }
 
@@ -368,18 +404,20 @@ export function startWatcher(stateManager: StateManager) {
 
         // Immediately mark as waiting for AskUserQuestion (always requires input)
         if (parsed.isUserPrompt && currentTracked) {
-          const agentName = currentTracked.isSolo
-            ? getSoloAgentName(currentTracked.sessionId)
-            : (parsed.agentName || findWorkingAgentName());
-          if (agentName) {
-            stateManager.setAgentWaiting(agentName, true, parsed.toolName);
+          if (currentTracked.isSolo) {
+            stateManager.setAgentWaitingById(currentTracked.sessionId, true, parsed.toolName);
+          } else {
+            const agentName = parsed.agentName || findWorkingAgentName();
+            if (agentName) {
+              stateManager.setAgentWaiting(agentName, true, parsed.toolName);
+            }
           }
         }
 
-        // For solo sessions, update the synthetic agent directly
+        // For solo sessions, update the synthetic agent directly (by ID to avoid cross-session collision)
         if (currentTracked?.isSolo) {
-          stateManager.updateAgentActivity(
-            getSoloAgentName(currentTracked.sessionId),
+          stateManager.updateAgentActivityById(
+            currentTracked.sessionId,
             'working',
             parsed.toolName
           );
@@ -409,8 +447,7 @@ export function startWatcher(stateManager: StateManager) {
           currentTracked.pendingToolName = undefined;
         }
         if (currentTracked?.isSolo) {
-          const agentName = getSoloAgentName(currentTracked.sessionId);
-          stateManager.setAgentWaiting(agentName, false);
+          stateManager.setAgentWaitingById(currentTracked.sessionId, false);
           // Keep the last action visible — don't clear currentAction on tool_result.
           // The next tool_call will overwrite it. This prevents flickering.
         } else {
@@ -424,20 +461,34 @@ export function startWatcher(stateManager: StateManager) {
     }
 
     // Only update session activity timestamp when we processed meaningful events
+    // AND the file itself is recently modified (prevents historical data from
+    // inflating timestamps due to detectSession race conditions).
     if (hadMeaningfulActivity && currentTracked) {
-      currentTracked.lastActivity = Date.now();
-      stateManager.updateSessionActivity(currentTracked.sessionId);
+      try {
+        const stats = await fsStat(filePath);
+        const fileAgeSeconds = (Date.now() - stats.mtimeMs) / 1000;
+        if (fileAgeSeconds < 300) { // Only for files modified in last 5 minutes
+          currentTracked.lastActivity = Date.now();
+          stateManager.updateSessionActivity(currentTracked.sessionId);
+        }
+      } catch {
+        // If we can't stat, don't update activity
+      }
     }
 
     // After processing all lines, schedule a delayed check for pending tool_use
     // without a tool_result — this catches permission prompts faster than the
-    // periodic staleness check alone.
+    // periodic staleness check alone. Capture the exact timestamp so we only
+    // trigger for THIS specific tool_use (not a later one that happened to set
+    // a new lastToolUseAt).
     if (currentTracked?.lastToolUseAt && currentTracked.isSolo) {
-      const agentName = getSoloAgentName(currentTracked.sessionId);
+      const sessionId = currentTracked.sessionId;
+      const capturedToolUseAt = currentTracked.lastToolUseAt;
       setTimeout(() => {
-        // Re-check: if lastToolUseAt is still set (no tool_result arrived), mark waiting
-        if (currentTracked.lastToolUseAt) {
-          stateManager.setAgentWaiting(agentName, true, currentTracked.pendingToolName);
+        // Only mark waiting if THIS specific tool_use is still pending
+        // (a new tool_use would have a different timestamp)
+        if (currentTracked.lastToolUseAt === capturedToolUseAt) {
+          stateManager.setAgentWaitingById(sessionId, true, currentTracked.pendingToolName);
         }
       }, WAITING_FOR_INPUT_DELAY_S * 1000);
     }
@@ -449,15 +500,6 @@ export function startWatcher(stateManager: StateManager) {
       }
       return state.agents[0]?.name;
     }
-  }
-
-  /**
-   * Get the agent name for a solo session.
-   * The agent uses the session's slug as its name.
-   */
-  function getSoloAgentName(sessionId: string): string {
-    const session = stateManager.getSessions().get(sessionId);
-    return session?.slug || session?.projectName || 'claude';
   }
 
   /**
@@ -479,14 +521,13 @@ export function startWatcher(stateManager: StateManager) {
       if (!tracked.isSolo) continue;
 
       const idleSeconds = (now - tracked.lastActivity) / 1000;
-      const agentName = getSoloAgentName(tracked.sessionId);
 
       // Check for "waiting for input": tool_use seen but no tool_result followed
       if (tracked.lastToolUseAt) {
         const waitingSeconds = (now - tracked.lastToolUseAt) / 1000;
         if (waitingSeconds >= WAITING_FOR_INPUT_DELAY_S) {
-          stateManager.setAgentWaiting(
-            agentName,
+          stateManager.setAgentWaitingById(
+            tracked.sessionId,
             true,
             tracked.pendingToolName
           );
@@ -498,12 +539,11 @@ export function startWatcher(stateManager: StateManager) {
         // Clear stale waiting state — if truly idle, not waiting for input
         tracked.lastToolUseAt = undefined;
         tracked.pendingToolName = undefined;
-        stateManager.setAgentWaiting(agentName, false);
+        stateManager.setAgentWaitingById(tracked.sessionId, false);
 
-        const state = stateManager.getState();
-        const agent = state.agents.find((a) => a.name === agentName);
+        const agent = stateManager.getAgentById(tracked.sessionId);
         if (agent && agent.status === 'working') {
-          stateManager.updateAgentActivity(agentName, 'idle');
+          stateManager.updateAgentActivityById(tracked.sessionId, 'idle');
         }
       }
     }
