@@ -392,7 +392,7 @@ export function startWatcher(stateManager: StateManager) {
         }
       }
 
-      // tool_result clears the "waiting for input" state
+      // tool_result clears the "waiting for input" state but keeps the last action visible
       if (parsed.type === 'agent_activity') {
         if (currentTracked) {
           currentTracked.lastToolUseAt = undefined;
@@ -401,7 +401,8 @@ export function startWatcher(stateManager: StateManager) {
         if (currentTracked?.isSolo) {
           const agentName = getSoloAgentName(currentTracked.sessionId);
           stateManager.setAgentWaiting(agentName, false);
-          stateManager.updateAgentActivity(agentName, 'working');
+          // Keep the last action visible — don't clear currentAction on tool_result.
+          // The next tool_call will overwrite it. This prevents flickering.
         } else {
           // Clear waiting state for any agent in this session
           const agentName = parsed.agentName || findWorkingAgentName();
