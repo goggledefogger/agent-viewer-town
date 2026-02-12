@@ -381,7 +381,7 @@ export function parseSessionMetadata(line: string): SessionInfo | null {
     gitBranch,
     isTeam,
     teamName,
-    lastActivity: Date.now(),
+    lastActivity: 0, // Caller should set from file mtime
   };
 }
 

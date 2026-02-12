@@ -279,22 +279,27 @@ export function startWatcher(stateManager: StateManager) {
     const relPath = filePath.slice(PROJECTS_DIR.length + 1); // strip prefix + /
     const dirSlug = relPath.split('/')[0] || '';
 
-    // Determine initial status from file freshness
+    // Determine initial status and last activity from file modification time
     let initialStatus: 'working' | 'idle' = 'idle';
+    let fileMtime = Date.now();
     try {
       const stats = await fsStat(filePath);
-      const ageSeconds = (Date.now() - stats.mtimeMs) / 1000;
+      fileMtime = stats.mtimeMs;
+      const ageSeconds = (Date.now() - fileMtime) / 1000;
       initialStatus = ageSeconds < IDLE_THRESHOLD_S ? 'working' : 'idle';
-    } catch { /* default to idle */ }
+    } catch { /* default to idle, current time */ }
 
     const tracked: TrackedSession = {
       sessionId: meta.sessionId,
       filePath,
       isSolo: !meta.isTeam,
       dirSlug,
-      lastActivity: Date.now(),
+      lastActivity: fileMtime,
     };
     trackedSessions.set(filePath, tracked);
+
+    // Use the file's actual mtime as the session's last activity
+    meta.lastActivity = fileMtime;
 
     // If no projectName was derived from cwd, use the directory slug
     if (!meta.projectName && dirSlug) {
