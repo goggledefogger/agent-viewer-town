@@ -74,8 +74,8 @@ function WaitingBubble({ agent, x, y }: { agent: AgentState; x: number; y: numbe
 
 /** Speech bubble showing current action — used for all agents */
 function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
-  // Show prominent alert when waiting for user input
-  if (agent.waitingForInput) {
+  // Show prominent alert when waiting for user input (only if not idle)
+  if (agent.waitingForInput && agent.status !== 'idle') {
     return <WaitingBubble agent={agent} x={x} y={y} />;
   }
 

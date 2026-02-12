@@ -145,6 +145,10 @@ export class StateManager {
       if (agent.name === agentName) {
         agent.status = status;
         agent.currentAction = action;
+        // Clear waiting flag when going idle or done
+        if (status === 'idle' || status === 'done') {
+          agent.waitingForInput = false;
+        }
         break;
       }
     }
@@ -153,6 +157,9 @@ export class StateManager {
     if (agent) {
       agent.status = status;
       agent.currentAction = action;
+      if (status === 'idle' || status === 'done') {
+        agent.waitingForInput = false;
+      }
       this.broadcast({ type: 'agent_update', data: agent });
     }
   }

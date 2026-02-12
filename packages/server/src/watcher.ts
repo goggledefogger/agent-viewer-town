@@ -24,7 +24,7 @@ const IDLE_THRESHOLD_S = 60;
 /** How often to check for stale sessions (ms) */
 const STALENESS_CHECK_INTERVAL_MS = 15_000;
 /** Seconds after a tool_use with no tool_result before marking "waiting for input" */
-const WAITING_FOR_INPUT_DELAY_S = 5;
+const WAITING_FOR_INPUT_DELAY_S = 60;
 
 function createDebouncer(delayMs: number) {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -200,6 +200,11 @@ export function startWatcher(stateManager: StateManager) {
   transcriptWatcher.on('ready', () => {
     transcriptWatcherReady = true;
     console.log('[watcher] Transcript watcher ready');
+    // Re-broadcast after a brief delay to allow pending async detectSession calls to finish
+    setTimeout(() => {
+      console.log(`[watcher] Initial scan complete, broadcasting ${stateManager.getSessions().size} sessions`);
+      stateManager.broadcastSessionsList();
+    }, 2000);
   });
 
   transcriptWatcher.on('add', async (filePath: string) => {
@@ -257,7 +262,9 @@ export function startWatcher(stateManager: StateManager) {
 
     // Read up to the first 20 lines to find one with session metadata
     // (first lines may be file-history-snapshot without sessionId)
-    const { lines } = await readNewLines(filePath, 0);
+    const { lines, newOffset } = await readNewLines(filePath, 0);
+    // Mark all existing content as read so handleTranscriptChange only processes new lines
+    fileOffsets.set(filePath, newOffset);
     const linesToScan = lines.slice(0, 20);
     let meta: ReturnType<typeof parseSessionMetadata> = null;
     for (const line of linesToScan) {
@@ -458,6 +465,11 @@ export function startWatcher(stateManager: StateManager) {
 
       // Mark as idle after inactivity (but don't remove the session)
       if (idleSeconds >= IDLE_THRESHOLD_S) {
+        // Clear stale waiting state — if truly idle, not waiting for input
+        tracked.lastToolUseAt = undefined;
+        tracked.pendingToolName = undefined;
+        stateManager.setAgentWaiting(agentName, false);
+
         const state = stateManager.getState();
         const agent = state.agents.find((a) => a.name === agentName);
         if (agent && agent.status === 'working') {
