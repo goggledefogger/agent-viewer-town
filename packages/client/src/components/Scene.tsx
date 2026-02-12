@@ -25,26 +25,37 @@ function getStationPos(role: string, index: number, isSolo: boolean) {
 }
 
 function AgentTooltip({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
+  const hasAction = !!agent.currentAction;
+  const tooltipHeight = hasAction ? 64 : 52;
+  const actionText = agent.currentAction
+    ? (agent.currentAction.length > 26 ? agent.currentAction.slice(0, 25) + '\u2026' : agent.currentAction)
+    : '';
+
   return (
     <g transform={`translate(${x}, ${y - 65})`}>
       <rect
-        x="-70"
-        y="-40"
-        width="140"
-        height="52"
+        x="-80"
+        y={-tooltipHeight + 12}
+        width="160"
+        height={tooltipHeight}
         rx="6"
         fill="#16213e"
         stroke="#4169E1"
         strokeWidth="1.5"
         opacity="0.95"
       />
-      <text x="0" y="-24" textAnchor="middle" fill="#FFD700" fontSize="9" fontFamily="'Courier New', monospace" fontWeight="bold">
+      <text x="0" y={hasAction ? -36 : -24} textAnchor="middle" fill="#FFD700" fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold">
         {agent.name}
       </text>
-      <text x="0" y="-12" textAnchor="middle" fill="#94a3b8" fontSize="8" fontFamily="'Courier New', monospace">
+      <text x="0" y={hasAction ? -24 : -12} textAnchor="middle" fill="#94a3b8" fontSize="7.5" fontFamily="'Courier New', monospace">
         Role: {agent.role} | {agent.status}
       </text>
-      <text x="0" y="0" textAnchor="middle" fill="#28A745" fontSize="8" fontFamily="'Courier New', monospace">
+      {hasAction && (
+        <text x="0" y="-12" textAnchor="middle" fill="#e2e8f0" fontSize="7.5" fontFamily="'Courier New', monospace">
+          {actionText}
+        </text>
+      )}
+      <text x="0" y={hasAction ? 0 : 0} textAnchor="middle" fill="#28A745" fontSize="7.5" fontFamily="'Courier New', monospace">
         Tasks done: {agent.tasksCompleted}
       </text>
     </g>
@@ -54,12 +65,12 @@ function AgentTooltip({ agent, x, y }: { agent: AgentState; x: number; y: number
 /** Speech bubble for solo agent showing current action */
 function SoloSpeechBubble({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
   const text = agent.currentAction || (agent.status === 'working' ? 'Working...' : 'Idle');
-  const maxLen = 30;
+  const maxLen = 40;
   const display = text.length > maxLen ? text.slice(0, maxLen - 1) + '\u2026' : text;
-  const boxWidth = Math.max(80, display.length * 6.5 + 24);
+  const boxWidth = Math.max(100, display.length * 5 + 28);
 
   return (
-    <g transform={`translate(${x}, ${y - 60})`}>
+    <g transform={`translate(${x}, ${y - 65})`}>
       <rect
         x={-boxWidth / 2}
         y="-16"
@@ -74,7 +85,7 @@ function SoloSpeechBubble({ agent, x, y }: { agent: AgentState; x: number; y: nu
       <polygon points="-5,8 5,8 0,14" fill="#16213e" stroke="#4169E1" strokeWidth="1.5" />
       {/* Cover the stroke line inside the bubble where the pointer meets */}
       <rect x="-6" y="6" width="12" height="3" fill="#16213e" />
-      <text x="0" y="0" textAnchor="middle" fill="#e2e8f0" fontSize="9" fontFamily="'Courier New', monospace">
+      <text x="0" y="0" textAnchor="middle" fill="#e2e8f0" fontSize="8" fontFamily="'Courier New', monospace">
         {display}
         {agent.status === 'working' && (
           <tspan fill="#e2e8f0">
