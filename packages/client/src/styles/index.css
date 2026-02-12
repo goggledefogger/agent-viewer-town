@@ -64,7 +64,7 @@ html, body, #root {
   gap: 8px;
   flex: 1;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .header-team-name {
