@@ -13,7 +13,9 @@
     "test:unit": "npx vitest run --config packages/server/vitest.config.ts",
     "test:build": "npm run build -w packages/client",
     "test:e2e": "npx playwright test",
-    "test:all": "npm run test:unit && npm run test:build && npm run test:e2e"
+    "test:all": "npm run test:unit && npm run test:build && npm run test:e2e",
+    "hooks:install": "node hooks/install.js",
+    "hooks:uninstall": "node hooks/install.js --uninstall"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
