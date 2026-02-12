@@ -246,10 +246,15 @@ export function startWatcher(stateManager: StateManager) {
       return;
     }
 
-    const firstLine = await readFirstLine(filePath);
-    if (!firstLine) return;
-
-    const meta = parseSessionMetadata(firstLine);
+    // Read up to the first 20 lines to find one with session metadata
+    // (first lines may be file-history-snapshot without sessionId)
+    const { lines } = await readNewLines(filePath, 0);
+    const linesToScan = lines.slice(0, 20);
+    let meta: ReturnType<typeof parseSessionMetadata> = null;
+    for (const line of linesToScan) {
+      meta = parseSessionMetadata(line);
+      if (meta) break;
+    }
     if (!meta) return;
 
     // Extract the project directory slug from the file path
@@ -296,15 +301,20 @@ export function startWatcher(stateManager: StateManager) {
   }
 
   async function handleTranscriptChange(filePath: string) {
+    // Re-detect session if it was previously removed (e.g., after timeout)
+    if (!trackedSessions.has(filePath)) {
+      await detectSession(filePath);
+    }
+
     const offset = fileOffsets.get(filePath) ?? 0;
     const { lines, newOffset } = await readNewLines(filePath, offset);
     fileOffsets.set(filePath, newOffset);
 
     // Update last activity time for the tracked session
-    const tracked = trackedSessions.get(filePath);
-    if (tracked) {
-      tracked.lastActivity = Date.now();
-      stateManager.updateSessionActivity(tracked.sessionId);
+    const currentTracked = trackedSessions.get(filePath);
+    if (currentTracked) {
+      currentTracked.lastActivity = Date.now();
+      stateManager.updateSessionActivity(currentTracked.sessionId);
     }
 
     for (const line of lines) {
@@ -317,9 +327,9 @@ export function startWatcher(stateManager: StateManager) {
 
       if (parsed.type === 'tool_call' && parsed.toolName) {
         // For solo sessions, update the synthetic agent directly
-        if (tracked?.isSolo) {
+        if (currentTracked?.isSolo) {
           stateManager.updateAgentActivity(
-            getSoloAgentName(tracked.sessionId),
+            getSoloAgentName(currentTracked.sessionId),
             'working',
             parsed.toolName
           );
@@ -345,9 +355,9 @@ export function startWatcher(stateManager: StateManager) {
       }
 
       // For solo sessions, assistant/tool_result entries indicate activity
-      if (tracked?.isSolo && parsed.type === 'agent_activity') {
+      if (currentTracked?.isSolo && parsed.type === 'agent_activity') {
         stateManager.updateAgentActivity(
-          getSoloAgentName(tracked.sessionId),
+          getSoloAgentName(currentTracked.sessionId),
           'working'
         );
       }
