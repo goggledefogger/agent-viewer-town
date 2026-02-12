@@ -8,6 +8,9 @@ import {
   inferRole,
   teamMemberToAgent,
   parseTranscriptLine,
+  parseSessionMetadata,
+  cleanProjectName,
+  readFirstLine,
 } from '../parser';
 
 const TMP = join(tmpdir(), 'avt-parser-test-' + Date.now());
@@ -189,5 +192,108 @@ describe('parseTranscriptLine', () => {
     const result = parseTranscriptLine(line);
     expect(result).not.toBeNull();
     expect(result!.type).toBe('unknown');
+  });
+});
+
+describe('cleanProjectName', () => {
+  it('extracts project name after -Source-', () => {
+    expect(cleanProjectName('-Users-Danny-Source-my-project')).toBe('my-project');
+  });
+
+  it('extracts project name after last -Source-', () => {
+    expect(cleanProjectName('-Users-Danny-Source-nested-Source-deep-project')).toBe('deep-project');
+  });
+
+  it('falls back to last segment when no -Source-', () => {
+    expect(cleanProjectName('-Users-Danny-my-app')).toBe('app');
+  });
+
+  it('handles single segment', () => {
+    expect(cleanProjectName('project')).toBe('project');
+  });
+
+  it('handles empty string', () => {
+    expect(cleanProjectName('')).toBe('');
+  });
+});
+
+describe('parseSessionMetadata', () => {
+  it('parses a solo session JSONL line', () => {
+    const line = JSON.stringify({
+      sessionId: 'sess-abc-123',
+      slug: 'glistening-frost',
+      cwd: '/Users/Danny/Source/my-project',
+      gitBranch: 'main',
+      version: '1.0.0',
+      type: 'assistant',
+    });
+
+    const result = parseSessionMetadata(line);
+    expect(result).not.toBeNull();
+    expect(result!.sessionId).toBe('sess-abc-123');
+    expect(result!.slug).toBe('glistening-frost');
+    expect(result!.projectPath).toBe('/Users/Danny/Source/my-project');
+    expect(result!.projectName).toBe('my-project');
+    expect(result!.gitBranch).toBe('main');
+    expect(result!.isTeam).toBe(false);
+    expect(result!.teamName).toBeUndefined();
+  });
+
+  it('parses a team session JSONL line', () => {
+    const line = JSON.stringify({
+      sessionId: 'sess-team-456',
+      slug: 'shimmering-glow',
+      cwd: '/Users/Danny/Source/team-project',
+      gitBranch: 'feature/x',
+      version: '1.0.0',
+      type: 'assistant',
+      teamName: 'my-team-session',
+    });
+
+    const result = parseSessionMetadata(line);
+    expect(result).not.toBeNull();
+    expect(result!.sessionId).toBe('sess-team-456');
+    expect(result!.isTeam).toBe(true);
+    expect(result!.teamName).toBe('my-team-session');
+  });
+
+  it('returns null for missing sessionId', () => {
+    const line = JSON.stringify({ slug: 'test', cwd: '/tmp', type: 'user' });
+    expect(parseSessionMetadata(line)).toBeNull();
+  });
+
+  it('returns null for invalid JSON', () => {
+    expect(parseSessionMetadata('not json at all')).toBeNull();
+  });
+
+  it('derives projectName from cwd', () => {
+    const line = JSON.stringify({
+      sessionId: 'sess-1',
+      cwd: '/home/user/projects/cool-app',
+      type: 'user',
+    });
+    const result = parseSessionMetadata(line);
+    expect(result!.projectName).toBe('cool-app');
+  });
+});
+
+describe('readFirstLine', () => {
+  it('reads the first line of a JSONL file', async () => {
+    const filePath = join(TMP, 'test.jsonl');
+    await writeFile(filePath, '{"sessionId":"s1","type":"user"}\n{"sessionId":"s1","type":"assistant"}\n');
+    const line = await readFirstLine(filePath);
+    expect(line).toBe('{"sessionId":"s1","type":"user"}');
+  });
+
+  it('returns null for empty file', async () => {
+    const filePath = join(TMP, 'empty.jsonl');
+    await writeFile(filePath, '');
+    const line = await readFirstLine(filePath);
+    expect(line).toBeNull();
+  });
+
+  it('returns null for missing file', async () => {
+    const line = await readFirstLine(join(TMP, 'does-not-exist.jsonl'));
+    expect(line).toBeNull();
   });
 });

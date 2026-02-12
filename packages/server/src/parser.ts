@@ -1,6 +1,6 @@
 import { readFile, stat } from 'fs/promises';
 import { createReadStream } from 'fs';
-import type { AgentState, AgentRole, TaskState, MessageState } from '@agent-viewer/shared';
+import type { AgentState, AgentRole, TaskState, MessageState, SessionInfo } from '@agent-viewer/shared';
 
 export interface TeamConfig {
   members: Array<{
@@ -242,6 +242,127 @@ export async function readNewLines(filePath: string, fromByte: number): Promise<
     }
     console.warn(`[parser] Error stat-ing transcript ${filePath}:`, errorMessage(err));
     return { lines: [], newOffset: fromByte };
+  }
+}
+
+/**
+ * Converts a project directory slug like `-Users-Danny-Source-my-project`
+ * into a human-readable name like `my-project`.
+ */
+export function cleanProjectName(slug: string): string {
+  // Try to find the last segment after `-Source-`
+  const sourceIdx = slug.lastIndexOf('-Source-');
+  if (sourceIdx !== -1) {
+    return slug.slice(sourceIdx + '-Source-'.length);
+  }
+  // Fallback: take the last hyphen-delimited segment that looks meaningful
+  // (skip segments that look like path components: single uppercase letters, etc.)
+  const parts = slug.split('-').filter(Boolean);
+  if (parts.length > 0) {
+    // Walk backwards to find the project name portion
+    // Typical slug: -Users-Danny-Source-my-project or -Users-Danny-my-project
+    // Take everything after the last single-word path segment (like a username)
+    // Simple heuristic: return the last segment
+    return parts[parts.length - 1];
+  }
+  return slug;
+}
+
+/**
+ * Parse session metadata from a single JSONL line.
+ * Every line in a Claude Code transcript has top-level fields:
+ * sessionId, slug, cwd, gitBranch, version, type
+ * Team sessions also have: teamName, agentId
+ */
+export function parseSessionMetadata(line: string): SessionInfo | null {
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(line);
+  } catch {
+    return null;
+  }
+
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return null;
+  }
+
+  const sessionId = typeof data.sessionId === 'string' ? data.sessionId : undefined;
+  if (!sessionId) return null;
+
+  const slug = typeof data.slug === 'string' ? data.slug : '';
+  const cwd = typeof data.cwd === 'string' ? data.cwd : '';
+  const gitBranch = typeof data.gitBranch === 'string' ? data.gitBranch : undefined;
+  const teamName = typeof data.teamName === 'string' ? data.teamName : undefined;
+  const isTeam = !!teamName;
+
+  // Derive project name from the cwd or slug
+  let projectName = '';
+  if (cwd) {
+    // Use the last directory segment of cwd
+    const segments = cwd.split('/').filter(Boolean);
+    projectName = segments[segments.length - 1] || '';
+  }
+  if (!projectName) {
+    projectName = cleanProjectName(slug);
+  }
+
+  return {
+    sessionId,
+    slug,
+    projectPath: cwd,
+    projectName,
+    gitBranch,
+    isTeam,
+    teamName,
+    lastActivity: Date.now(),
+  };
+}
+
+/**
+ * Extract the JSONL record type field from a transcript line.
+ * Returns the type string: "user", "assistant", "tool_result", etc.
+ */
+export function extractRecordType(line: string): string | null {
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (data && typeof data.type === 'string') {
+    return data.type;
+  }
+  return null;
+}
+
+/**
+ * Read the first line of a file.
+ */
+export async function readFirstLine(filePath: string): Promise<string | null> {
+  try {
+    const stats = await stat(filePath);
+    if (stats.size === 0) return null;
+
+    return new Promise((resolve) => {
+      let buffer = '';
+      const stream = createReadStream(filePath, { encoding: 'utf-8', start: 0 });
+      stream.on('data', (chunk: string) => {
+        buffer += chunk;
+        const newlineIdx = buffer.indexOf('\n');
+        if (newlineIdx !== -1) {
+          stream.destroy();
+          resolve(buffer.slice(0, newlineIdx));
+        }
+      });
+      stream.on('end', () => {
+        resolve(buffer.trim() || null);
+      });
+      stream.on('error', () => {
+        resolve(null);
+      });
+    });
+  } catch {
+    return null;
   }
 }
 

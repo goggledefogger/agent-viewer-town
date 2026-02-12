@@ -21,15 +21,21 @@ app.get('/api/state', (_req, res) => {
   res.json(stateManager.getState());
 });
 
+// Sessions list endpoint
+app.get('/api/sessions', (_req, res) => {
+  res.json(stateManager.getSessionsList());
+});
+
 // WebSocket server
 const wss = new WebSocketServer({ server, path: '/ws' });
 
 wss.on('connection', (ws: WebSocket) => {
   console.log('[ws] client connected');
 
-  // Send current state on connect
+  // Send current state and sessions list on connect
   const state = stateManager.getState();
   ws.send(JSON.stringify({ type: 'full_state', data: state }));
+  ws.send(JSON.stringify({ type: 'sessions_list', data: stateManager.getSessionsList() }));
 
   // Subscribe to state changes
   const unsubscribe = stateManager.subscribe((msg) => {
