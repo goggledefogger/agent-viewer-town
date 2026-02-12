@@ -1,4 +1,4 @@
-import type { TeamState, AgentState, TaskState, MessageState, WSMessage } from '@agent-viewer/shared';
+import type { TeamState, AgentState, TaskState, MessageState, SessionInfo, SessionListEntry, WSMessage } from '@agent-viewer/shared';
 
 type Listener = (msg: WSMessage) => void;
 
@@ -9,6 +9,9 @@ export class StateManager {
     tasks: [],
     messages: [],
   };
+
+  /** All detected sessions keyed by sessionId */
+  private sessions = new Map<string, SessionInfo>();
 
   private listeners: Set<Listener> = new Set();
   private maxMessages = 200;
@@ -151,12 +154,64 @@ export class StateManager {
     }
   }
 
+  // --- Session management ---
+
+  setSession(session: SessionInfo) {
+    this.sessions.set(session.sessionId, session);
+    this.state.session = session;
+    this.broadcast({ type: 'session_started', data: session });
+    this.broadcastSessionsList();
+  }
+
+  updateSessionActivity(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.lastActivity = Date.now();
+    }
+  }
+
+  removeSession(sessionId: string) {
+    this.sessions.delete(sessionId);
+    if (this.state.session?.sessionId === sessionId) {
+      this.state.session = undefined;
+    }
+    this.broadcast({ type: 'session_ended', data: { sessionId } });
+    this.broadcastSessionsList();
+  }
+
+  getSessions(): Map<string, SessionInfo> {
+    return this.sessions;
+  }
+
+  getSessionsList(): SessionListEntry[] {
+    const entries: SessionListEntry[] = [];
+    for (const session of this.sessions.values()) {
+      entries.push({
+        sessionId: session.sessionId,
+        projectName: session.projectName,
+        gitBranch: session.gitBranch,
+        isTeam: session.isTeam,
+        agentCount: session.isTeam
+          ? this.state.agents.filter((a) => this.state.name === session.teamName).length
+          : 1,
+        lastActivity: session.lastActivity,
+        active: this.state.session?.sessionId === session.sessionId,
+      });
+    }
+    return entries;
+  }
+
+  broadcastSessionsList() {
+    this.broadcast({ type: 'sessions_list', data: this.getSessionsList() });
+  }
+
   broadcastFullState() {
     this.broadcast({ type: 'full_state', data: this.state });
   }
 
   reset() {
     this.state = { name: '', agents: [], tasks: [], messages: [] };
+    this.sessions.clear();
     this.broadcastFullState();
   }
 }
