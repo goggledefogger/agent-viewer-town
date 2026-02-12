@@ -2,7 +2,11 @@ import chokidar from 'chokidar';
 import { join, basename, dirname } from 'path';
 import { homedir } from 'os';
 import { readdir, access, constants, stat as fsStat } from 'fs/promises';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { StateManager } from './state';
+
+const execFileAsync = promisify(execFile);
 import {
   parseTeamConfig,
   parseTaskFile,
@@ -318,6 +322,25 @@ export function startWatcher(stateManager: StateManager) {
       initialStatus = ageSeconds < IDLE_THRESHOLD_S ? 'working' : 'idle';
     } catch { /* default to idle, current time */ }
 
+    // Always read the real git branch from the working directory when possible.
+    // JSONL metadata may be stale (branch changed after session started) or
+    // missing entirely (compacted/continued sessions lose gitBranch metadata).
+    // A git repo can only be on one branch at a time, so this is always accurate.
+    if (meta.projectPath) {
+      try {
+        const { stdout } = await execFileAsync('git', ['branch', '--show-current'], {
+          cwd: meta.projectPath,
+          timeout: 3000,
+        });
+        const branch = stdout.trim();
+        if (branch) {
+          meta.gitBranch = branch;
+        }
+      } catch {
+        // git not available or not a repo — keep whatever we had
+      }
+    }
+
     const tracked: TrackedSession = {
       sessionId: meta.sessionId,
       filePath,
@@ -392,6 +415,28 @@ export function startWatcher(stateManager: StateManager) {
       if (parsed.type === 'message' && parsed.message) {
         hadMeaningfulActivity = true;
         stateManager.addMessage(parsed.message);
+      }
+
+      // Handle conversation compacting — show as a special agent action
+      if (parsed.type === 'compact') {
+        hadMeaningfulActivity = true;
+        if (currentTracked?.isSolo) {
+          stateManager.updateAgentActivityById(
+            currentTracked.sessionId,
+            'working',
+            'Compacting conversation...'
+          );
+          // Clear pending tool state since compacting resets the context
+          currentTracked.lastToolUseAt = undefined;
+          currentTracked.pendingToolName = undefined;
+          stateManager.setAgentWaitingById(currentTracked.sessionId, false);
+        } else {
+          // For team sessions, show compacting on the first agent (team lead)
+          const state = stateManager.getState();
+          if (state.agents.length > 0) {
+            stateManager.updateAgentActivity(state.agents[0].name, 'working', 'Compacting conversation...');
+          }
+        }
       }
 
       if (parsed.type === 'tool_call' && parsed.toolName) {

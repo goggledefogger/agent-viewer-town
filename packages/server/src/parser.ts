@@ -84,7 +84,7 @@ export function teamMemberToAgent(member: TeamConfig['members'][0]): AgentState 
 }
 
 export interface ParsedTranscriptLine {
-  type: 'message' | 'tool_call' | 'agent_activity' | 'unknown';
+  type: 'message' | 'tool_call' | 'agent_activity' | 'compact' | 'unknown';
   agentName?: string;
   toolName?: string;
   message?: MessageState;
@@ -232,6 +232,11 @@ export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
 
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     return null;
+  }
+
+  // Detect conversation compacting (system event with subtype "compact_boundary")
+  if (data.type === 'system' && data.subtype === 'compact_boundary') {
+    return { type: 'compact' };
   }
 
   const agentName = extractAgentName(data);
