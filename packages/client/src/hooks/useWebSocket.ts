@@ -47,6 +47,7 @@ export function useWebSocket(url: string): WebSocketState {
         const msg: WSMessage = JSON.parse(event.data);
         switch (msg.type) {
           case 'sessions_list':
+            console.log(`[ws] sessions_list: ${msg.data.length} sessions`, msg.data.map((s: { projectName: string; active: boolean }) => `${s.projectName}(${s.active ? 'active' : ''})`));
             setSessions(msg.data);
             break;
           case 'session_started':
@@ -68,6 +69,9 @@ export function useWebSocket(url: string): WebSocketState {
             setSessions((prev) => prev.filter((s) => s.sessionId !== msg.data.sessionId));
             break;
           default:
+            if (msg.type === 'full_state') {
+              console.log(`[ws] full_state: session=${msg.data.session?.projectName || 'none'} agents=${msg.data.agents?.length || 0}`);
+            }
             setState((prev) => applyMessage(prev, msg));
             break;
         }

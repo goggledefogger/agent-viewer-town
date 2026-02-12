@@ -5,6 +5,12 @@ export interface AgentState {
   status: AgentStatus;
   tasksCompleted: number;
   currentAction?: string;
+  /** True when the agent is blocked waiting for user approval/input */
+  waitingForInput?: boolean;
+  /** True if this is a subagent spawned via the Task tool */
+  isSubagent?: boolean;
+  /** The parent session/agent ID that spawned this subagent */
+  parentAgentId?: string;
 }
 
 export type AgentRole = 'lead' | 'researcher' | 'implementer' | 'tester' | 'planner';

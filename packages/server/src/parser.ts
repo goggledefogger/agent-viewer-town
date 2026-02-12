@@ -84,10 +84,12 @@ export function teamMemberToAgent(member: TeamConfig['members'][0]): AgentState 
 }
 
 export interface ParsedTranscriptLine {
-  type: 'message' | 'tool_call' | 'agent_activity' | 'unknown';
+  type: 'message' | 'tool_call' | 'agent_activity' | 'compact' | 'thinking' | 'progress' | 'unknown';
   agentName?: string;
   toolName?: string;
   message?: MessageState;
+  /** True when this tool call always requires user input (e.g., AskUserQuestion) */
+  isUserPrompt?: boolean;
 }
 
 function extractToolUseBlocks(data: Record<string, unknown>): Array<{ name: string; id?: string; input?: Record<string, unknown> }> {
@@ -232,6 +234,11 @@ export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
     return null;
   }
 
+  // Detect conversation compacting (full compact or microcompact)
+  if (data.type === 'system' && (data.subtype === 'compact_boundary' || data.subtype === 'microcompact_boundary')) {
+    return { type: 'compact' };
+  }
+
   const agentName = extractAgentName(data);
   const toolBlocks = extractToolUseBlocks(data);
 
@@ -247,16 +254,52 @@ export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
 
   // Return first tool_use block as a tool_call event with descriptive action
   if (toolBlocks.length > 0) {
+    const block = toolBlocks[0];
+    // Tools that always require user input
+    const userPromptTools = ['AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode'];
     return {
       type: 'tool_call',
       agentName,
-      toolName: describeToolAction(toolBlocks[0]),
+      toolName: describeToolAction(block),
+      isUserPrompt: userPromptTools.includes(block.name),
     };
   }
 
   // Detect tool results (agent activity indicator)
   if (data.type === 'tool_result' || data.type === 'tool_output') {
     return { type: 'agent_activity', agentName };
+  }
+
+  // Detect progress entries (bash_progress, hook_progress, etc.)
+  // These indicate the tool is actively running — NOT waiting for user input
+  if (data.type === 'progress') {
+    const progressData = data.data as Record<string, unknown> | undefined;
+    const progressType = progressData?.type;
+    if (progressType === 'bash_progress') {
+      return { type: 'progress', toolName: 'Running command...' };
+    }
+    if (progressType === 'agent_progress') {
+      return { type: 'progress', toolName: 'Agent working...' };
+    }
+    return { type: 'progress' };
+  }
+
+  // Detect assistant entries (thinking/responding between tool calls)
+  if (data.type === 'assistant') {
+    const msg = data.message as Record<string, unknown> | undefined;
+    if (msg && Array.isArray(msg.content) && msg.content.length > 0) {
+      const firstBlock = msg.content[0];
+      if (firstBlock && typeof firstBlock === 'object') {
+        const blockType = (firstBlock as Record<string, unknown>).type;
+        if (blockType === 'thinking') {
+          return { type: 'thinking', agentName, toolName: 'Thinking...' };
+        }
+        if (blockType === 'text') {
+          return { type: 'thinking', agentName, toolName: 'Responding...' };
+        }
+        // 'tool_use' blocks are already handled by extractToolUseBlocks above
+      }
+    }
   }
 
   return { type: 'unknown', agentName };
@@ -375,7 +418,7 @@ export function parseSessionMetadata(line: string): SessionInfo | null {
     gitBranch,
     isTeam,
     teamName,
-    lastActivity: Date.now(),
+    lastActivity: 0, // Caller should set from file mtime
   };
 }
 

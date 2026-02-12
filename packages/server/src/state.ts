@@ -13,6 +13,9 @@ export class StateManager {
   /** All detected sessions keyed by sessionId */
   private sessions = new Map<string, SessionInfo>();
 
+  /** All agents keyed by id — never destructively filtered */
+  private allAgents = new Map<string, AgentState>();
+
   private listeners: Set<Listener> = new Set();
   private maxMessages = 200;
 
@@ -42,31 +45,51 @@ export class StateManager {
 
   setAgents(agents: AgentState[]) {
     // Preserve tasksCompleted and status from existing agents
-    const existing = new Map(this.state.agents.map((a) => [a.id, a]));
     for (const agent of agents) {
-      const prev = existing.get(agent.id);
+      const prev = this.allAgents.get(agent.id);
       if (prev) {
         agent.tasksCompleted = prev.tasksCompleted;
         agent.status = prev.status;
         agent.currentAction = prev.currentAction;
       }
+      this.allAgents.set(agent.id, agent);
     }
     this.state.agents = agents;
     this.broadcastFullState();
   }
 
+  /** Get an agent from the full registry by ID */
+  getAgentById(id: string): AgentState | undefined {
+    return this.allAgents.get(id);
+  }
+
+  /** Add agent to registry only — does NOT add to displayed state.agents */
+  registerAgent(agent: AgentState) {
+    this.allAgents.set(agent.id, agent);
+  }
+
+  /** Add/update agent in both registry and displayed state */
   updateAgent(agent: AgentState) {
+    this.allAgents.set(agent.id, agent);
     const idx = this.state.agents.findIndex((a) => a.id === agent.id);
     if (idx >= 0) {
       this.state.agents[idx] = agent;
       this.broadcast({ type: 'agent_update', data: agent });
     } else {
-      this.state.agents.push(agent);
-      this.broadcast({ type: 'agent_added', data: agent });
+      // Add to display if this agent belongs to the active session
+      // (either it IS the session agent, or it's a subagent of the active session)
+      const activeSessionId = this.state.session?.sessionId;
+      const shouldDisplay = activeSessionId === agent.id ||
+        (agent.isSubagent && agent.parentAgentId === activeSessionId);
+      if (shouldDisplay) {
+        this.state.agents.push(agent);
+        this.broadcast({ type: 'agent_added', data: agent });
+      }
     }
   }
 
   removeAgent(id: string) {
+    this.allAgents.delete(id);
     this.state.agents = this.state.agents.filter((a) => a.id !== id);
     this.broadcast({ type: 'agent_removed', data: { id } });
   }
@@ -125,11 +148,89 @@ export class StateManager {
   }
 
   updateAgentActivity(agentName: string, status: 'idle' | 'working' | 'done', action?: string) {
+    // Update in the full registry
+    for (const agent of this.allAgents.values()) {
+      if (agent.name === agentName) {
+        agent.status = status;
+        agent.currentAction = action;
+        // Clear waiting flag when going idle or done
+        if (status === 'idle' || status === 'done') {
+          agent.waitingForInput = false;
+        }
+        break;
+      }
+    }
+    // Update in the displayed state
     const agent = this.state.agents.find((a) => a.name === agentName);
     if (agent) {
       agent.status = status;
       agent.currentAction = action;
+      if (status === 'idle' || status === 'done') {
+        agent.waitingForInput = false;
+      }
       this.broadcast({ type: 'agent_update', data: agent });
+    }
+  }
+
+  /**
+   * Update agent activity by ID instead of name.
+   * This is essential for solo sessions where multiple sessions in the same
+   * project would have agents with the same name (slug).
+   */
+  updateAgentActivityById(agentId: string, status: 'idle' | 'working' | 'done', action?: string) {
+    const agent = this.allAgents.get(agentId);
+    if (!agent) return;
+    agent.status = status;
+    agent.currentAction = action;
+    if (status === 'idle' || status === 'done') {
+      agent.waitingForInput = false;
+    }
+    // Also update in the displayed state if this agent is currently shown
+    const displayed = this.state.agents.find((a) => a.id === agentId);
+    if (displayed) {
+      displayed.status = status;
+      displayed.currentAction = action;
+      if (status === 'idle' || status === 'done') {
+        displayed.waitingForInput = false;
+      }
+      this.broadcast({ type: 'agent_update', data: displayed });
+    }
+  }
+
+  setAgentWaiting(agentName: string, waiting: boolean, action?: string) {
+    // Update in the full registry
+    for (const agent of this.allAgents.values()) {
+      if (agent.name === agentName) {
+        agent.waitingForInput = waiting;
+        if (action) agent.currentAction = action;
+        break;
+      }
+    }
+    // Update in the displayed state
+    const agent = this.state.agents.find((a) => a.name === agentName);
+    if (agent) {
+      agent.waitingForInput = waiting;
+      if (action) agent.currentAction = action;
+      this.broadcast({ type: 'agent_update', data: agent });
+    }
+  }
+
+  /**
+   * Set agent waiting state by ID instead of name.
+   * This is essential for solo sessions where multiple sessions in the same
+   * project would have agents with the same name (slug).
+   */
+  setAgentWaitingById(agentId: string, waiting: boolean, action?: string) {
+    const agent = this.allAgents.get(agentId);
+    if (!agent) return;
+    agent.waitingForInput = waiting;
+    if (action) agent.currentAction = action;
+    // Also update in the displayed state if this agent is currently shown
+    const displayed = this.state.agents.find((a) => a.id === agentId);
+    if (displayed) {
+      displayed.waitingForInput = waiting;
+      if (action) displayed.currentAction = action;
+      this.broadcast({ type: 'agent_update', data: displayed });
     }
   }
 
@@ -156,11 +257,28 @@ export class StateManager {
 
   // --- Session management ---
 
+  /** @deprecated Use addSession instead */
   setSession(session: SessionInfo) {
+    this.addSession(session);
+  }
+
+  /**
+   * Register a new session. Auto-selects it if:
+   * - No session is currently active, OR
+   * - This session is more recently active than the current one
+   */
+  addSession(session: SessionInfo) {
     this.sessions.set(session.sessionId, session);
-    this.state.session = session;
     this.broadcast({ type: 'session_started', data: session });
-    this.broadcastSessionsList();
+
+    // Auto-select: pick this session if none is active, or if it's fresher
+    const current = this.state.session;
+    const shouldSelect = !current || session.lastActivity > (current.lastActivity || 0);
+    if (shouldSelect) {
+      this.selectSession(session.sessionId);
+    } else {
+      this.broadcastSessionsList();
+    }
   }
 
   updateSessionActivity(sessionId: string) {
@@ -190,13 +308,26 @@ export class StateManager {
 
     this.state.session = session;
     if (!session.isTeam) {
-      // For solo sessions, show only that session's agent
+      // For solo sessions, show the session's agent plus any subagents
       this.state.name = session.projectName;
-      const soloAgent = this.state.agents.find((a) => a.id === sessionId);
-      if (soloAgent) {
-        this.state.agents = [soloAgent];
-      }
+      const soloAgent = this.allAgents.get(sessionId);
+      const subagents = [...this.allAgents.values()].filter(
+        (a) => a.isSubagent && a.parentAgentId === sessionId
+      );
+      this.state.agents = soloAgent ? [soloAgent, ...subagents] : [...subagents];
       this.state.tasks = [];
+    } else {
+      // For team sessions, show all team agents from the registry
+      this.state.name = session.teamName || session.projectName;
+      // Rebuild agents from allAgents (exclude solo session agents)
+      const soloSessionIds = new Set(
+        [...this.sessions.values()]
+          .filter((s) => !s.isTeam)
+          .map((s) => s.sessionId)
+      );
+      this.state.agents = [...this.allAgents.values()].filter(
+        (a) => !soloSessionIds.has(a.id)
+      );
     }
     this.broadcastFullState();
     this.broadcastSessionsList();
@@ -217,7 +348,22 @@ export class StateManager {
         active: this.state.session?.sessionId === session.sessionId,
       });
     }
+    // Most recently active first
+    entries.sort((a, b) => b.lastActivity - a.lastActivity);
     return entries;
+  }
+
+  /** Select the session with the most recent lastActivity */
+  selectMostRecentSession() {
+    let best: SessionInfo | undefined;
+    for (const session of this.sessions.values()) {
+      if (!best || session.lastActivity > best.lastActivity) {
+        best = session;
+      }
+    }
+    if (best) {
+      this.selectSession(best.sessionId);
+    }
   }
 
   broadcastSessionsList() {
@@ -236,6 +382,12 @@ export class StateManager {
         .filter((s) => !s.isTeam)
         .map((s) => s.sessionId)
     );
+    // Remove non-solo agents from the full registry
+    for (const [id] of this.allAgents) {
+      if (!soloSessionIds.has(id)) {
+        this.allAgents.delete(id);
+      }
+    }
     this.state.agents = this.state.agents.filter((a) => soloSessionIds.has(a.id));
     this.state.tasks = [];
     this.state.name = '';
@@ -245,6 +397,7 @@ export class StateManager {
   reset() {
     this.state = { name: '', agents: [], tasks: [], messages: [] };
     this.sessions.clear();
+    this.allAgents.clear();
     this.broadcastFullState();
   }
 }
