@@ -84,7 +84,7 @@ export function teamMemberToAgent(member: TeamConfig['members'][0]): AgentState 
 }
 
 export interface ParsedTranscriptLine {
-  type: 'message' | 'tool_call' | 'agent_activity' | 'compact' | 'unknown';
+  type: 'message' | 'tool_call' | 'agent_activity' | 'compact' | 'thinking' | 'unknown';
   agentName?: string;
   toolName?: string;
   message?: MessageState;
@@ -268,6 +268,24 @@ export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
   // Detect tool results (agent activity indicator)
   if (data.type === 'tool_result' || data.type === 'tool_output') {
     return { type: 'agent_activity', agentName };
+  }
+
+  // Detect assistant entries (thinking/responding between tool calls)
+  if (data.type === 'assistant') {
+    const msg = data.message as Record<string, unknown> | undefined;
+    if (msg && Array.isArray(msg.content) && msg.content.length > 0) {
+      const firstBlock = msg.content[0];
+      if (firstBlock && typeof firstBlock === 'object') {
+        const blockType = (firstBlock as Record<string, unknown>).type;
+        if (blockType === 'thinking') {
+          return { type: 'thinking', agentName, toolName: 'Thinking...' };
+        }
+        if (blockType === 'text') {
+          return { type: 'thinking', agentName, toolName: 'Responding...' };
+        }
+        // 'tool_use' blocks are already handled by extractToolUseBlocks above
+      }
+    }
   }
 
   return { type: 'unknown', agentName };

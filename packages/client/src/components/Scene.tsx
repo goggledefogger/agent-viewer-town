@@ -18,9 +18,23 @@ const STATION_POSITIONS: Record<string, { x: number; y: number }> = {
 // Center position for solo agent
 const SOLO_POSITION = { x: 450, y: 300 };
 
-function getStationPos(role: string, index: number, isSolo: boolean) {
-  if (isSolo) return SOLO_POSITION;
-  return STATION_POSITIONS[role] || { x: 200 + index * 180, y: 250 };
+// Subagent positions fan out around the parent
+const SUBAGENT_OFFSETS = [
+  { x: 250, y: -20 },
+  { x: -250, y: -20 },
+  { x: 250, y: 120 },
+  { x: -250, y: 120 },
+  { x: 0, y: -120 },
+];
+
+function getStationPos(agent: AgentState, index: number, isSoloMode: boolean, subagentIndex: number) {
+  if (agent.isSubagent && isSoloMode) {
+    // Position subagents around the parent
+    const offset = SUBAGENT_OFFSETS[subagentIndex % SUBAGENT_OFFSETS.length];
+    return { x: SOLO_POSITION.x + offset.x, y: SOLO_POSITION.y + offset.y };
+  }
+  if (isSoloMode) return SOLO_POSITION;
+  return STATION_POSITIONS[agent.role] || { x: 200 + index * 180, y: 250 };
 }
 
 /** Prominent alert bubble when agent needs user input */
@@ -80,10 +94,14 @@ function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number
   }
 
   const isWorking = agent.status === 'working';
-  const text = agent.currentAction || (isWorking ? 'Working...' : '');
-  if (!text && !isWorking) return null;
+  const isDone = agent.status === 'done';
+  const text = agent.currentAction || (isWorking ? 'Working...' : (isDone ? 'Done' : ''));
+  // Always show something for subagents (their name describes what they're doing)
+  if (!text && !isWorking && !agent.isSubagent) return null;
+  // For idle subagents with no action, show their name as context
+  const displayText = text || (agent.isSubagent ? agent.name : '');
 
-  if (isWorking && !text) {
+  if (isWorking && !displayText) {
     // Typing dots when working but no specific action
     return (
       <g transform={`translate(${x}, ${y - 50})`}>
@@ -100,7 +118,7 @@ function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number
   }
 
   const maxLen = 36;
-  const display = text.length > maxLen ? text.slice(0, maxLen - 1) + '\u2026' : text;
+  const display = displayText.length > maxLen ? displayText.slice(0, maxLen - 1) + '\u2026' : displayText;
   const boxWidth = Math.max(80, display.length * 5.2 + 24);
 
   return (
@@ -132,7 +150,10 @@ function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number
 }
 
 export function Scene({ state }: SceneProps) {
-  const isSolo = state.agents.length === 1;
+  const mainAgents = state.agents.filter((a) => !a.isSubagent);
+  const subagents = state.agents.filter((a) => a.isSubagent);
+  // Solo mode: one main agent, possibly with subagents
+  const isSoloMode = mainAgents.length <= 1;
 
   if (!state.name && state.agents.length === 0) {
     return (
@@ -186,14 +207,17 @@ export function Scene({ state }: SceneProps) {
           <rect key={i} x={sx} y={sy} width="2" height="2" fill="#ffffff" opacity={0.4 + (i % 3) * 0.2} />
         ))}
 
-        {/* Machine connections between agents (only for team mode) */}
-        {!isSolo && <Machine agents={state.agents} messages={state.messages} />}
+        {/* Machine connections between agents (team mode or parent+subagents) */}
+        {state.agents.length > 1 && <Machine agents={state.agents} messages={state.messages} />}
 
         {/* Agent characters at their stations */}
         {state.agents.map((agent, i) => {
-          const pos = getStationPos(agent.role, i, isSolo);
+          const subIdx = agent.isSubagent ? subagents.indexOf(agent) : 0;
+          const pos = getStationPos(agent, i, isSoloMode, subIdx);
+          const scale = agent.isSubagent ? 0.8 : 1;
           return (
-            <g key={agent.id}>
+            <g key={agent.id} transform={agent.isSubagent ? `scale(${scale})` : undefined}
+               style={agent.isSubagent ? { transformOrigin: `${pos.x}px ${pos.y}px` } : undefined}>
               <AgentCharacter
                 agent={agent}
                 x={pos.x}

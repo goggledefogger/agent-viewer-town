@@ -76,9 +76,12 @@ export class StateManager {
       this.state.agents[idx] = agent;
       this.broadcast({ type: 'agent_update', data: agent });
     } else {
-      // Only add to display if this agent belongs to the active session
+      // Add to display if this agent belongs to the active session
+      // (either it IS the session agent, or it's a subagent of the active session)
       const activeSessionId = this.state.session?.sessionId;
-      if (activeSessionId === agent.id) {
+      const shouldDisplay = activeSessionId === agent.id ||
+        (agent.isSubagent && agent.parentAgentId === activeSessionId);
+      if (shouldDisplay) {
         this.state.agents.push(agent);
         this.broadcast({ type: 'agent_added', data: agent });
       }
@@ -305,10 +308,13 @@ export class StateManager {
 
     this.state.session = session;
     if (!session.isTeam) {
-      // For solo sessions, show only that session's agent (from the full registry)
+      // For solo sessions, show the session's agent plus any subagents
       this.state.name = session.projectName;
       const soloAgent = this.allAgents.get(sessionId);
-      this.state.agents = soloAgent ? [soloAgent] : [];
+      const subagents = [...this.allAgents.values()].filter(
+        (a) => a.isSubagent && a.parentAgentId === sessionId
+      );
+      this.state.agents = soloAgent ? [soloAgent, ...subagents] : [...subagents];
       this.state.tasks = [];
     } else {
       // For team sessions, show all team agents from the registry
@@ -345,6 +351,19 @@ export class StateManager {
     // Most recently active first
     entries.sort((a, b) => b.lastActivity - a.lastActivity);
     return entries;
+  }
+
+  /** Select the session with the most recent lastActivity */
+  selectMostRecentSession() {
+    let best: SessionInfo | undefined;
+    for (const session of this.sessions.values()) {
+      if (!best || session.lastActivity > best.lastActivity) {
+        best = session;
+      }
+    }
+    if (best) {
+      this.selectSession(best.sessionId);
+    }
   }
 
   broadcastSessionsList() {

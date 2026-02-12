@@ -137,9 +137,10 @@ function CelebrationParticles({ active }: { active: boolean }) {
 }
 
 export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
-  const color = ROLE_COLORS[agent.role] || '#FFD700';
-  const stage = getEvolutionStage(agent.tasksCompleted);
-  const AnimalSvg = ANIMAL_COMPONENTS[agent.role] || Beaver;
+  const color = agent.isSubagent ? '#94a3b8' : (ROLE_COLORS[agent.role] || '#FFD700');
+  const stage = agent.isSubagent ? 1 : getEvolutionStage(agent.tasksCompleted);
+  // Subagents use Owl (quick scouts), main agents use their role's animal
+  const AnimalSvg = agent.isSubagent ? Owl : (ANIMAL_COMPONENTS[agent.role] || Beaver);
   const isWorking = agent.status === 'working';
 
   // Track task completion for spark/celebration effect
@@ -209,8 +210,17 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
         </g>
       )}
 
+      {/* Done checkmark for finished subagents */}
+      {agent.status === 'done' && (
+        <g transform="translate(22, -10)">
+          <circle cx="0" cy="0" r="7" fill="#28A745" opacity="0.9" />
+          <path d="M-3,0 L-1,3 L4,-3" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" />
+        </g>
+      )}
+
       {/* Name label */}
-      <text x="0" y="38" textAnchor="middle" fill={color} fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold">
+      <text x="0" y="38" textAnchor="middle" fill={color} fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold"
+            opacity={agent.status === 'done' ? 0.6 : 1}>
         {agent.name.length > 14 ? agent.name.slice(0, 13) + '\u2026' : agent.name}
       </text>
     </g>

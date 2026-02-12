@@ -211,21 +211,28 @@ export function startWatcher(stateManager: StateManager) {
   });
 
   let transcriptWatcherReady = false;
-  transcriptWatcher.on('ready', () => {
+  /** Track pending detectSession promises so we can await them all before broadcasting */
+  let pendingDetections: Promise<void>[] = [];
+
+  transcriptWatcher.on('ready', async () => {
     transcriptWatcherReady = true;
-    console.log('[watcher] Transcript watcher ready');
-    // Re-broadcast after a brief delay to allow pending async detectSession calls to finish
-    setTimeout(() => {
-      console.log(`[watcher] Initial scan complete, broadcasting ${stateManager.getSessions().size} sessions`);
-      stateManager.broadcastSessionsList();
-    }, 2000);
+    console.log('[watcher] Transcript watcher ready, waiting for pending detections...');
+    await Promise.allSettled(pendingDetections);
+    pendingDetections = [];
+    console.log(`[watcher] Initial scan complete, broadcasting ${stateManager.getSessions().size} sessions`);
+    stateManager.selectMostRecentSession();
+    stateManager.broadcastSessionsList();
   });
 
   transcriptWatcher.on('add', async (filePath: string) => {
     if (!filePath.endsWith('.jsonl')) return;
     fileOffsets.set(filePath, 0);
     // Before 'ready', these are initial scan events — apply age filter
-    await detectSession(filePath, !transcriptWatcherReady);
+    const promise = detectSession(filePath, !transcriptWatcherReady);
+    if (!transcriptWatcherReady) {
+      pendingDetections.push(promise);
+    }
+    await promise;
   });
 
   transcriptWatcher.on('change', (filePath: string) => {
@@ -309,7 +316,76 @@ export function startWatcher(stateManager: StateManager) {
       }
     } else if (relSegments.length >= 4 && relSegments[2] === 'subagents') {
       // Subagent file: {dirSlug}/{parentSessionId}/subagents/{agentId}.jsonl
-      // The sessionId in metadata is correct (it's the parent session ID)
+      const parentSessionId = relSegments[1];
+      const subagentId = basename(filePath, '.jsonl');
+
+      // Determine initial status from file mtime
+      let subagentStatus: 'working' | 'idle' = 'idle';
+      let subMtime = Date.now();
+      try {
+        const stats = await fsStat(filePath);
+        subMtime = stats.mtimeMs;
+        const ageSeconds = (Date.now() - subMtime) / 1000;
+        subagentStatus = ageSeconds < IDLE_THRESHOLD_S ? 'working' : 'idle';
+
+        // Skip old subagents during initial scan — only show recently active ones
+        // (within 5 minutes to catch agents that just finished)
+        if (isInitial && ageSeconds > 300) return;
+      } catch { /* default to idle */ }
+
+      // Extract a meaningful name from the subagent's first user message (the prompt)
+      let subagentName = subagentId.slice(0, 12);
+      for (const line of linesToScan) {
+        try {
+          const d = JSON.parse(line);
+          // The first user message contains the Task tool's prompt
+          if (d.type === 'user' && d.message?.content) {
+            const content = typeof d.message.content === 'string'
+              ? d.message.content
+              : '';
+            if (content) {
+              // Take the first line or first 40 chars as the name
+              const firstLine = content.split('\n')[0].trim();
+              subagentName = firstLine.length > 40
+                ? firstLine.slice(0, 37) + '...'
+                : firstLine;
+              break;
+            }
+          }
+        } catch { /* skip */ }
+      }
+
+      // Register the subagent
+      const subagent = {
+        id: subagentId,
+        name: subagentName,
+        role: 'implementer' as const,
+        status: subagentStatus,
+        tasksCompleted: 0,
+        isSubagent: true,
+        parentAgentId: parentSessionId,
+      };
+      stateManager.registerAgent(subagent);
+
+      // Track for transcript changes
+      trackedSessions.set(filePath, {
+        sessionId: subagentId,
+        filePath,
+        isSolo: true,
+        dirSlug,
+        lastActivity: subMtime,
+      });
+
+      // Add to display if parent session is active
+      const activeSession = stateManager.getState().session;
+      if (activeSession && activeSession.sessionId === parentSessionId) {
+        stateManager.updateAgent(subagent);
+      }
+
+      console.log(
+        `[watcher] Subagent detected: ${subagentId.slice(0, 8)} parent=${parentSessionId.slice(0, 8)} name="${subagentName}" [${subagentStatus}]`
+      );
+      return; // Don't continue with normal session registration
     }
 
     // Determine initial status and last activity from file modification time
@@ -435,6 +511,30 @@ export function startWatcher(stateManager: StateManager) {
           const state = stateManager.getState();
           if (state.agents.length > 0) {
             stateManager.updateAgentActivity(state.agents[0].name, 'working', 'Compacting conversation...');
+          }
+        }
+      }
+
+      // Handle thinking/responding state (assistant generating text between tool calls)
+      if (parsed.type === 'thinking' && parsed.toolName) {
+        hadMeaningfulActivity = true;
+        // Clear any pending waitingForInput — the model is actively generating
+        if (currentTracked) {
+          currentTracked.lastToolUseAt = undefined;
+          currentTracked.pendingToolName = undefined;
+        }
+        if (currentTracked?.isSolo) {
+          stateManager.setAgentWaitingById(currentTracked.sessionId, false);
+          stateManager.updateAgentActivityById(
+            currentTracked.sessionId,
+            'working',
+            parsed.toolName
+          );
+        } else {
+          const agentName = parsed.agentName || findWorkingAgentName();
+          if (agentName) {
+            stateManager.setAgentWaiting(agentName, false);
+            stateManager.updateAgentActivity(agentName, 'working', parsed.toolName);
           }
         }
       }
@@ -588,7 +688,18 @@ export function startWatcher(stateManager: StateManager) {
 
         const agent = stateManager.getAgentById(tracked.sessionId);
         if (agent && agent.status === 'working') {
-          stateManager.updateAgentActivityById(tracked.sessionId, 'idle');
+          // For subagents, show "Done" when they finish instead of clearing the action
+          if (agent.isSubagent) {
+            stateManager.updateAgentActivityById(tracked.sessionId, 'done', 'Done');
+          } else {
+            stateManager.updateAgentActivityById(tracked.sessionId, 'idle');
+          }
+        }
+
+        // Remove subagents from display after 5 minutes of inactivity
+        if (agent?.isSubagent && idleSeconds >= 300) {
+          stateManager.removeAgent(tracked.sessionId);
+          trackedSessions.delete(tracked.filePath);
         }
       }
     }
