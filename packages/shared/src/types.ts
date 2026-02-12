@@ -1,4 +1,3 @@
-// Placeholder — will be fully implemented in task #2
 export interface AgentState {
   id: string;
   name: string;
@@ -30,11 +29,43 @@ export interface MessageState {
   timestamp: number;
 }
 
+/** Metadata about a detected Claude Code session */
+export interface SessionInfo {
+  sessionId: string;
+  /** Human-readable slug, e.g. "glistening-hatching-frost" */
+  slug: string;
+  /** Project directory, e.g. "/Users/Danny/Source/my-project" */
+  projectPath: string;
+  /** Cleaned project name, e.g. "my-project" */
+  projectName: string;
+  gitBranch?: string;
+  /** Whether this session is part of an agent team */
+  isTeam: boolean;
+  /** Team name if isTeam is true */
+  teamName?: string;
+  /** Timestamp of last JSONL activity */
+  lastActivity: number;
+}
+
 export interface TeamState {
   name: string;
   agents: AgentState[];
   tasks: TaskState[];
   messages: MessageState[];
+  /** Active session info (solo or team) */
+  session?: SessionInfo;
+}
+
+/** Summary of all detected sessions for the session picker */
+export interface SessionListEntry {
+  sessionId: string;
+  projectName: string;
+  gitBranch?: string;
+  isTeam: boolean;
+  agentCount: number;
+  lastActivity: number;
+  /** Whether this is the currently displayed session */
+  active: boolean;
 }
 
 export type WSMessage =
@@ -43,4 +74,7 @@ export type WSMessage =
   | { type: 'task_update'; data: TaskState }
   | { type: 'new_message'; data: MessageState }
   | { type: 'agent_added'; data: AgentState }
-  | { type: 'agent_removed'; data: { id: string } };
+  | { type: 'agent_removed'; data: { id: string } }
+  | { type: 'sessions_list'; data: SessionListEntry[] }
+  | { type: 'session_started'; data: SessionInfo }
+  | { type: 'session_ended'; data: { sessionId: string } };
