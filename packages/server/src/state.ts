@@ -147,6 +147,24 @@ export class StateManager {
     }
   }
 
+  setAgentWaiting(agentName: string, waiting: boolean, action?: string) {
+    // Update in the full registry
+    for (const agent of this.allAgents.values()) {
+      if (agent.name === agentName) {
+        agent.waitingForInput = waiting;
+        if (action) agent.currentAction = action;
+        break;
+      }
+    }
+    // Update in the displayed state
+    const agent = this.state.agents.find((a) => a.name === agentName);
+    if (agent) {
+      agent.waitingForInput = waiting;
+      if (action) agent.currentAction = action;
+      this.broadcast({ type: 'agent_update', data: agent });
+    }
+  }
+
   reconcileAgentStatuses() {
     const inProgressOwners = new Set<string>();
     for (const task of this.state.tasks) {

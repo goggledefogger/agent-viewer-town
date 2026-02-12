@@ -23,8 +23,62 @@ function getStationPos(role: string, index: number, isSolo: boolean) {
   return STATION_POSITIONS[role] || { x: 200 + index * 180, y: 250 };
 }
 
+/** Prominent alert bubble when agent needs user input */
+function WaitingBubble({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
+  const label = '\u26A0 Needs your input!';
+  const subtext = agent.currentAction || 'Waiting for approval';
+  const maxLen = 30;
+  const displaySub = subtext.length > maxLen ? subtext.slice(0, maxLen - 1) + '\u2026' : subtext;
+  const boxWidth = Math.max(140, Math.max(label.length, displaySub.length) * 5.5 + 28);
+
+  return (
+    <g transform={`translate(${x}, ${y - 55})`}>
+      {/* Pulsing glow behind the bubble */}
+      <rect
+        x={-boxWidth / 2 - 3}
+        y="-20"
+        width={boxWidth + 6}
+        height="36"
+        rx="8"
+        fill="#FFD700"
+        opacity="0.15"
+      >
+        <animate attributeName="opacity" values="0.1;0.25;0.1" dur="1.5s" repeatCount="indefinite" />
+      </rect>
+      {/* Bubble */}
+      <rect
+        x={-boxWidth / 2}
+        y="-18"
+        width={boxWidth}
+        height="32"
+        rx="6"
+        fill="#1a1a2e"
+        stroke="#FFD700"
+        strokeWidth="2"
+        opacity="0.97"
+      />
+      <polygon points="-5,14 5,14 0,20" fill="#1a1a2e" stroke="#FFD700" strokeWidth="2" />
+      <rect x="-6" y="12" width="12" height="4" fill="#1a1a2e" />
+      {/* Alert text */}
+      <text x="0" y="-4" textAnchor="middle" fill="#FFD700" fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold">
+        {label}
+        <animate attributeName="opacity" values="1;0.6;1" dur="1.2s" repeatCount="indefinite" />
+      </text>
+      {/* Context */}
+      <text x="0" y="8" textAnchor="middle" fill="#94a3b8" fontSize="7" fontFamily="'Courier New', monospace">
+        {displaySub}
+      </text>
+    </g>
+  );
+}
+
 /** Speech bubble showing current action — used for all agents */
 function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
+  // Show prominent alert when waiting for user input
+  if (agent.waitingForInput) {
+    return <WaitingBubble agent={agent} x={x} y={y} />;
+  }
+
   const isWorking = agent.status === 'working';
   const text = agent.currentAction || (isWorking ? 'Working...' : '');
   if (!text && !isWorking) return null;

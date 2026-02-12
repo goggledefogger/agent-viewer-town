@@ -88,6 +88,8 @@ export interface ParsedTranscriptLine {
   agentName?: string;
   toolName?: string;
   message?: MessageState;
+  /** True when this tool call always requires user input (e.g., AskUserQuestion) */
+  isUserPrompt?: boolean;
 }
 
 function extractToolUseBlocks(data: Record<string, unknown>): Array<{ name: string; id?: string; input?: Record<string, unknown> }> {
@@ -247,10 +249,14 @@ export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
 
   // Return first tool_use block as a tool_call event with descriptive action
   if (toolBlocks.length > 0) {
+    const block = toolBlocks[0];
+    // Tools that always require user input
+    const userPromptTools = ['AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode'];
     return {
       type: 'tool_call',
       agentName,
-      toolName: describeToolAction(toolBlocks[0]),
+      toolName: describeToolAction(block),
+      isUserPrompt: userPromptTools.includes(block.name),
     };
   }
 

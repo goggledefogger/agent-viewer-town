@@ -5,6 +5,8 @@ export interface AgentState {
   status: AgentStatus;
   tasksCompleted: number;
   currentAction?: string;
+  /** True when the agent is blocked waiting for user approval/input */
+  waitingForInput?: boolean;
 }
 
 export type AgentRole = 'lead' | 'researcher' | 'implementer' | 'tester' | 'planner';
