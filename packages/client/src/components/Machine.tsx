@@ -32,7 +32,7 @@ function GearSvg({ x, y, color, speed }: { x: number; y: number; color: string; 
     <g transform={`translate(${x}, ${y})`}>
       <g style={{
         animation: `spin ${duration}s linear infinite`,
-        transformOrigin: 'center',
+        transformOrigin: '0px 0px',
       }}>
         <circle cx="0" cy="0" r={innerR} fill="none" stroke={color} strokeWidth="2.5" opacity="0.7" />
         {Array.from({ length: toothCount }, (_, i) => {
@@ -64,7 +64,7 @@ function SmallGear({ x, y, color, speed }: { x: number; y: number; color: string
     <g transform={`translate(${x}, ${y})`}>
       <g style={{
         animation: `spin ${duration}s linear infinite reverse`,
-        transformOrigin: 'center',
+        transformOrigin: '0px 0px',
       }}>
         <circle cx="0" cy="0" r="5" fill="none" stroke={color} strokeWidth="1.5" opacity="0.5" />
         {[0, 72, 144, 216, 288].map((angle) => (

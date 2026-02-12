@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { TeamState, AgentState } from '@agent-viewer/shared';
 import { AgentCharacter } from './AgentCharacter';
 import { Machine } from './Machine';
@@ -24,70 +23,50 @@ function getStationPos(role: string, index: number, isSolo: boolean) {
   return STATION_POSITIONS[role] || { x: 200 + index * 180, y: 250 };
 }
 
-function AgentTooltip({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
-  const hasAction = !!agent.currentAction;
-  const tooltipHeight = hasAction ? 64 : 52;
-  const actionText = agent.currentAction
-    ? (agent.currentAction.length > 26 ? agent.currentAction.slice(0, 25) + '\u2026' : agent.currentAction)
-    : '';
+/** Speech bubble showing current action — used for all agents */
+function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
+  const isWorking = agent.status === 'working';
+  const text = agent.currentAction || (isWorking ? 'Working...' : '');
+  if (!text && !isWorking) return null;
 
-  return (
-    <g transform={`translate(${x}, ${y - 65})`}>
-      <rect
-        x="-80"
-        y={-tooltipHeight + 12}
-        width="160"
-        height={tooltipHeight}
-        rx="6"
-        fill="#16213e"
-        stroke="#4169E1"
-        strokeWidth="1.5"
-        opacity="0.95"
-      />
-      <text x="0" y={hasAction ? -36 : -24} textAnchor="middle" fill="#FFD700" fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold">
-        {agent.name}
-      </text>
-      <text x="0" y={hasAction ? -24 : -12} textAnchor="middle" fill="#94a3b8" fontSize="7.5" fontFamily="'Courier New', monospace">
-        Role: {agent.role} | {agent.status}
-      </text>
-      {hasAction && (
-        <text x="0" y="-12" textAnchor="middle" fill="#e2e8f0" fontSize="7.5" fontFamily="'Courier New', monospace">
-          {actionText}
-        </text>
-      )}
-      <text x="0" y={hasAction ? 0 : 0} textAnchor="middle" fill="#28A745" fontSize="7.5" fontFamily="'Courier New', monospace">
-        Tasks done: {agent.tasksCompleted}
-      </text>
-    </g>
-  );
-}
+  if (isWorking && !text) {
+    // Typing dots when working but no specific action
+    return (
+      <g transform={`translate(${x}, ${y - 50})`}>
+        <rect x="-22" y="-12" width="44" height="18" rx="4" fill="#16213e" stroke="#334155" strokeWidth="1" opacity="0.95" />
+        <polygon points="-4,6 4,6 0,11" fill="#16213e" stroke="#334155" strokeWidth="1" />
+        <rect x="-5" y="5" width="10" height="2" fill="#16213e" />
+        {[0, 1, 2].map((dot) => (
+          <circle key={dot} cx={-5 + dot * 5} cy="-2" r="1.5" fill="#e2e8f0">
+            <animate attributeName="opacity" values="0.3;1;0.3" dur="1s" begin={`${dot * 0.2}s`} repeatCount="indefinite" />
+          </circle>
+        ))}
+      </g>
+    );
+  }
 
-/** Speech bubble for solo agent showing current action */
-function SoloSpeechBubble({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
-  const text = agent.currentAction || (agent.status === 'working' ? 'Working...' : 'Idle');
-  const maxLen = 40;
+  const maxLen = 36;
   const display = text.length > maxLen ? text.slice(0, maxLen - 1) + '\u2026' : text;
-  const boxWidth = Math.max(100, display.length * 5 + 28);
+  const boxWidth = Math.max(80, display.length * 5.2 + 24);
 
   return (
-    <g transform={`translate(${x}, ${y - 65})`}>
+    <g transform={`translate(${x}, ${y - 50})`}>
       <rect
         x={-boxWidth / 2}
-        y="-16"
+        y="-14"
         width={boxWidth}
-        height="24"
-        rx="6"
+        height="22"
+        rx="4"
         fill="#16213e"
-        stroke="#4169E1"
-        strokeWidth="1.5"
+        stroke="#334155"
+        strokeWidth="1"
         opacity="0.95"
       />
-      <polygon points="-5,8 5,8 0,14" fill="#16213e" stroke="#4169E1" strokeWidth="1.5" />
-      {/* Cover the stroke line inside the bubble where the pointer meets */}
-      <rect x="-6" y="6" width="12" height="3" fill="#16213e" />
-      <text x="0" y="0" textAnchor="middle" fill="#e2e8f0" fontSize="8" fontFamily="'Courier New', monospace">
+      <polygon points="-4,8 4,8 0,13" fill="#16213e" stroke="#334155" strokeWidth="1" />
+      <rect x="-5" y="7" width="10" height="2" fill="#16213e" />
+      <text x="0" y="0" textAnchor="middle" fill="#e2e8f0" fontSize="7.5" fontFamily="'Courier New', monospace">
         {display}
-        {agent.status === 'working' && (
+        {isWorking && (
           <tspan fill="#e2e8f0">
             <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite" />
             {'_'}
@@ -99,7 +78,6 @@ function SoloSpeechBubble({ agent, x, y }: { agent: AgentState; x: number; y: nu
 }
 
 export function Scene({ state }: SceneProps) {
-  const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
   const isSolo = state.agents.length === 1;
 
   if (!state.name && state.agents.length === 0) {
@@ -161,23 +139,13 @@ export function Scene({ state }: SceneProps) {
         {state.agents.map((agent, i) => {
           const pos = getStationPos(agent.role, i, isSolo);
           return (
-            <g
-              key={agent.id}
-              onMouseEnter={() => setHoveredAgent(agent.id)}
-              onMouseLeave={() => setHoveredAgent(null)}
-              style={{ cursor: 'pointer' }}
-            >
+            <g key={agent.id}>
               <AgentCharacter
                 agent={agent}
                 x={pos.x}
                 y={pos.y}
               />
-              {/* Solo mode: always show speech bubble */}
-              {isSolo && <SoloSpeechBubble agent={agent} x={pos.x} y={pos.y} />}
-              {/* Team mode: show tooltip on hover */}
-              {!isSolo && hoveredAgent === agent.id && (
-                <AgentTooltip agent={agent} x={pos.x} y={pos.y} />
-              )}
+              <ActionBubble agent={agent} x={pos.x} y={pos.y} />
             </g>
           );
         })}

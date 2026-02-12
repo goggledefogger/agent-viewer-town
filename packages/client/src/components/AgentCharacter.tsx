@@ -198,7 +198,7 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
         <g transform="translate(22, -10)">
           <g style={{
             animation: `spin ${Math.max(0.5, 2 - agent.tasksCompleted * 0.2)}s linear infinite`,
-            transformOrigin: 'center',
+            transformOrigin: '0px 0px',
           }}>
             <circle cx="0" cy="0" r="6" fill="none" stroke={color} strokeWidth="1.5" />
             {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
@@ -209,59 +209,10 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
         </g>
       )}
 
-      {/* Name label — truncate long names, use smaller font to avoid overlap */}
+      {/* Name label */}
       <text x="0" y="38" textAnchor="middle" fill={color} fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold">
         {agent.name.length > 14 ? agent.name.slice(0, 13) + '\u2026' : agent.name}
       </text>
-
-      {/* Current action description below the name */}
-      {agent.currentAction && (
-        <text x="0" y="48" textAnchor="middle" fill="#94a3b8" fontSize="7" fontFamily="'Courier New', monospace">
-          {agent.currentAction.length > 24 ? agent.currentAction.slice(0, 23) + '\u2026' : agent.currentAction}
-        </text>
-      )}
-
-      {/* Action speech bubble — shows current action or working status */}
-      {agent.currentAction && (
-        <g transform="translate(0, -42)">
-          {(() => {
-            const maxBubbleChars = 28;
-            const bubbleText = agent.currentAction.length > maxBubbleChars
-              ? agent.currentAction.slice(0, maxBubbleChars - 1) + '\u2026'
-              : agent.currentAction;
-            const bubbleW = Math.max(80, bubbleText.length * 5.2 + 20);
-            return (
-              <>
-                <rect x={-bubbleW / 2} y="-12" width={bubbleW} height="18" rx="4" fill="#16213e" stroke="#334155" strokeWidth="1" />
-                <polygon points="-4,6 4,6 0,12" fill="#16213e" stroke="#334155" strokeWidth="1" />
-                <rect x="-5" y="5" width="10" height="2" fill="#16213e" />
-                <text x="0" y="1" textAnchor="middle" fill="#e2e8f0" fontSize="7.5" fontFamily="'Courier New', monospace">
-                  {bubbleText}
-                  {isWorking && (
-                    <tspan fill="#e2e8f0">
-                      <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite" />
-                      {'_'}
-                    </tspan>
-                  )}
-                </text>
-              </>
-            );
-          })()}
-        </g>
-      )}
-
-      {/* Working but no action: show typing dots animation */}
-      {isWorking && !agent.currentAction && (
-        <g transform="translate(0, -42)">
-          <rect x="-20" y="-12" width="40" height="18" rx="4" fill="#16213e" stroke="#334155" strokeWidth="1" />
-          <polygon points="-4,6 4,6 0,12" fill="#16213e" stroke="#334155" strokeWidth="1" />
-          {[0, 1, 2].map((dot) => (
-            <circle key={dot} cx={-5 + dot * 5} cy="-2" r="1.5" fill="#e2e8f0">
-              <animate attributeName="opacity" values="0.3;1;0.3" dur="1s" begin={`${dot * 0.2}s`} repeatCount="indefinite" />
-            </circle>
-          ))}
-        </g>
-      )}
     </g>
   );
 }
