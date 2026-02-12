@@ -58,6 +58,12 @@ export class StateManager {
     this.broadcastFullState();
   }
 
+  /** Add agent to registry only — does NOT add to displayed state.agents */
+  registerAgent(agent: AgentState) {
+    this.allAgents.set(agent.id, agent);
+  }
+
+  /** Add/update agent in both registry and displayed state */
   updateAgent(agent: AgentState) {
     this.allAgents.set(agent.id, agent);
     const idx = this.state.agents.findIndex((a) => a.id === agent.id);
@@ -65,8 +71,12 @@ export class StateManager {
       this.state.agents[idx] = agent;
       this.broadcast({ type: 'agent_update', data: agent });
     } else {
-      this.state.agents.push(agent);
-      this.broadcast({ type: 'agent_added', data: agent });
+      // Only add to display if this agent belongs to the active session
+      const activeSessionId = this.state.session?.sessionId;
+      if (activeSessionId === agent.id) {
+        this.state.agents.push(agent);
+        this.broadcast({ type: 'agent_added', data: agent });
+      }
     }
   }
 
@@ -188,11 +198,28 @@ export class StateManager {
 
   // --- Session management ---
 
+  /** @deprecated Use addSession instead */
   setSession(session: SessionInfo) {
+    this.addSession(session);
+  }
+
+  /**
+   * Register a new session. Auto-selects it if:
+   * - No session is currently active, OR
+   * - This session is more recently active than the current one
+   */
+  addSession(session: SessionInfo) {
     this.sessions.set(session.sessionId, session);
-    this.state.session = session;
     this.broadcast({ type: 'session_started', data: session });
-    this.broadcastSessionsList();
+
+    // Auto-select: pick this session if none is active, or if it's fresher
+    const current = this.state.session;
+    const shouldSelect = !current || session.lastActivity > (current.lastActivity || 0);
+    if (shouldSelect) {
+      this.selectSession(session.sessionId);
+    } else {
+      this.broadcastSessionsList();
+    }
   }
 
   updateSessionActivity(sessionId: string) {

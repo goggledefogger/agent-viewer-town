@@ -241,7 +241,7 @@ export function startWatcher(stateManager: StateManager) {
    * On initial scan, skip files older than 1 hour to avoid flooding with
    * historical sessions. On change events (isInitial=false), always detect.
    */
-  const MAX_INITIAL_AGE_S = 3600; // 1 hour
+  const MAX_INITIAL_AGE_S = 86400; // 24 hours
 
   async function detectSession(filePath: string, isInitial = false) {
     // On initial scan, skip very old files
@@ -300,13 +300,11 @@ export function startWatcher(stateManager: StateManager) {
       console.log(
         `[watcher] New session detected: ${meta.sessionId} (${meta.isTeam ? 'team' : 'solo'}) - ${meta.projectName} [${initialStatus}]`
       );
-      stateManager.setSession(meta);
 
-      // For solo sessions, create a synthetic agent
+      // For solo sessions, register agent in the registry
       if (!meta.isTeam) {
         const agentName = meta.slug || meta.projectName || 'claude';
-        stateManager.setTeamName(meta.projectName || cleanProjectName(dirSlug));
-        stateManager.updateAgent({
+        stateManager.registerAgent({
           id: meta.sessionId,
           name: agentName,
           role: 'implementer',
@@ -314,6 +312,9 @@ export function startWatcher(stateManager: StateManager) {
           tasksCompleted: 0,
         });
       }
+
+      // Register the session (auto-selects if it's the first or most active)
+      stateManager.addSession(meta);
     }
   }
 
