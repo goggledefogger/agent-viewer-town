@@ -52,20 +52,25 @@ export function startWatcher(stateManager: StateManager) {
   const debouncer = createDebouncer(150);
   const transcriptDebouncer = createDebouncer(300);
 
-  // Watch team configs (chokidar v4: watch dir, filter via ignored)
+  // Watch team configs - watch directory, filter to config.json in handlers
   const teamWatcher = chokidar.watch(TEAMS_DIR, {
     ignoreInitial: false,
     persistent: true,
-    depth: 1,
+    depth: 2,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
-    ignored: (path: string, stats?: { isDirectory(): boolean }) => {
-      if (stats?.isDirectory()) return false;
-      return basename(path) !== 'config.json';
-    },
   });
 
-  teamWatcher.on('add', (fp: string) => debouncer.debounce(`team:${fp}`, () => handleTeamConfig(fp)));
-  teamWatcher.on('change', (fp: string) => debouncer.debounce(`team:${fp}`, () => handleTeamConfig(fp)));
+  teamWatcher.on('ready', () => {
+    console.log('[watcher] Team watcher ready');
+  });
+  teamWatcher.on('add', (fp: string) => {
+    if (basename(fp) !== 'config.json') return; // Filter to config.json only
+    debouncer.debounce(`team:${fp}`, () => handleTeamConfig(fp));
+  });
+  teamWatcher.on('change', (fp: string) => {
+    if (basename(fp) !== 'config.json') return; // Filter to config.json only
+    debouncer.debounce(`team:${fp}`, () => handleTeamConfig(fp));
+  });
   teamWatcher.on('unlink', (fp: string) => {
     console.log(`[watcher] Team config removed: ${fp}`);
     stateManager.reset();
@@ -99,8 +104,15 @@ export function startWatcher(stateManager: StateManager) {
     },
   });
 
-  taskWatcher.on('add', (fp: string) => debouncer.debounce(`task:${fp}`, () => handleTaskFile(fp)));
-  taskWatcher.on('change', (fp: string) => debouncer.debounce(`task:${fp}`, () => handleTaskFile(fp)));
+  taskWatcher.on('ready', () => {
+    console.log('[watcher] Task watcher ready');
+  });
+  taskWatcher.on('add', (fp: string) => {
+    debouncer.debounce(`task:${fp}`, () => handleTaskFile(fp));
+  });
+  taskWatcher.on('change', (fp: string) => {
+    debouncer.debounce(`task:${fp}`, () => handleTaskFile(fp));
+  });
   taskWatcher.on('unlink', (fp: string) => {
     const taskId = basename(fp).replace('.json', '');
     console.log(`[watcher] Task file removed: ${fp} (id: ${taskId})`);
