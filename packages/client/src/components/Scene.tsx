@@ -7,7 +7,7 @@ interface SceneProps {
   state: TeamState;
 }
 
-// Layout positions for agent workstations (team mode)
+// Layout positions for agent workstations (team mode — classic roles)
 const STATION_POSITIONS: Record<string, { x: number; y: number }> = {
   lead:        { x: 450, y: 200 },
   researcher:  { x: 200, y: 120 },
@@ -15,6 +15,66 @@ const STATION_POSITIONS: Record<string, { x: number; y: number }> = {
   tester:      { x: 700, y: 380 },
   planner:     { x: 200, y: 380 },
 };
+
+// Grid layout for teams where agents share roles (e.g., all implementers)
+// Arranges agents in rows across the viewport
+function computeTeamPositions(agents: AgentState[]): Map<string, { x: number; y: number }> {
+  const positions = new Map<string, { x: number; y: number }>();
+  const mainAgents = agents.filter((a) => !a.isSubagent);
+  const subagents = agents.filter((a) => a.isSubagent);
+
+  // Check if agents have unique roles or are all the same
+  const roleSet = new Set(mainAgents.map((a) => a.role));
+  const allSameRole = roleSet.size <= 1 && mainAgents.length > 1;
+
+  if (allSameRole || mainAgents.length > 5) {
+    // Dynamic grid layout: spread agents evenly
+    const cols = Math.min(mainAgents.length, 4);
+    const rows = Math.ceil(mainAgents.length / cols);
+    const xPad = 120;
+    const yPad = 100;
+    const xSpan = 900 - xPad * 2;
+    const ySpan = 350;
+    const yStart = 140;
+
+    mainAgents.forEach((agent, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = cols === 1 ? 450 : xPad + (col / (cols - 1)) * xSpan;
+      const y = rows === 1 ? 280 : yStart + (row / Math.max(rows - 1, 1)) * ySpan;
+      positions.set(agent.id, { x, y });
+    });
+  } else {
+    // Classic role-based positions
+    mainAgents.forEach((agent, i) => {
+      const pos = STATION_POSITIONS[agent.role] || { x: 200 + i * 180, y: 250 };
+      positions.set(agent.id, pos);
+    });
+  }
+
+  // Position subagents around their parent
+  const subsByParent = new Map<string, AgentState[]>();
+  for (const sub of subagents) {
+    const parentId = sub.parentAgentId || '';
+    if (!subsByParent.has(parentId)) subsByParent.set(parentId, []);
+    subsByParent.get(parentId)!.push(sub);
+  }
+
+  for (const [parentId, subs] of subsByParent) {
+    const parentPos = positions.get(parentId) || { x: 450, y: 300 };
+    subs.forEach((sub, si) => {
+      const offset = SUBAGENT_OFFSETS[si % SUBAGENT_OFFSETS.length];
+      // Scale down offsets when there are many agents to avoid going off-screen
+      const scale = mainAgents.length > 3 ? 0.5 : 1;
+      positions.set(sub.id, {
+        x: Math.max(60, Math.min(840, parentPos.x + offset.x * scale)),
+        y: Math.max(80, Math.min(520, parentPos.y + offset.y * scale)),
+      });
+    });
+  }
+
+  return positions;
+}
 
 // Center position for solo agent
 const SOLO_POSITION = { x: 450, y: 300 };
@@ -30,7 +90,6 @@ const SUBAGENT_OFFSETS = [
 
 function getStationPos(agent: AgentState, index: number, isSoloMode: boolean, subagentIndex: number) {
   if (agent.isSubagent && isSoloMode) {
-    // Position subagents around the parent
     const offset = SUBAGENT_OFFSETS[subagentIndex % SUBAGENT_OFFSETS.length];
     return { x: SOLO_POSITION.x + offset.x, y: SOLO_POSITION.y + offset.y };
   }
@@ -247,6 +306,9 @@ export function Scene({ state }: SceneProps) {
   const isSoloMode = mainAgents.length <= 1;
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
+  // Precompute positions for all agents (handles overlapping roles in team mode)
+  const teamPositions = !isSoloMode ? computeTeamPositions(state.agents) : null;
+
   if (!state.name && state.agents.length === 0) {
     return (
       <div className="scene-container no-team">
@@ -303,10 +365,11 @@ export function Scene({ state }: SceneProps) {
         {!isSoloMode && state.agents.length > 1 && <Machine agents={state.agents} messages={state.messages} />}
 
         {/* Subagent tether lines — energy connections from parent to subagents */}
-        {isSoloMode && subagents.length > 0 && subagents.map((sub, si) => {
-          const parentPos = SOLO_POSITION;
-          const subOffset = SUBAGENT_OFFSETS[si % SUBAGENT_OFFSETS.length];
-          const subPos = { x: parentPos.x + subOffset.x, y: parentPos.y + subOffset.y };
+        {subagents.length > 0 && subagents.map((sub, si) => {
+          const parentId = sub.parentAgentId || '';
+          const parentPos = teamPositions?.get(parentId) || SOLO_POSITION;
+          const subPos = teamPositions?.get(sub.id)
+            || (() => { const o = SUBAGENT_OFFSETS[si % SUBAGENT_OFFSETS.length]; return { x: SOLO_POSITION.x + o.x, y: SOLO_POSITION.y + o.y }; })();
           const mx = (parentPos.x + subPos.x) / 2;
           const my = (parentPos.y + subPos.y) / 2 - 20;
           const d = `M ${parentPos.x} ${parentPos.y} Q ${mx} ${my} ${subPos.x} ${subPos.y}`;
@@ -344,7 +407,7 @@ export function Scene({ state }: SceneProps) {
         {/* Agent characters at their stations */}
         {state.agents.map((agent, i) => {
           const subIdx = agent.isSubagent ? subagents.indexOf(agent) : 0;
-          const pos = getStationPos(agent, i, isSoloMode, subIdx);
+          const pos = teamPositions?.get(agent.id) || getStationPos(agent, i, isSoloMode, subIdx);
           // For subagents: translate to position, scale down, translate back.
           // This ensures scaling happens around the agent's center, not SVG origin.
           const subScale = agent.isSubagent
@@ -369,7 +432,7 @@ export function Scene({ state }: SceneProps) {
           const agent = state.agents.find((a) => a.id === selectedAgentId);
           if (!agent) return null;
           const subIdx = agent.isSubagent ? subagents.indexOf(agent) : 0;
-          const pos = getStationPos(agent, state.agents.indexOf(agent), isSoloMode, subIdx);
+          const pos = teamPositions?.get(agent.id) || getStationPos(agent, state.agents.indexOf(agent), isSoloMode, subIdx);
           return <AgentDetail agent={agent} x={pos.x} y={pos.y} onClose={() => setSelectedAgentId(null)} />;
         })()}
       </svg>
