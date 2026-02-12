@@ -293,6 +293,8 @@ export class StateManager {
         active: this.state.session?.sessionId === session.sessionId,
       });
     }
+    // Most recently active first
+    entries.sort((a, b) => b.lastActivity - a.lastActivity);
     return entries;
   }
 
