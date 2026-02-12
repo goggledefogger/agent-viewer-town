@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { TeamState, WSMessage } from '@agent-viewer/shared';
+import type { TeamState, SessionListEntry, WSMessage } from '@agent-viewer/shared';
 
 const EMPTY_STATE: TeamState = {
   name: '',
@@ -12,15 +12,25 @@ export type ConnectionStatus = 'connected' | 'disconnected' | 'reconnecting';
 
 export interface WebSocketState {
   team: TeamState;
+  sessions: SessionListEntry[];
   connectionStatus: ConnectionStatus;
+  selectSession: (sessionId: string) => void;
 }
 
 export function useWebSocket(url: string): WebSocketState {
   const [state, setState] = useState<TeamState>(EMPTY_STATE);
+  const [sessions, setSessions] = useState<SessionListEntry[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const hasConnectedOnce = useRef(false);
+
+  const selectSession = useCallback((sessionId: string) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'select_session', sessionId }));
+    }
+  }, []);
 
   const connect = useCallback(() => {
     const ws = new WebSocket(url);
@@ -35,7 +45,32 @@ export function useWebSocket(url: string): WebSocketState {
     ws.onmessage = (event) => {
       try {
         const msg: WSMessage = JSON.parse(event.data);
-        setState((prev) => applyMessage(prev, msg));
+        switch (msg.type) {
+          case 'sessions_list':
+            setSessions(msg.data);
+            break;
+          case 'session_started':
+            setSessions((prev) => {
+              const exists = prev.some((s) => s.sessionId === msg.data.sessionId);
+              if (exists) return prev;
+              return [...prev, {
+                sessionId: msg.data.sessionId,
+                projectName: msg.data.projectName,
+                gitBranch: msg.data.gitBranch,
+                isTeam: msg.data.isTeam,
+                agentCount: msg.data.isTeam ? 0 : 1,
+                lastActivity: msg.data.lastActivity,
+                active: false,
+              }];
+            });
+            break;
+          case 'session_ended':
+            setSessions((prev) => prev.filter((s) => s.sessionId !== msg.data.sessionId));
+            break;
+          default:
+            setState((prev) => applyMessage(prev, msg));
+            break;
+        }
       } catch (e) {
         console.error('[ws] parse error', e);
       }
@@ -60,7 +95,7 @@ export function useWebSocket(url: string): WebSocketState {
     };
   }, [connect]);
 
-  return { team: state, connectionStatus };
+  return { team: state, sessions, connectionStatus, selectSession };
 }
 
 function applyMessage(state: TeamState, msg: WSMessage): TeamState {

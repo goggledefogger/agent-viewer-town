@@ -468,3 +468,198 @@ html, body, #root {
   background: var(--color-border);
   border-radius: 3px;
 }
+
+/* ========================================
+   BADGES (branch, solo/team)
+   ======================================== */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.badge-branch {
+  background: rgba(65, 105, 225, 0.2);
+  color: var(--color-blue);
+  border: 1px solid rgba(65, 105, 225, 0.4);
+}
+
+.badge-branch::before {
+  content: '\2387 ';
+  font-size: 11px;
+}
+
+.badge-solo {
+  background: rgba(255, 215, 0, 0.15);
+  color: var(--color-gold);
+  border: 1px solid rgba(255, 215, 0, 0.4);
+}
+
+.badge-team {
+  background: rgba(40, 167, 69, 0.15);
+  color: var(--color-green);
+  border: 1px solid rgba(40, 167, 69, 0.4);
+}
+
+/* ========================================
+   LIVE INDICATOR
+   ======================================== */
+
+@keyframes live-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(40, 167, 69, 0);
+  }
+}
+
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-green);
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+.live-label {
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--color-green);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ========================================
+   SESSION PICKER
+   ======================================== */
+
+.session-picker-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.session-picker-inline .session-project-name {
+  font-size: 12px;
+  color: var(--color-text);
+  font-weight: bold;
+}
+
+.session-picker {
+  position: relative;
+  margin-left: 8px;
+}
+
+.session-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text);
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.session-picker-trigger:hover {
+  border-color: var(--color-blue);
+  background: rgba(65, 105, 225, 0.1);
+}
+
+.session-picker-trigger .session-project-name {
+  font-weight: bold;
+}
+
+.session-picker-arrow {
+  font-size: 8px;
+  color: var(--color-text-dim);
+  margin-left: 2px;
+}
+
+.session-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 240px;
+  background: var(--color-panel-bg);
+  border: 2px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  animation: fadeInUp 0.15s ease-out;
+  overflow: hidden;
+}
+
+.session-picker-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+  color: var(--color-text);
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.session-picker-item:last-child {
+  border-bottom: none;
+}
+
+.session-picker-item:hover {
+  background: rgba(65, 105, 225, 0.1);
+}
+
+.session-picker-item.active {
+  background: rgba(65, 105, 225, 0.15);
+  border-left: 3px solid var(--color-blue);
+}
+
+.session-picker-item-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-picker-item-top .session-project-name {
+  font-weight: bold;
+  flex: 1;
+}
+
+.session-picker-item-bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-picker-time {
+  font-size: 10px;
+  color: var(--color-text-dim);
+  margin-left: auto;
+}

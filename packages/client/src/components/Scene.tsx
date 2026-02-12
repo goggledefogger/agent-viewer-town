@@ -7,7 +7,7 @@ interface SceneProps {
   state: TeamState;
 }
 
-// Layout positions for agent workstations
+// Layout positions for agent workstations (team mode)
 const STATION_POSITIONS: Record<string, { x: number; y: number }> = {
   lead:        { x: 450, y: 200 },
   researcher:  { x: 200, y: 120 },
@@ -16,7 +16,11 @@ const STATION_POSITIONS: Record<string, { x: number; y: number }> = {
   planner:     { x: 200, y: 380 },
 };
 
-function getStationPos(role: string, index: number) {
+// Center position for solo agent
+const SOLO_POSITION = { x: 450, y: 300 };
+
+function getStationPos(role: string, index: number, isSolo: boolean) {
+  if (isSolo) return SOLO_POSITION;
   return STATION_POSITIONS[role] || { x: 200 + index * 180, y: 250 };
 }
 
@@ -47,15 +51,52 @@ function AgentTooltip({ agent, x, y }: { agent: AgentState; x: number; y: number
   );
 }
 
+/** Speech bubble for solo agent showing current action */
+function SoloSpeechBubble({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
+  const text = agent.currentAction || (agent.status === 'working' ? 'Working...' : 'Idle');
+  const maxLen = 30;
+  const display = text.length > maxLen ? text.slice(0, maxLen - 1) + '\u2026' : text;
+  const boxWidth = Math.max(80, display.length * 6.5 + 24);
+
+  return (
+    <g transform={`translate(${x}, ${y - 60})`}>
+      <rect
+        x={-boxWidth / 2}
+        y="-16"
+        width={boxWidth}
+        height="24"
+        rx="6"
+        fill="#16213e"
+        stroke="#4169E1"
+        strokeWidth="1.5"
+        opacity="0.95"
+      />
+      <polygon points="-5,8 5,8 0,14" fill="#16213e" stroke="#4169E1" strokeWidth="1.5" />
+      {/* Cover the stroke line inside the bubble where the pointer meets */}
+      <rect x="-6" y="6" width="12" height="3" fill="#16213e" />
+      <text x="0" y="0" textAnchor="middle" fill="#e2e8f0" fontSize="9" fontFamily="'Courier New', monospace">
+        {display}
+        {agent.status === 'working' && (
+          <tspan fill="#e2e8f0">
+            <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite" />
+            {'_'}
+          </tspan>
+        )}
+      </text>
+    </g>
+  );
+}
+
 export function Scene({ state }: SceneProps) {
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
+  const isSolo = state.agents.length === 1;
 
-  if (!state.name) {
+  if (!state.name && state.agents.length === 0) {
     return (
       <div className="scene-container no-team">
         <h2>The Workshop in the Woods</h2>
-        <p>Waiting for an agent team to start...<br />
-        Use <code>TeamCreate</code> in Claude Code to begin.</p>
+        <p>Waiting for a session to start...<br />
+        Launch Claude Code to begin.</p>
       </div>
     );
   }
@@ -102,12 +143,12 @@ export function Scene({ state }: SceneProps) {
           <rect key={i} x={sx} y={sy} width="2" height="2" fill="#ffffff" opacity={0.4 + (i % 3) * 0.2} />
         ))}
 
-        {/* Machine connections between agents */}
-        <Machine agents={state.agents} messages={state.messages} />
+        {/* Machine connections between agents (only for team mode) */}
+        {!isSolo && <Machine agents={state.agents} messages={state.messages} />}
 
         {/* Agent characters at their stations */}
         {state.agents.map((agent, i) => {
-          const pos = getStationPos(agent.role, i);
+          const pos = getStationPos(agent.role, i, isSolo);
           return (
             <g
               key={agent.id}
@@ -120,7 +161,10 @@ export function Scene({ state }: SceneProps) {
                 x={pos.x}
                 y={pos.y}
               />
-              {hoveredAgent === agent.id && (
+              {/* Solo mode: always show speech bubble */}
+              {isSolo && <SoloSpeechBubble agent={agent} x={pos.x} y={pos.y} />}
+              {/* Team mode: show tooltip on hover */}
+              {!isSolo && hoveredAgent === agent.id && (
                 <AgentTooltip agent={agent} x={pos.x} y={pos.y} />
               )}
             </g>
