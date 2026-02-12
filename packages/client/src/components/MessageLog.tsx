@@ -5,6 +5,18 @@ interface MessageLogProps {
   messages: MessageState[];
 }
 
+function getMessageType(msg: MessageState): 'broadcast' | 'tool_call' | 'message' {
+  if (msg.to === '*' || msg.to === 'all' || msg.to === 'broadcast') return 'broadcast';
+  if (msg.content.startsWith('{') || msg.content.includes('tool_call') || msg.content.includes('function')) return 'tool_call';
+  return 'message';
+}
+
+const MSG_TYPE_LABELS: Record<string, string> = {
+  message: 'MSG',
+  tool_call: 'TOOL',
+  broadcast: 'ALL',
+};
+
 export function MessageLog({ messages }: MessageLogProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -35,21 +47,29 @@ export function MessageLog({ messages }: MessageLogProps) {
       onScroll={handleScroll}
       style={{ height: '100%', overflowY: 'auto' }}
     >
-      {messages.map((msg) => (
-        <div key={msg.id} className="message-entry">
-          <div style={{ flex: 1 }}>
-            <div style={{ marginBottom: '2px' }}>
-              <span className="message-sender">{msg.from}</span>
-              <span className="message-arrow"> → </span>
-              <span className="message-recipient">{msg.to}</span>
-              <span className="message-time" style={{ marginLeft: '8px' }}>
-                {new Date(msg.timestamp).toLocaleTimeString()}
+      {messages.map((msg) => {
+        const msgType = getMessageType(msg);
+        return (
+          <div key={msg.id} className={`message-entry message-type-${msgType}`}>
+            <div className="message-type-badge-col">
+              <span className={`message-type-badge ${msgType}`}>
+                {MSG_TYPE_LABELS[msgType]}
               </span>
             </div>
-            <div className="message-content">{msg.content}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ marginBottom: '2px' }}>
+                <span className="message-sender">{msg.from}</span>
+                <span className="message-arrow"> {'\u2192'} </span>
+                <span className="message-recipient">{msg.to}</span>
+                <span className="message-time" style={{ marginLeft: '8px' }}>
+                  {new Date(msg.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+              <div className="message-content">{msg.content}</div>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

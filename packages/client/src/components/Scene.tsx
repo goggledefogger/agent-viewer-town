@@ -1,4 +1,5 @@
-import type { TeamState } from '@agent-viewer/shared';
+import { useState } from 'react';
+import type { TeamState, AgentState } from '@agent-viewer/shared';
 import { AgentCharacter } from './AgentCharacter';
 import { Machine } from './Machine';
 
@@ -19,7 +20,36 @@ function getStationPos(role: string, index: number) {
   return STATION_POSITIONS[role] || { x: 200 + index * 180, y: 250 };
 }
 
+function AgentTooltip({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
+  return (
+    <g transform={`translate(${x}, ${y - 65})`}>
+      <rect
+        x="-70"
+        y="-40"
+        width="140"
+        height="52"
+        rx="6"
+        fill="#16213e"
+        stroke="#4169E1"
+        strokeWidth="1.5"
+        opacity="0.95"
+      />
+      <text x="0" y="-24" textAnchor="middle" fill="#FFD700" fontSize="9" fontFamily="'Courier New', monospace" fontWeight="bold">
+        {agent.name}
+      </text>
+      <text x="0" y="-12" textAnchor="middle" fill="#94a3b8" fontSize="8" fontFamily="'Courier New', monospace">
+        Role: {agent.role} | {agent.status}
+      </text>
+      <text x="0" y="0" textAnchor="middle" fill="#28A745" fontSize="8" fontFamily="'Courier New', monospace">
+        Tasks done: {agent.tasksCompleted}
+      </text>
+    </g>
+  );
+}
+
 export function Scene({ state }: SceneProps) {
+  const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
+
   if (!state.name) {
     return (
       <div className="scene-container no-team">
@@ -79,12 +109,21 @@ export function Scene({ state }: SceneProps) {
         {state.agents.map((agent, i) => {
           const pos = getStationPos(agent.role, i);
           return (
-            <AgentCharacter
+            <g
               key={agent.id}
-              agent={agent}
-              x={pos.x}
-              y={pos.y}
-            />
+              onMouseEnter={() => setHoveredAgent(agent.id)}
+              onMouseLeave={() => setHoveredAgent(null)}
+              style={{ cursor: 'pointer' }}
+            >
+              <AgentCharacter
+                agent={agent}
+                x={pos.x}
+                y={pos.y}
+              />
+              {hoveredAgent === agent.id && (
+                <AgentTooltip agent={agent} x={pos.x} y={pos.y} />
+              )}
+            </g>
           );
         })}
       </svg>

@@ -12,10 +12,36 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_ICONS: Record<string, string> = {
-  pending: '○',
-  in_progress: '⚙',
-  completed: '✓',
+  pending: '\u25CB',
+  in_progress: '\u2699',
+  completed: '\u2713',
 };
+
+const ROLE_ANIMALS: Record<string, string> = {
+  lead: '\u{1F9AB}',
+  researcher: '\u{1F989}',
+  implementer: '\u{1F98A}',
+  tester: '\u{1F43B}',
+  planner: '\u{1F407}',
+};
+
+const ROLE_COLORS: Record<string, string> = {
+  lead: '#FFD700',
+  researcher: '#4169E1',
+  implementer: '#DC3545',
+  tester: '#28A745',
+  planner: '#F8F9FA',
+};
+
+function AgentAvatar({ agent }: { agent: AgentState }) {
+  const animal = ROLE_ANIMALS[agent.role] || '\u{1F9AB}';
+  const color = ROLE_COLORS[agent.role] || '#FFD700';
+  return (
+    <span className="agent-avatar" style={{ borderColor: color }}>
+      {animal}
+    </span>
+  );
+}
 
 export function TaskBoard({ tasks, agents }: TaskBoardProps) {
   if (tasks.length === 0) {
@@ -26,18 +52,36 @@ export function TaskBoard({ tasks, agents }: TaskBoardProps) {
     );
   }
 
-  // Sort: in_progress first, then pending, then completed
   const sorted = [...tasks].sort((a, b) => {
-    const order = { in_progress: 0, pending: 1, completed: 2 };
+    const order: Record<string, number> = { in_progress: 0, pending: 1, completed: 2 };
     return (order[a.status] ?? 1) - (order[b.status] ?? 1);
   });
+
+  const busyAgents = new Set(
+    agents.filter((a) => a.status === 'working').map((a) => a.name)
+  );
+
+  const blocksMap = new Map<string, string[]>();
+  for (const task of tasks) {
+    for (const blockedById of task.blockedBy) {
+      const existing = blocksMap.get(blockedById) || [];
+      existing.push(task.id);
+      blocksMap.set(blockedById, existing);
+    }
+  }
 
   return (
     <div>
       {sorted.map((task) => {
         const owner = agents.find((a) => a.name === task.owner);
+        const isTapped = task.owner ? busyAgents.has(task.owner) && task.status === 'in_progress' : false;
+        const blocksOthers = blocksMap.get(task.id);
+
         return (
-          <div key={task.id} className={`task-card ${task.status}`}>
+          <div
+            key={task.id}
+            className={`task-card ${task.status} ${isTapped ? 'tapped' : ''}`}
+          >
             <div className="task-id">
               #{task.id} {STATUS_ICONS[task.status]}
             </div>
@@ -46,15 +90,21 @@ export function TaskBoard({ tasks, agents }: TaskBoardProps) {
               <span className={`task-status-badge ${task.status}`}>
                 {STATUS_LABELS[task.status]}
               </span>
-              {task.owner && (
-                <span style={{ color: 'var(--color-text-dim)' }}>
-                  {owner ? owner.name : task.owner}
+              {owner && (
+                <span className="task-owner">
+                  <AgentAvatar agent={owner} />
+                  <span>{owner.name}</span>
                 </span>
               )}
             </div>
             {task.blockedBy.length > 0 && (
-              <div style={{ fontSize: '10px', color: 'var(--color-text-dim)', marginTop: '4px' }}>
-                Blocked by: {task.blockedBy.map((id) => `#${id}`).join(', ')}
+              <div className="task-dependency blocked-by">
+                <span className="dep-icon">{'\u26D4'}</span> Blocked by: {task.blockedBy.map((id) => `#${id}`).join(', ')}
+              </div>
+            )}
+            {blocksOthers && blocksOthers.length > 0 && (
+              <div className="task-dependency blocks">
+                <span className="dep-icon">{'\u{1F6A7}'}</span> Blocks: {blocksOthers.map((id) => `#${id}`).join(', ')}
               </div>
             )}
           </div>

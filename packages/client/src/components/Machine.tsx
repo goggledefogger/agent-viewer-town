@@ -21,16 +21,72 @@ const ROLE_COLORS: Record<string, string> = {
   planner: '#F8F9FA',
 };
 
-function getPos(agents: AgentState[], name: string, index: number) {
-  const agent = agents.find((a) => a.name === name);
-  if (agent && STATION_POSITIONS[agent.role]) {
-    return STATION_POSITIONS[agent.role];
-  }
-  return { x: 200 + index * 180, y: 250 };
+function GearSvg({ x, y, color, speed }: { x: number; y: number; color: string; speed: number }) {
+  const toothCount = 8;
+  const outerR = 12;
+  const innerR = 8;
+  const toothW = 3;
+  const duration = Math.max(0.4, speed);
+
+  return (
+    <g transform={`translate(${x}, ${y})`}>
+      <g style={{
+        animation: `spin ${duration}s linear infinite`,
+        transformOrigin: 'center',
+      }}>
+        <circle cx="0" cy="0" r={innerR} fill="none" stroke={color} strokeWidth="2.5" opacity="0.7" />
+        {Array.from({ length: toothCount }, (_, i) => {
+          const angle = (i / toothCount) * 360;
+          return (
+            <rect
+              key={i}
+              x={-toothW / 2}
+              y={-outerR}
+              width={toothW}
+              height={outerR - innerR + 2}
+              fill={color}
+              opacity="0.6"
+              rx="0.5"
+              transform={`rotate(${angle})`}
+            />
+          );
+        })}
+        <circle cx="0" cy="0" r="3.5" fill={color} opacity="0.8" />
+        <circle cx="0" cy="0" r="1.5" fill="#1a1a2e" />
+      </g>
+    </g>
+  );
+}
+
+function SmallGear({ x, y, color, speed }: { x: number; y: number; color: string; speed: number }) {
+  const duration = Math.max(0.3, speed * 0.7);
+  return (
+    <g transform={`translate(${x}, ${y})`}>
+      <g style={{
+        animation: `spin ${duration}s linear infinite reverse`,
+        transformOrigin: 'center',
+      }}>
+        <circle cx="0" cy="0" r="5" fill="none" stroke={color} strokeWidth="1.5" opacity="0.5" />
+        {[0, 72, 144, 216, 288].map((angle) => (
+          <rect
+            key={angle}
+            x="-1"
+            y="-7"
+            width="2"
+            height="3"
+            fill={color}
+            opacity="0.5"
+            rx="0.5"
+            transform={`rotate(${angle})`}
+          />
+        ))}
+        <circle cx="0" cy="0" r="2" fill={color} opacity="0.7" />
+      </g>
+    </g>
+  );
 }
 
 export function Machine({ agents, messages }: MachineProps) {
-  // Draw pipes between agents that have communicated
   const connections = new Map<string, { from: AgentState; to: AgentState }>();
 
   for (const msg of messages) {
@@ -44,7 +100,6 @@ export function Machine({ agents, messages }: MachineProps) {
     }
   }
 
-  // Also draw default pipes from lead to all others
   const lead = agents.find((a) => a.role === 'lead');
   if (lead) {
     for (const agent of agents) {
@@ -59,6 +114,9 @@ export function Machine({ agents, messages }: MachineProps) {
 
   const recentMessages = messages.slice(-10);
 
+  const isConnectionActive = (from: AgentState, to: AgentState) =>
+    from.status === 'working' || to.status === 'working';
+
   return (
     <g>
       {/* Pipe connections */}
@@ -66,42 +124,37 @@ export function Machine({ agents, messages }: MachineProps) {
         const fromPos = STATION_POSITIONS[from.role] || { x: 450, y: 300 };
         const toPos = STATION_POSITIONS[to.role] || { x: 450, y: 300 };
         const pathId = `pipe-${i}`;
+        const active = isConnectionActive(from, to);
 
-        // Create curved path between stations
         const mx = (fromPos.x + toPos.x) / 2;
         const my = (fromPos.y + toPos.y) / 2 - 30;
         const d = `M ${fromPos.x} ${fromPos.y} Q ${mx} ${my} ${toPos.x} ${toPos.y}`;
 
         return (
           <g key={pathId}>
-            {/* Pipe background */}
-            <path
-              d={d}
-              fill="none"
-              stroke="#334155"
-              strokeWidth="6"
-              strokeLinecap="round"
-              opacity="0.5"
-            />
-            {/* Pipe inner */}
-            <path
-              d={d}
-              fill="none"
-              stroke="#1e293b"
-              strokeWidth="3"
-              strokeLinecap="round"
-            />
-            {/* Animated conveyor dashes */}
+            <path d={d} fill="none" stroke="#334155" strokeWidth="6" strokeLinecap="round" opacity="0.5" />
+            <path d={d} fill="none" stroke="#1e293b" strokeWidth="3" strokeLinecap="round" />
             <path
               id={pathId}
               d={d}
               fill="none"
-              stroke="#4169E1"
+              stroke={active ? '#4169E1' : '#334155'}
               strokeWidth="2"
               strokeDasharray="4 8"
-              opacity="0.4"
-              style={{ animation: 'conveyor-move 1s linear infinite' }}
+              opacity={active ? 0.6 : 0.25}
+              style={{ animation: `conveyor-move ${active ? '0.6s' : '2s'} linear infinite` }}
             />
+            {active && (
+              <path
+                d={d}
+                fill="none"
+                stroke="#FFD700"
+                strokeWidth="1"
+                strokeDasharray="2 14"
+                opacity="0.3"
+                style={{ animation: 'conveyor-move 0.8s linear infinite' }}
+              />
+            )}
           </g>
         );
       })}
@@ -118,56 +171,60 @@ export function Machine({ agents, messages }: MachineProps) {
         const my = (fromPos.y + toPos.y) / 2 - 30;
         const pathD = `M ${fromPos.x} ${fromPos.y} Q ${mx} ${my} ${toPos.x} ${toPos.y}`;
         const color = ROLE_COLORS[fromAgent.role] || '#FFD700';
+        const dur = 2 + (i % 3);
 
         return (
           <g key={`packet-${i}`}>
             <path id={`msg-path-${i}`} d={pathD} fill="none" stroke="none" />
-            {/* Lego-like data block */}
-            <rect
-              width="8"
-              height="6"
-              rx="1"
-              fill={color}
-              opacity="0.9"
-            >
-              <animateMotion
-                dur={`${2 + (i % 3)}s`}
-                repeatCount="1"
-                fill="freeze"
-              >
-                <mpath href={`#msg-path-${i}`} />
-              </animateMotion>
-            </rect>
-          </g>
-        );
-      })}
-
-      {/* Gears at agent stations (spinning when working) */}
-      {agents.filter((a) => a.status === 'working').map((agent) => {
-        const pos = STATION_POSITIONS[agent.role];
-        if (!pos) return null;
-        const color = ROLE_COLORS[agent.role] || '#FFD700';
-        return (
-          <g key={`gear-${agent.id}`} transform={`translate(${pos.x + 35}, ${pos.y + 15})`}>
-            <g style={{ animation: 'spin 2s linear infinite', transformOrigin: 'center' }}>
-              <circle cx="0" cy="0" r="10" fill="none" stroke={color} strokeWidth="2" opacity="0.6" />
-              {[0, 60, 120, 180, 240, 300].map((angle) => (
-                <line
-                  key={angle}
-                  x1="0"
-                  y1="0"
-                  x2={Math.cos((angle * Math.PI) / 180) * 10}
-                  y2={Math.sin((angle * Math.PI) / 180) * 10}
-                  stroke={color}
-                  strokeWidth="2"
-                  opacity="0.4"
-                />
-              ))}
-              <circle cx="0" cy="0" r="3" fill={color} opacity="0.8" />
+            <g>
+              {/* Glow behind packet */}
+              <rect width="10" height="8" rx="1" fill={color} opacity="0.3">
+                <animateMotion dur={`${dur}s`} repeatCount="1" fill="freeze">
+                  <mpath href={`#msg-path-${i}`} />
+                </animateMotion>
+              </rect>
+              {/* Lego block packet */}
+              <rect width="8" height="6" rx="1" fill={color} opacity="0.9">
+                <animateMotion dur={`${dur}s`} repeatCount="1" fill="freeze">
+                  <mpath href={`#msg-path-${i}`} />
+                </animateMotion>
+              </rect>
+              {/* Lego stud on top */}
+              <rect width="4" height="2" rx="0.5" fill={color} opacity="0.7" x="2" y="-2">
+                <animateMotion dur={`${dur}s`} repeatCount="1" fill="freeze">
+                  <mpath href={`#msg-path-${i}`} />
+                </animateMotion>
+              </rect>
             </g>
           </g>
         );
       })}
+
+      {/* Interlocking gears at working agent stations */}
+      {agents.filter((a) => a.status === 'working').map((agent) => {
+        const pos = STATION_POSITIONS[agent.role];
+        if (!pos) return null;
+        const color = ROLE_COLORS[agent.role] || '#FFD700';
+        const gearSpeed = Math.max(0.5, 2.5 - agent.tasksCompleted * 0.3);
+
+        return (
+          <g key={`gear-${agent.id}`}>
+            <GearSvg x={pos.x + 38} y={pos.y + 15} color={color} speed={gearSpeed} />
+            <SmallGear x={pos.x + 50} y={pos.y + 8} color={color} speed={gearSpeed} />
+          </g>
+        );
+      })}
+
+      {/* SVG filter for packet glow */}
+      <defs>
+        <filter id="packetGlow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
     </g>
   );
 }
