@@ -200,9 +200,12 @@ function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number
 
   const isWorking = agent.status === 'working';
   const isDone = agent.status === 'done';
-  const text = agent.currentAction || (isWorking ? 'Working...' : (isDone ? 'Done' : ''));
+  // Don't show "Done" text — the green checkmark in AgentCharacter is sufficient
+  const text = agent.currentAction || (isWorking ? 'Working...' : '');
   // Always show something for subagents (their name describes what they're doing)
   if (!text && !isWorking && !agent.isSubagent) return null;
+  // Skip bubble entirely for done agents with no specific action
+  if (isDone && !agent.currentAction) return null;
   // For idle subagents with no action, show their name as context
   const displayText = text || (agent.isSubagent ? agent.name : '');
 
@@ -603,7 +606,7 @@ export function Scene({ state, className }: SceneProps) {
           if (!agent.gitBranch || agent.isSubagent) return null;
           const lane = branchLanes.get(agent.gitBranch);
           if (!lane) return null;
-          const pos = teamPositions?.get(agent.id) || getStationPos(agent, i, isSoloMode, 0, 0);
+          const pos = allPositions.get(agent.id) || { x: 450, y: 300 };
           // Tether from platform bottom (agent y + 28) to lane midpoint
           const tetherTop = pos.y + 28;
           const tetherBottom = lane.y + 9;

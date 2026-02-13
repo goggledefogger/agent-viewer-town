@@ -97,9 +97,11 @@ wss.on('connection', (ws: WebSocket) => {
       if (!clientSessionId) {
         ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
       }
-    } else if (msg.type === 'agent_update' || msg.type === 'agent_added' || msg.type === 'agent_removed') {
+    } else if (msg.type === 'agent_removed') {
+      // Removal events always forwarded — agent is already gone from state
+      ws.send(JSON.stringify(msg));
+    } else if (msg.type === 'agent_update' || msg.type === 'agent_added') {
       // Agent events: only forward if the agent belongs to this client's selected session
-      // Re-derive the full state to check — the agent's presence in the filtered view is authoritative
       const filteredState = getClientState(ws);
       const agentInView = filteredState.agents.some((a) => a.id === msg.data.id);
       if (agentInView) {
