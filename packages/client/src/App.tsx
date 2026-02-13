@@ -5,6 +5,23 @@ import { SessionPicker } from './components/SessionPicker';
 import { useWebSocket } from './hooks/useWebSocket';
 import type { ConnectionStatus } from './hooks/useWebSocket';
 
+type MobileTab = 'scene' | 'tasks' | 'messages';
+
+function useIsMobile(breakpoint = 480) {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= breakpoint
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
 function ConnectionDot({ status }: { status: ConnectionStatus }) {
   const label =
     status === 'connected' ? 'Connected' :
@@ -45,6 +62,8 @@ function LiveIndicator({ lastActivity }: { lastActivity?: number }) {
 export default function App() {
   const { team: state, sessions, connectionStatus, selectSession } = useWebSocket('ws://localhost:3001/ws');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileTab, setMobileTab] = useState<MobileTab>('scene');
+  const isMobile = useIsMobile();
 
   const session = state.session;
   const isSolo = session ? !session.isTeam : state.agents.length <= 1;
@@ -54,6 +73,9 @@ export default function App() {
     in_progress: state.tasks.filter((t) => t.status === 'in_progress').length,
     completed: state.tasks.filter((t) => t.status === 'completed').length,
   };
+
+  // On mobile, determine which sidebar tab to force based on the mobile tab
+  const mobileSidebarTab = mobileTab === 'messages' ? 'messages' : 'tasks';
 
   return (
     <div className="app-wrapper">
@@ -122,9 +144,37 @@ export default function App() {
           {sidebarOpen ? '\u25B6' : '\u25C0'}
         </button>
       </header>
+      <nav className="mobile-tabs">
+        <button
+          className={`mobile-tab ${mobileTab === 'scene' ? 'active' : ''}`}
+          onClick={() => setMobileTab('scene')}
+        >
+          Scene
+        </button>
+        <button
+          className={`mobile-tab ${mobileTab === 'tasks' ? 'active' : ''}`}
+          onClick={() => setMobileTab('tasks')}
+        >
+          Tasks ({state.tasks.length})
+        </button>
+        <button
+          className={`mobile-tab ${mobileTab === 'messages' ? 'active' : ''}`}
+          onClick={() => setMobileTab('messages')}
+        >
+          Messages ({state.messages.length})
+        </button>
+      </nav>
       <div className="app-body">
-        <Scene state={state} />
-        <Sidebar state={state} open={sidebarOpen} />
+        <Scene
+          state={state}
+          className={isMobile && mobileTab !== 'scene' ? 'mobile-hidden' : undefined}
+        />
+        <Sidebar
+          state={state}
+          open={sidebarOpen}
+          className={isMobile && mobileTab === 'scene' ? 'mobile-hidden' : undefined}
+          forceTab={isMobile ? mobileSidebarTab : undefined}
+        />
       </div>
     </div>
   );

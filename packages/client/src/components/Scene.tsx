@@ -5,6 +5,7 @@ import { Machine } from './Machine';
 
 interface SceneProps {
   state: TeamState;
+  className?: string;
 }
 
 // Layout positions for agent workstations (team mode — classic roles)
@@ -383,7 +384,7 @@ function AgentDetail({ agent, x, y, onClose, tasks }: { agent: AgentState; x: nu
   );
 }
 
-export function Scene({ state }: SceneProps) {
+export function Scene({ state, className }: SceneProps) {
   const mainAgents = state.agents.filter((a) => !a.isSubagent);
   const subagents = state.agents.filter((a) => a.isSubagent);
   // Solo mode: one main agent, possibly with subagents
@@ -395,7 +396,7 @@ export function Scene({ state }: SceneProps) {
 
   if (!state.name && state.agents.length === 0) {
     return (
-      <div className="scene-container no-team">
+      <div className={`scene-container no-team${className ? ` ${className}` : ''}`}>
         <h2>The Workshop in the Woods</h2>
         <p>Waiting for a session to start...<br />
         Launch Claude Code to begin.</p>
@@ -404,7 +405,7 @@ export function Scene({ state }: SceneProps) {
   }
 
   return (
-    <div className="scene-container">
+    <div className={`scene-container${className ? ` ${className}` : ''}`}>
       <svg
         viewBox="0 0 900 600"
         width="100%"
