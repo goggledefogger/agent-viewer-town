@@ -375,7 +375,77 @@ export class StateManager {
     this.broadcastSessionsList();
   }
 
-  getSessionsList(): SessionListEntry[] {
+  /**
+   * Build a TeamState snapshot for a specific session without mutating global state.
+   * Used by per-client WebSocket handlers to send each client their own view.
+   */
+  getStateForSession(sessionId: string): TeamState {
+    const session = this.sessions.get(sessionId);
+    if (!session) return this.state;
+
+    if (!session.isTeam) {
+      const soloAgent = this.allAgents.get(sessionId);
+      const subagents = [...this.allAgents.values()].filter(
+        (a) => a.isSubagent && a.parentAgentId === sessionId
+      );
+      return {
+        name: session.projectName,
+        agents: soloAgent ? [soloAgent, ...subagents] : [...subagents],
+        tasks: [],
+        messages: this.state.messages,
+        session,
+      };
+    } else {
+      const soloSessionIds = new Set(
+        [...this.sessions.values()]
+          .filter((s) => !s.isTeam)
+          .map((s) => s.sessionId)
+      );
+      return {
+        name: session.teamName || session.projectName,
+        agents: [...this.allAgents.values()].filter(
+          (a) => !soloSessionIds.has(a.id)
+        ),
+        tasks: this.state.tasks,
+        messages: this.state.messages,
+        session,
+      };
+    }
+  }
+
+  /**
+   * Check if an agent belongs to a given session.
+   * Used by per-client WebSocket handlers to filter granular updates.
+   */
+  agentBelongsToSession(agentId: string, sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+
+    if (!session.isTeam) {
+      if (agentId === sessionId) return true;
+      const agent = this.allAgents.get(agentId);
+      return !!(agent?.isSubagent && agent.parentAgentId === sessionId);
+    } else {
+      const soloSessionIds = new Set(
+        [...this.sessions.values()]
+          .filter((s) => !s.isTeam)
+          .map((s) => s.sessionId)
+      );
+      return !soloSessionIds.has(agentId);
+    }
+  }
+
+  /** Get the default (most recently auto-selected) session ID */
+  getDefaultSessionId(): string | undefined {
+    return this.state.session?.sessionId;
+  }
+
+  /**
+   * Get the sessions list, optionally marking a specific session as active.
+   * Supports per-client session selection.
+   */
+  getSessionsList(activeSessionId?: string): SessionListEntry[] {
+    const effectiveActiveId = activeSessionId ?? this.state.session?.sessionId;
     const entries: SessionListEntry[] = [];
     for (const session of this.sessions.values()) {
       entries.push({
@@ -387,7 +457,7 @@ export class StateManager {
           ? this.state.agents.filter((a) => this.state.name === session.teamName).length
           : 1,
         lastActivity: session.lastActivity,
-        active: this.state.session?.sessionId === session.sessionId,
+        active: effectiveActiveId === session.sessionId,
       });
     }
     // Most recently active first
