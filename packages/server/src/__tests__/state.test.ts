@@ -411,4 +411,756 @@ describe('StateManager', () => {
       expect(list).toHaveLength(3);
     });
   });
+
+  describe('pushRecentAction via updateAgentActivity (name-based)', () => {
+    it('accumulates recent actions through name-based updateAgentActivity', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentActivity('agent-a', 'working', 'Reading file.ts');
+      sm.updateAgentActivity('agent-a', 'working', 'Editing file.ts');
+      sm.updateAgentActivity('agent-a', 'working', 'Running tests');
+
+      const agent = sm.getAgentById('s1');
+      expect(agent?.recentActions).toHaveLength(3);
+      expect(agent?.recentActions?.[0].action).toBe('Reading file.ts');
+      expect(agent?.recentActions?.[2].action).toBe('Running tests');
+    });
+
+    it('does not push to recentActions when status is idle', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentActivity('agent-a', 'idle', 'Some action');
+      const agent = sm.getAgentById('s1');
+      expect(agent?.recentActions).toBeUndefined();
+    });
+
+    it('does not push to recentActions when action is undefined', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentActivity('agent-a', 'working');
+      const agent = sm.getAgentById('s1');
+      expect(agent?.recentActions).toBeUndefined();
+    });
+
+    it('ring buffer caps at 5 through name-based updateAgentActivity', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      for (let i = 0; i < 8; i++) {
+        sm.updateAgentActivity('agent-a', 'working', `Action ${i}`);
+      }
+      const agent = sm.getAgentById('s1');
+      expect(agent?.recentActions).toHaveLength(5);
+      expect(agent?.recentActions?.[0].action).toBe('Action 3');
+      expect(agent?.recentActions?.[4].action).toBe('Action 7');
+    });
+  });
+
+  describe('setAgentCurrentTask', () => {
+    it('sets currentTaskId on an agent', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.setAgentCurrentTask('s1', '42');
+      const agent = sm.getAgentById('s1');
+      expect(agent?.currentTaskId).toBe('42');
+    });
+
+    it('clears currentTaskId when set to undefined', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a', { currentTaskId: '42' }));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.setAgentCurrentTask('s1', undefined);
+      const agent = sm.getAgentById('s1');
+      expect(agent?.currentTaskId).toBeUndefined();
+    });
+
+    it('broadcasts agent_update when agent is displayed', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+      messages = [];
+
+      sm.setAgentCurrentTask('s1', '99');
+      const updates = messages.filter((m) => m.type === 'agent_update');
+      expect(updates).toHaveLength(1);
+    });
+
+    it('does nothing for unknown agent ID', () => {
+      sm.setAgentCurrentTask('nonexistent', '42');
+      // Should not throw
+      expect(sm.getAgentById('nonexistent')).toBeUndefined();
+    });
+
+    it('updates displayed agent currentTaskId', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.setAgentCurrentTask('s1', '55');
+      const state = sm.getState();
+      expect(state.agents[0].currentTaskId).toBe('55');
+    });
+  });
+
+  describe('setAgents preserves fields', () => {
+    it('preserves tasksCompleted from existing agents', () => {
+      sm.registerAgent(makeAgent('a1', 'coder', { tasksCompleted: 5, status: 'working' }));
+
+      sm.setAgents([makeAgent('a1', 'coder', { tasksCompleted: 0 })]);
+      const state = sm.getState();
+      expect(state.agents[0].tasksCompleted).toBe(5);
+    });
+
+    it('preserves status from existing agents', () => {
+      sm.registerAgent(makeAgent('a1', 'coder', { status: 'working' }));
+
+      sm.setAgents([makeAgent('a1', 'coder', { status: 'idle' })]);
+      expect(sm.getState().agents[0].status).toBe('working');
+    });
+
+    it('preserves currentAction and actionContext from existing agents', () => {
+      sm.registerAgent(makeAgent('a1', 'coder', {
+        currentAction: 'Reading file.ts',
+        actionContext: 'src/components',
+      }));
+
+      sm.setAgents([makeAgent('a1', 'coder')]);
+      const agent = sm.getState().agents[0];
+      expect(agent.currentAction).toBe('Reading file.ts');
+      expect(agent.actionContext).toBe('src/components');
+    });
+
+    it('preserves currentTaskId and recentActions from existing agents', () => {
+      sm.registerAgent(makeAgent('a1', 'coder', {
+        currentTaskId: '7',
+        recentActions: [{ action: 'test', timestamp: 1000 }],
+      }));
+
+      sm.setAgents([makeAgent('a1', 'coder')]);
+      const agent = sm.getState().agents[0];
+      expect(agent.currentTaskId).toBe('7');
+      expect(agent.recentActions).toHaveLength(1);
+    });
+
+    it('does not preserve fields for new agents (not in registry)', () => {
+      sm.setAgents([makeAgent('new-1', 'new-coder')]);
+      const agent = sm.getState().agents[0];
+      expect(agent.tasksCompleted).toBe(0);
+      expect(agent.status).toBe('idle');
+      expect(agent.currentAction).toBeUndefined();
+    });
+  });
+
+  describe('updateAgent display logic', () => {
+    it('adds subagent to display when it belongs to active session', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      const subagent = makeAgent('sub-1', 'sub-worker', {
+        isSubagent: true,
+        parentAgentId: 's1',
+        status: 'working',
+      });
+      sm.registerAgent(subagent);
+      sm.updateAgent(subagent);
+
+      const state = sm.getState();
+      expect(state.agents).toHaveLength(2);
+      expect(state.agents[1].id).toBe('sub-1');
+    });
+
+    it('broadcasts agent_added for new subagent', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+      messages = [];
+
+      const subagent = makeAgent('sub-1', 'sub-worker', {
+        isSubagent: true,
+        parentAgentId: 's1',
+      });
+      sm.registerAgent(subagent);
+      sm.updateAgent(subagent);
+
+      const addedMsgs = messages.filter((m) => m.type === 'agent_added');
+      expect(addedMsgs).toHaveLength(1);
+    });
+
+    it('does not add subagent to display when parent is not active session', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.registerAgent(makeAgent('s2', 'agent-b'));
+      sm.addSession(makeSession('s1', 'project-a', { lastActivity: 1000 }));
+      sm.addSession(makeSession('s2', 'project-b', { lastActivity: 2000 }));
+      // s2 is active
+
+      const subagent = makeAgent('sub-1', 'sub-worker', {
+        isSubagent: true,
+        parentAgentId: 's1', // parent is s1, not active s2
+      });
+      sm.registerAgent(subagent);
+      sm.updateAgent(subagent);
+
+      const state = sm.getState();
+      // Only s2 agent should be displayed
+      expect(state.agents).toHaveLength(1);
+      expect(state.agents[0].id).toBe('s2');
+    });
+
+    it('broadcasts agent_update when updating an existing displayed agent', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+      messages = [];
+
+      sm.updateAgent(makeAgent('s1', 'agent-a', { status: 'working' }));
+      const updates = messages.filter((m) => m.type === 'agent_update');
+      expect(updates).toHaveLength(1);
+    });
+  });
+
+  describe('removeAgent', () => {
+    it('removes agent from registry and display', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.removeAgent('s1');
+
+      expect(sm.getAgentById('s1')).toBeUndefined();
+      expect(sm.getState().agents).toHaveLength(0);
+    });
+
+    it('broadcasts agent_removed', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+      messages = [];
+
+      sm.removeAgent('s1');
+
+      const removed = messages.filter((m) => m.type === 'agent_removed');
+      expect(removed).toHaveLength(1);
+      if (removed[0].type === 'agent_removed') {
+        expect(removed[0].data.id).toBe('s1');
+      }
+    });
+  });
+
+  describe('updateTask ownership reassignment', () => {
+    it('clears old agent status when task is reassigned', () => {
+      sm.setAgents([
+        makeAgent('a1', 'coder-a', { status: 'working' }),
+        makeAgent('a2', 'coder-b', { status: 'idle' }),
+      ]);
+
+      sm.updateTask({
+        id: 't1',
+        subject: 'Feature',
+        status: 'in_progress',
+        owner: 'coder-a',
+        blockedBy: [],
+        blocks: [],
+      });
+
+      // Reassign to coder-b
+      sm.updateTask({
+        id: 't1',
+        subject: 'Feature',
+        status: 'in_progress',
+        owner: 'coder-b',
+        blockedBy: [],
+        blocks: [],
+      });
+
+      const agentA = sm.getState().agents.find((a) => a.name === 'coder-a');
+      expect(agentA?.status).toBe('idle');
+      expect(agentA?.currentAction).toBeUndefined();
+    });
+
+    it('does not clear old agent if they have other in_progress tasks', () => {
+      sm.setAgents([
+        makeAgent('a1', 'coder-a', { status: 'working' }),
+        makeAgent('a2', 'coder-b', { status: 'idle' }),
+      ]);
+
+      sm.updateTask({
+        id: 't1',
+        subject: 'Feature 1',
+        status: 'in_progress',
+        owner: 'coder-a',
+        blockedBy: [],
+        blocks: [],
+      });
+      sm.updateTask({
+        id: 't2',
+        subject: 'Feature 2',
+        status: 'in_progress',
+        owner: 'coder-a',
+        blockedBy: [],
+        blocks: [],
+      });
+
+      // Reassign t1 to coder-b, but coder-a still has t2
+      sm.updateTask({
+        id: 't1',
+        subject: 'Feature 1',
+        status: 'in_progress',
+        owner: 'coder-b',
+        blockedBy: [],
+        blocks: [],
+      });
+
+      const agentA = sm.getState().agents.find((a) => a.name === 'coder-a');
+      expect(agentA?.status).toBe('working');
+    });
+  });
+
+  describe('removeTask', () => {
+    it('removes task from state', () => {
+      sm.updateTask({
+        id: 't1',
+        subject: 'Task',
+        status: 'pending',
+        owner: undefined,
+        blockedBy: [],
+        blocks: [],
+      });
+
+      sm.removeTask('t1');
+      expect(sm.getState().tasks.find((t) => t.id === 't1')).toBeUndefined();
+    });
+
+    it('broadcasts full_state after removal', () => {
+      sm.updateTask({
+        id: 't1',
+        subject: 'Task',
+        status: 'pending',
+        owner: undefined,
+        blockedBy: [],
+        blocks: [],
+      });
+      messages = [];
+
+      sm.removeTask('t1');
+      const fullStates = messages.filter((m) => m.type === 'full_state');
+      expect(fullStates).toHaveLength(1);
+    });
+  });
+
+  describe('addMessage deduplication', () => {
+    it('does not add duplicate messages with same id', () => {
+      sm.addMessage({
+        id: 'msg-1',
+        from: 'a',
+        to: 'b',
+        content: 'hello',
+        timestamp: Date.now(),
+      });
+      sm.addMessage({
+        id: 'msg-1',
+        from: 'a',
+        to: 'b',
+        content: 'hello again',
+        timestamp: Date.now(),
+      });
+
+      expect(sm.getState().messages).toHaveLength(1);
+      expect(sm.getState().messages[0].content).toBe('hello');
+    });
+
+    it('broadcasts new_message only once for duplicate', () => {
+      messages = [];
+      sm.addMessage({
+        id: 'msg-2',
+        from: 'a',
+        to: 'b',
+        content: 'test',
+        timestamp: Date.now(),
+      });
+      sm.addMessage({
+        id: 'msg-2',
+        from: 'a',
+        to: 'b',
+        content: 'test',
+        timestamp: Date.now(),
+      });
+
+      const newMsgEvents = messages.filter((m) => m.type === 'new_message');
+      expect(newMsgEvents).toHaveLength(1);
+    });
+  });
+
+  describe('subscribe and unsubscribe', () => {
+    it('unsubscribe stops receiving messages', () => {
+      const msgs: WSMessage[] = [];
+      const unsub = sm.subscribe((msg) => msgs.push(msg));
+
+      sm.setTeamName('test');
+      expect(msgs.length).toBeGreaterThan(0);
+
+      const countBefore = msgs.length;
+      unsub();
+      sm.setTeamName('test2');
+      expect(msgs.length).toBe(countBefore);
+    });
+
+    it('broadcast continues if one listener throws', () => {
+      const msgs: WSMessage[] = [];
+      sm.subscribe(() => {
+        throw new Error('bad listener');
+      });
+      sm.subscribe((msg) => msgs.push(msg));
+
+      sm.setTeamName('test');
+      // Second listener should still receive the message
+      expect(msgs.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('addSession auto-select logic', () => {
+    it('does NOT auto-select a session older than current', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.registerAgent(makeAgent('s2', 'agent-b'));
+
+      sm.addSession(makeSession('s1', 'project-a', { lastActivity: 3000 }));
+      sm.addSession(makeSession('s2', 'project-b', { lastActivity: 1000 })); // older
+
+      const state = sm.getState();
+      expect(state.session?.sessionId).toBe('s1'); // s1 should remain active
+    });
+
+    it('broadcasts session_started for each session added', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      const sessionStarted = messages.filter((m) => m.type === 'session_started');
+      expect(sessionStarted).toHaveLength(1);
+    });
+
+    it('broadcasts sessions_list when older session is added without switching', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.registerAgent(makeAgent('s2', 'agent-b'));
+
+      sm.addSession(makeSession('s1', 'project-a', { lastActivity: 3000 }));
+      messages = [];
+      sm.addSession(makeSession('s2', 'project-b', { lastActivity: 1000 }));
+
+      const sessionsLists = messages.filter((m) => m.type === 'sessions_list');
+      expect(sessionsLists.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('selectSession for team sessions', () => {
+    it('displays team agents excluding solo session agents', () => {
+      const teamSession = makeSession('team-1', 'project-x', {
+        isTeam: true,
+        teamName: 'alpha',
+        lastActivity: 5000,
+      });
+      const soloSession = makeSession('solo-1', 'project-y', { lastActivity: 1000 });
+
+      sm.registerAgent(makeAgent('solo-1', 'solo-agent'));
+      sm.registerAgent(makeAgent('agent-lead', 'lead', { role: 'lead' }));
+      sm.registerAgent(makeAgent('agent-coder', 'coder', { role: 'implementer' }));
+
+      sm.addSession(soloSession);
+      sm.addSession(teamSession);
+
+      // team session is active (higher lastActivity)
+      sm.selectSession('team-1');
+
+      const state = sm.getState();
+      expect(state.name).toBe('alpha');
+      // Solo session agent should be excluded
+      const agentIds = state.agents.map((a) => a.id);
+      expect(agentIds).not.toContain('solo-1');
+      expect(agentIds).toContain('agent-lead');
+      expect(agentIds).toContain('agent-coder');
+    });
+
+    it('sets name to teamName for team sessions', () => {
+      const teamSession = makeSession('team-1', 'project-x', {
+        isTeam: true,
+        teamName: 'builders',
+        lastActivity: 5000,
+      });
+      sm.addSession(teamSession);
+      sm.selectSession('team-1');
+      expect(sm.getState().name).toBe('builders');
+    });
+
+    it('falls back to projectName when teamName is empty', () => {
+      const teamSession = makeSession('team-1', 'project-x', {
+        isTeam: true,
+        lastActivity: 5000,
+      });
+      sm.addSession(teamSession);
+      sm.selectSession('team-1');
+      expect(sm.getState().name).toBe('project-x');
+    });
+  });
+
+  describe('selectSession includes subagents', () => {
+    it('shows subagents of the active solo session', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.registerAgent(makeAgent('sub-1', 'sub-worker', {
+        isSubagent: true,
+        parentAgentId: 's1',
+      }));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.selectSession('s1');
+      const state = sm.getState();
+      expect(state.agents).toHaveLength(2);
+      const ids = state.agents.map((a) => a.id);
+      expect(ids).toContain('s1');
+      expect(ids).toContain('sub-1');
+    });
+  });
+
+  describe('selectMostRecentSession', () => {
+    it('selects the session with highest lastActivity', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.registerAgent(makeAgent('s2', 'agent-b'));
+      sm.registerAgent(makeAgent('s3', 'agent-c'));
+
+      sm.addSession(makeSession('s1', 'project-a', { lastActivity: 1000 }));
+      sm.addSession(makeSession('s2', 'project-b', { lastActivity: 5000 }));
+      sm.addSession(makeSession('s3', 'project-c', { lastActivity: 3000 }));
+
+      // Manually switch to s1
+      sm.selectSession('s1');
+      expect(sm.getState().session?.sessionId).toBe('s1');
+
+      // selectMostRecentSession should switch to s2
+      sm.selectMostRecentSession();
+      expect(sm.getState().session?.sessionId).toBe('s2');
+    });
+
+    it('does nothing when there are no sessions', () => {
+      sm.selectMostRecentSession();
+      expect(sm.getState().session).toBeUndefined();
+    });
+  });
+
+  describe('clearTeamAgents', () => {
+    it('removes team agents but keeps solo session agents', () => {
+      const soloSession = makeSession('solo-1', 'project-a', { lastActivity: 1000 });
+      sm.registerAgent(makeAgent('solo-1', 'solo-agent'));
+      sm.registerAgent(makeAgent('team-agent-1', 'lead', { role: 'lead' }));
+      sm.registerAgent(makeAgent('team-agent-2', 'coder'));
+
+      sm.addSession(soloSession);
+      sm.setAgents([
+        makeAgent('solo-1', 'solo-agent'),
+        makeAgent('team-agent-1', 'lead', { role: 'lead' }),
+        makeAgent('team-agent-2', 'coder'),
+      ]);
+
+      sm.clearTeamAgents();
+
+      const state = sm.getState();
+      expect(state.agents).toHaveLength(1);
+      expect(state.agents[0].id).toBe('solo-1');
+      expect(state.name).toBe('');
+      expect(state.tasks).toEqual([]);
+    });
+
+    it('clears team name and tasks', () => {
+      const soloSession = makeSession('solo-1', 'project-a', { lastActivity: 1000 });
+      sm.addSession(soloSession);
+      sm.registerAgent(makeAgent('solo-1', 'solo-agent'));
+      sm.setTeamName('my-team');
+      sm.updateTask({
+        id: 't1',
+        subject: 'Task',
+        status: 'pending',
+        owner: undefined,
+        blockedBy: [],
+        blocks: [],
+      });
+
+      sm.clearTeamAgents();
+      expect(sm.getState().name).toBe('');
+      expect(sm.getState().tasks).toEqual([]);
+    });
+  });
+
+  describe('reconcileAgentStatuses', () => {
+    it('sets agents with in_progress tasks to working', () => {
+      sm.setAgents([
+        makeAgent('a1', 'coder', { status: 'idle' }),
+      ]);
+      sm.updateTask({
+        id: 't1',
+        subject: 'Feature',
+        status: 'in_progress',
+        owner: 'coder',
+        blockedBy: [],
+        blocks: [],
+      });
+
+      sm.reconcileAgentStatuses();
+      const agent = sm.getState().agents[0];
+      expect(agent.status).toBe('working');
+    });
+
+    it('sets agents without in_progress tasks to idle', () => {
+      sm.setAgents([
+        makeAgent('a1', 'coder', { status: 'working' }),
+      ]);
+      sm.updateTask({
+        id: 't1',
+        subject: 'Feature',
+        status: 'completed',
+        owner: 'coder',
+        blockedBy: [],
+        blocks: [],
+      });
+
+      sm.reconcileAgentStatuses();
+      const agent = sm.getState().agents[0];
+      expect(agent.status).toBe('idle');
+      expect(agent.currentAction).toBeUndefined();
+    });
+
+    it('does not change agent already in correct status', () => {
+      sm.setAgents([
+        makeAgent('a1', 'coder', { status: 'working' }),
+      ]);
+      sm.updateTask({
+        id: 't1',
+        subject: 'Feature',
+        status: 'in_progress',
+        owner: 'coder',
+        blockedBy: [],
+        blocks: [],
+      });
+      messages = [];
+
+      sm.reconcileAgentStatuses();
+      // Should not broadcast since status is already correct
+      const updates = messages.filter((m) => m.type === 'agent_update');
+      expect(updates).toHaveLength(0);
+    });
+  });
+
+  describe('removeSession', () => {
+    it('removes session and clears active session if it was active', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+      expect(sm.getState().session?.sessionId).toBe('s1');
+
+      sm.removeSession('s1');
+      expect(sm.getState().session).toBeUndefined();
+      expect(sm.getSessionsList()).toHaveLength(0);
+    });
+
+    it('broadcasts session_ended', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+      messages = [];
+
+      sm.removeSession('s1');
+      const ended = messages.filter((m) => m.type === 'session_ended');
+      expect(ended).toHaveLength(1);
+    });
+
+    it('does not clear active session when removing non-active session', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.registerAgent(makeAgent('s2', 'agent-b'));
+      sm.addSession(makeSession('s1', 'project-a', { lastActivity: 1000 }));
+      sm.addSession(makeSession('s2', 'project-b', { lastActivity: 2000 }));
+      // s2 is active
+
+      sm.removeSession('s1');
+      expect(sm.getState().session?.sessionId).toBe('s2');
+      expect(sm.getSessionsList()).toHaveLength(1);
+    });
+  });
+
+  describe('updateSessionActivity', () => {
+    it('updates session lastActivity timestamp', () => {
+      const session = makeSession('s1', 'project-a', { lastActivity: 1000 });
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(session);
+
+      sm.updateSessionActivity('s1');
+      const sessions = sm.getSessions();
+      expect(sessions.get('s1')!.lastActivity).toBeGreaterThan(1000);
+    });
+
+    it('does nothing for unknown session', () => {
+      // Should not throw
+      sm.updateSessionActivity('nonexistent');
+    });
+  });
+
+  describe('selectSession with unknown session', () => {
+    it('does nothing for unknown session ID', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      const stateBefore = sm.getState().session?.sessionId;
+      sm.selectSession('nonexistent');
+      expect(sm.getState().session?.sessionId).toBe(stateBefore);
+    });
+  });
+
+  describe('setAgentWaitingById with actionContext', () => {
+    it('sets actionContext when provided', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a', { status: 'working' }));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.setAgentWaitingById('s1', true, 'Editing file.ts', 'src/components');
+      const agent = sm.getAgentById('s1');
+      expect(agent?.waitingForInput).toBe(true);
+      expect(agent?.currentAction).toBe('Editing file.ts');
+      expect(agent?.actionContext).toBe('src/components');
+    });
+
+    it('propagates actionContext to displayed agent', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a', { status: 'working' }));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.setAgentWaitingById('s1', true, 'Reading config', 'etc/config');
+      const displayed = sm.getState().agents[0];
+      expect(displayed.actionContext).toBe('etc/config');
+    });
+  });
+
+  describe('updateAgentActivityById actionContext propagation', () => {
+    it('propagates actionContext to displayed agent', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentActivityById('s1', 'working', 'Editing file.ts', 'src/components');
+      const displayed = sm.getState().agents[0];
+      expect(displayed.actionContext).toBe('src/components');
+    });
+
+    it('clears waitingForInput when going done via ById', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a', { status: 'working', waitingForInput: true }));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentActivityById('s1', 'done');
+      const agent = sm.getAgentById('s1');
+      expect(agent?.waitingForInput).toBe(false);
+    });
+  });
+
+  describe('getSessionsList sorting', () => {
+    it('returns sessions sorted by lastActivity descending', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.registerAgent(makeAgent('s2', 'agent-b'));
+      sm.registerAgent(makeAgent('s3', 'agent-c'));
+
+      sm.addSession(makeSession('s1', 'project-a', { lastActivity: 2000 }));
+      sm.addSession(makeSession('s2', 'project-b', { lastActivity: 5000 }));
+      sm.addSession(makeSession('s3', 'project-c', { lastActivity: 1000 }));
+
+      const list = sm.getSessionsList();
+      expect(list[0].sessionId).toBe('s2');
+      expect(list[1].sessionId).toBe('s1');
+      expect(list[2].sessionId).toBe('s3');
+    });
+  });
 });
