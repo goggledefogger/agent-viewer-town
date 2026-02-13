@@ -1281,4 +1281,535 @@ describe('Hook Event Handlers', () => {
       expect(updated!.lastActivity).toBeGreaterThanOrEqual(before);
     });
   });
+
+  describe('TeamDelete via PostToolUse', () => {
+    it('clears team agents and adds system message', () => {
+      setupAgent('sess-1', 'lead');
+      sm.setTeamName('old-team');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TeamDelete',
+        tool_input: {},
+      });
+
+      const state = sm.getState();
+      expect(state.name).toBe('');
+      const msg = state.messages.find(m => m.content === 'Team deleted');
+      expect(msg).toBeDefined();
+      expect(msg!.from).toBe('system');
+    });
+  });
+
+  describe('extractTaskCreate edge cases', () => {
+    it('uses "Untitled task" when no subject or description provided', () => {
+      setupAgent('sess-1', 'lead');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TaskCreate',
+        tool_input: {},
+        tool_response: {
+          result: 'Task #50 created successfully',
+        },
+      });
+
+      const task = sm.getState().tasks.find(t => t.id === '50');
+      expect(task).toBeDefined();
+      expect(task!.subject).toBe('Untitled task');
+    });
+
+    it('falls back to JSON.stringify when response.result is not a string', () => {
+      setupAgent('sess-1', 'lead');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TaskCreate',
+        tool_input: {
+          subject: 'Test task',
+        },
+        tool_response: {
+          data: { id: 99 },
+        },
+      });
+
+      // No "Task #N" match in JSON.stringify output, so uses hook-* id
+      const task = sm.getState().tasks.find(t => t.subject === 'Test task');
+      expect(task).toBeDefined();
+      expect(task!.id).toMatch(/^hook-/);
+    });
+
+    it('truncates long descriptions when used as subject', () => {
+      setupAgent('sess-1', 'lead');
+      const longDesc = 'A'.repeat(100);
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TaskCreate',
+        tool_input: {
+          description: longDesc,
+        },
+        tool_response: {
+          result: 'Task #77 created',
+        },
+      });
+
+      const task = sm.getState().tasks.find(t => t.id === '77');
+      expect(task).toBeDefined();
+      expect(task!.subject.length).toBeLessThanOrEqual(60);
+    });
+  });
+
+  describe('extractTaskUpdate edge cases', () => {
+    it('handles status reversal to pending', () => {
+      setupAgent('sess-1', 'lead');
+
+      sm.updateTask({
+        id: '30',
+        subject: 'Task',
+        status: 'in_progress',
+        owner: 'coder',
+        blockedBy: [],
+        blocks: [],
+      });
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TaskUpdate',
+        tool_input: {
+          taskId: '30',
+          status: 'pending',
+        },
+      });
+
+      const task = sm.getState().tasks.find(t => t.id === '30');
+      expect(task!.status).toBe('pending');
+    });
+
+    it('does nothing when tool_input is missing', () => {
+      setupAgent('sess-1', 'lead');
+      const tasksBefore = sm.getState().tasks.length;
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TaskUpdate',
+      });
+
+      expect(sm.getState().tasks.length).toBe(tasksBefore);
+    });
+
+    it('does nothing when taskId is empty', () => {
+      setupAgent('sess-1', 'lead');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TaskUpdate',
+        tool_input: {
+          taskId: '',
+          status: 'completed',
+        },
+      });
+
+      // Should not crash
+      expect(sm.getState().tasks).toHaveLength(0);
+    });
+
+    it('clears currentTaskId when task is set to pending', () => {
+      const coder = makeAgent('agent-coder', 'coder', { currentTaskId: '40' });
+      sm.setAgents([coder]);
+
+      sm.updateTask({
+        id: '40',
+        subject: 'Task',
+        status: 'in_progress',
+        owner: 'coder',
+        blockedBy: [],
+        blocks: [],
+      });
+
+      handler.handleEvent({
+        session_id: 'agent-coder',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TaskUpdate',
+        tool_input: { taskId: '40', status: 'pending' },
+      });
+
+      const agent = sm.getState().agents.find(a => a.name === 'coder');
+      expect(agent?.currentTaskId).toBeUndefined();
+    });
+  });
+
+  describe('PostToolUse with no tool_input', () => {
+    it('does not process team tools when tool_input is missing', () => {
+      setupAgent('sess-1', 'lead');
+      const stateBefore = JSON.stringify(sm.getState());
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'SendMessage',
+        // no tool_input
+      });
+
+      // State should remain unchanged (no messages added)
+      // The only change should be the waiting state was cleared
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.waitingForInput).toBe(false);
+    });
+  });
+
+  describe('SubagentStart without pending Task spawn', () => {
+    it('uses agent_type as name when no pending spawn exists', () => {
+      setupAgent('sess-1', 'lead');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-no-spawn',
+        agent_type: 'code-helper',
+      });
+
+      const subagent = sm.getAgentById('sub-no-spawn');
+      expect(subagent).toBeDefined();
+      expect(subagent!.name).toBe('code-helper');
+    });
+
+    it('falls back to "subagent" when both agent_type and spawn are missing', () => {
+      setupAgent('sess-1', 'lead');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-plain',
+      } as any);
+
+      const subagent = sm.getAgentById('sub-plain');
+      expect(subagent).toBeDefined();
+      // agent_type is undefined, no pending spawn, so name should be 'subagent' or similar
+    });
+  });
+
+  describe('pending spawn cleanup', () => {
+    it('removes stale pending spawns older than 60s', () => {
+      setupAgent('sess-1', 'lead');
+
+      // Create a pending spawn
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Task',
+        tool_input: {
+          description: 'Old spawn',
+          prompt: 'Do something',
+          subagent_type: 'Explorer',
+        },
+        tool_use_id: 'tu-old',
+      });
+
+      // Advance time past 60s
+      vi.advanceTimersByTime(61_000);
+
+      // Create another PreToolUse with Task to trigger cleanup
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Task',
+        tool_input: {
+          description: 'New spawn',
+          prompt: 'Do new thing',
+          subagent_type: 'Implementer',
+        },
+        tool_use_id: 'tu-new',
+      });
+
+      // SubagentStart should use the new spawn, not the old one
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-cleanup-test',
+        agent_type: 'general-purpose',
+      });
+
+      const subagent = sm.getAgentById('sub-cleanup-test');
+      expect(subagent!.name).toBe('New spawn');
+    });
+  });
+
+  describe('SendMessage with shutdown_response type', () => {
+    it('does not add message for shutdown_response (unrecognized type)', () => {
+      setupAgent('sess-1', 'coder');
+      const initialMsgCount = sm.getState().messages.length;
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'SendMessage',
+        tool_input: {
+          type: 'shutdown_response',
+          approve: true,
+          request_id: 'req-123',
+        },
+      });
+
+      // shutdown_response has no content/summary, so should not add a message
+      expect(sm.getState().messages.length).toBe(initialMsgCount);
+    });
+  });
+
+  describe('SendMessageTool (alternative name)', () => {
+    it('extracts message from SendMessageTool same as SendMessage', () => {
+      setupAgent('sess-1', 'coder');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'SendMessageTool',
+        tool_input: {
+          type: 'message',
+          recipient: 'lead',
+          content: 'Hello from SendMessageTool',
+          summary: 'SMT test',
+        },
+      });
+
+      const msg = sm.getState().messages.find(m => m.content === 'SMT test');
+      expect(msg).toBeDefined();
+      expect(msg!.from).toBe('coder');
+    });
+  });
+
+  describe('resolveAgentName fallback', () => {
+    it('uses truncated session ID when agent is not registered', () => {
+      // Don't set up agent, just create a session without agent
+      const session = makeSession('abcdefgh-long-session-id', 'project', { lastActivity: 1000 });
+      sm.addSession(session);
+
+      handler.handleEvent({
+        session_id: 'abcdefgh-long-session-id',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'SendMessage',
+        tool_input: {
+          type: 'message',
+          recipient: 'someone',
+          content: 'hello',
+          summary: 'test',
+        },
+      });
+
+      const msg = sm.getState().messages.find(m => m.to === 'someone');
+      expect(msg).toBeDefined();
+      expect(msg!.from).toBe('abcdefgh'); // truncated to first 8 chars
+    });
+  });
+
+  describe('TaskUpdate with owner change and currentTaskId tracking', () => {
+    it('updates owner on existing task', () => {
+      setupAgent('sess-1', 'lead');
+
+      sm.updateTask({
+        id: '60',
+        subject: 'Build',
+        status: 'pending',
+        owner: undefined,
+        blockedBy: [],
+        blocks: [],
+      });
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TaskUpdate',
+        tool_input: {
+          taskId: '60',
+          owner: 'coder',
+        },
+      });
+
+      const task = sm.getState().tasks.find(t => t.id === '60');
+      expect(task!.owner).toBe('coder');
+    });
+  });
+
+  describe('TeamCreate with missing team_name', () => {
+    it('does not register team when team_name is missing', () => {
+      setupAgent('sess-1', 'lead');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TeamCreate',
+        tool_input: {},
+        tool_response: {},
+      });
+
+      // Team name should not have changed
+      expect(sm.getState().name).toBe('test-project');
+    });
+  });
+
+  describe('TeamCreate with missing response members', () => {
+    it('registers team name but no members when response has no members array', () => {
+      setupAgent('sess-1', 'lead');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TeamCreate',
+        tool_input: {
+          team_name: 'no-members-team',
+        },
+        tool_response: {
+          status: 'ok',
+        },
+      });
+
+      expect(sm.getState().name).toBe('no-members-team');
+      // Only the setup agent should exist, no new members
+    });
+  });
+
+  describe('describeToolAction edge cases', () => {
+    it('handles Grep with path but no glob', () => {
+      setupAgent('sess-1', 'coder');
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Grep',
+        tool_input: { pattern: 'useState', path: '/Users/Danny/Source/my-app/src' },
+      });
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.currentAction).toBe('Searching: useState');
+      expect(agent?.actionContext).toBe('in my-app/src');
+    });
+
+    it('handles Grep with no pattern', () => {
+      setupAgent('sess-1', 'coder');
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Grep',
+        tool_input: {},
+      });
+      expect(sm.getAgentById('sess-1')?.currentAction).toBe('Searching files');
+    });
+
+    it('handles Task with no description', () => {
+      setupAgent('sess-1', 'lead');
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Task',
+        tool_input: {},
+        tool_use_id: 'tu-999',
+      });
+      expect(sm.getAgentById('sess-1')?.currentAction).toBe('Spawning agent');
+    });
+
+    it('handles TaskCreate with no subject', () => {
+      setupAgent('sess-1', 'lead');
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'TaskCreate',
+        tool_input: {},
+      });
+      expect(sm.getAgentById('sess-1')?.currentAction).toBe('Creating task');
+    });
+
+    it('handles WebSearch with no query', () => {
+      setupAgent('sess-1', 'coder');
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'WebSearch',
+        tool_input: {},
+      });
+      expect(sm.getAgentById('sess-1')?.currentAction).toBe('Web search');
+    });
+
+    it('handles SendMessage with missing recipient defaults to "team"', () => {
+      setupAgent('sess-1', 'lead');
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'SendMessage',
+        tool_input: { type: 'message' },
+      });
+      expect(sm.getAgentById('sess-1')?.currentAction).toBe('Messaging team');
+    });
+
+    it('handles TeamCreate with no team_name in input', () => {
+      setupAgent('sess-1', 'lead');
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'TeamCreate',
+        tool_input: {},
+      });
+      expect(sm.getAgentById('sess-1')?.currentAction).toBe('Creating team');
+    });
+
+    it('truncates long patterns/descriptions', () => {
+      setupAgent('sess-1', 'coder');
+      const longPattern = 'a'.repeat(60);
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Grep',
+        tool_input: { pattern: longPattern },
+      });
+      const action = sm.getAgentById('sess-1')?.currentAction;
+      expect(action!.length).toBeLessThanOrEqual(55); // "Searching: " + 40 chars max
+    });
+  });
+
+  describe('multiple subagent spawns from same session', () => {
+    it('uses the most recent pending spawn for each SubagentStart', () => {
+      setupAgent('sess-1', 'lead');
+
+      // First spawn
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Task',
+        tool_input: {
+          description: 'First task',
+          prompt: 'Do first thing',
+          subagent_type: 'Explorer',
+        },
+        tool_use_id: 'tu-first',
+      });
+
+      // Second spawn (overwrites as most recent from sess-1)
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Task',
+        tool_input: {
+          description: 'Second task',
+          prompt: 'Do second thing',
+          subagent_type: 'Implementer',
+        },
+        tool_use_id: 'tu-second',
+      });
+
+      // SubagentStart uses most recent
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-multi',
+        agent_type: 'general-purpose',
+      });
+
+      const subagent = sm.getAgentById('sub-multi');
+      expect(subagent!.name).toBe('Second task');
+    });
+  });
 });

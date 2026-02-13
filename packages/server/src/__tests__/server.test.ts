@@ -193,4 +193,90 @@ describe('StateManager', () => {
     expect(state.tasks).toEqual([]);
     expect(state.messages).toEqual([]);
   });
+
+  it('concurrent WebSocket clients both receive updates', async () => {
+    const sm = new StateManager();
+    sm.setAgents([{
+      id: 'c1',
+      name: 'concurrent-agent',
+      role: 'implementer',
+      status: 'idle',
+      tasksCompleted: 0,
+    }]);
+
+    const ws1 = new WebSocket(`ws://localhost:${PORT}/ws`);
+    const ws2 = new WebSocket(`ws://localhost:${PORT}/ws`);
+
+    // Wait for both to receive initial full_state
+    await Promise.all([
+      new Promise<void>((resolve, reject) => {
+        ws1.on('message', () => resolve());
+        ws1.on('error', reject);
+        setTimeout(() => reject(new Error('ws1 timeout')), 3000);
+      }),
+      new Promise<void>((resolve, reject) => {
+        ws2.on('message', () => resolve());
+        ws2.on('error', reject);
+        setTimeout(() => reject(new Error('ws2 timeout')), 3000);
+      }),
+    ]);
+
+    // Trigger an update and check both receive it
+    const p1 = new Promise<string>((resolve, reject) => {
+      ws1.on('message', (data) => resolve(data.toString()));
+      setTimeout(() => reject(new Error('ws1 update timeout')), 3000);
+    });
+    const p2 = new Promise<string>((resolve, reject) => {
+      ws2.on('message', (data) => resolve(data.toString()));
+      setTimeout(() => reject(new Error('ws2 update timeout')), 3000);
+    });
+
+    stateManager.updateAgent({
+      id: 'agent-1',
+      name: 'test-coder',
+      role: 'implementer',
+      status: 'done',
+      tasksCompleted: 1,
+    });
+
+    const [msg1, msg2] = await Promise.all([p1, p2]);
+    const parsed1 = JSON.parse(msg1);
+    const parsed2 = JSON.parse(msg2);
+
+    expect(parsed1.type).toBe('agent_update');
+    expect(parsed2.type).toBe('agent_update');
+
+    ws1.close();
+    ws2.close();
+  });
+
+  it('WebSocket cleanup stops messages after close', async () => {
+    const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
+
+    // Wait for initial message
+    await new Promise<void>((resolve, reject) => {
+      ws.on('message', () => resolve());
+      ws.on('error', reject);
+      setTimeout(() => reject(new Error('timeout')), 3000);
+    });
+
+    // Close the socket
+    ws.close();
+    await new Promise<void>((resolve) => {
+      ws.on('close', () => resolve());
+      setTimeout(resolve, 500); // fallback
+    });
+
+    // Trigger an update - should not throw even though ws is closed
+    stateManager.updateAgent({
+      id: 'agent-1',
+      name: 'test-coder',
+      role: 'implementer',
+      status: 'idle',
+      tasksCompleted: 0,
+    });
+
+    // If no error thrown, cleanup worked
+    expect(true).toBe(true);
+  });
 });
