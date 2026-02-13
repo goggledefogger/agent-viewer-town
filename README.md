@@ -1,17 +1,17 @@
-# Agent Viewer Town 🏭
+# Agent Viewer Town
 
-A real-time animated visualization for Claude Code agent teams. Watch your agents work together in a charming pixel-art workshop, inspired by The Incredible Machine.
-
-![Agent Viewer Town](docs/screenshot-placeholder.png)
+A real-time animated visualization for Claude Code sessions and agent teams. Watch your agents work in a pixel-art workshop, with live activity tracking via Claude Code hooks.
 
 ## Features
 
-- 🎨 **Pixel-art SVG characters** - Each agent role is a different animal (Beaver, Owl, Fox, Bear, Rabbit)
-- ⚙️ **Live animations** - Gears spinning, pipes flowing, steam puffs when agents work
-- 📊 **Real-time task board** - See task status, dependencies, and assignments update live
-- 💬 **Message stream** - Watch agents communicate in real-time
-- 🔄 **WebSocket sync** - Instant updates as agents work
-- 🎮 **Evolution system** - Agents visually "level up" as they complete more tasks
+- **Pixel-art SVG characters** - Each agent role is a different animal (Beaver, Owl, Fox, Bear, Rabbit)
+- **Live activity tracking** - See what each agent is doing in real-time (editing files, running commands, searching, etc.)
+- **Claude Code hooks integration** - First-class lifecycle events for instant, accurate state detection
+- **Session auto-detection** - Works with solo sessions and multi-agent teams
+- **Git branch visibility** - Branch badges with push/pull status indicators per agent
+- **Multi-tab support** - Each browser tab can watch a different session independently
+- **Responsive design** - Mobile-friendly with collapsible sidebar
+- **Evolution system** - Agents visually "level up" as they complete more tasks
 
 ## Quick Start
 
@@ -19,56 +19,48 @@ A real-time animated visualization for Claude Code agent teams. Watch your agent
 # Install dependencies
 npm install
 
+# Install Claude Code hooks (required for real-time activity detection)
+npm run hooks:install
+
 # Start both server and client
 npm run dev
 ```
 
 Then open **http://localhost:5173** in your browser.
 
-The viewer will automatically detect Claude Code teams and tasks in `~/.claude/`.
+The viewer will automatically detect active Claude Code sessions from `~/.claude/`.
 
 ## How It Works
 
-The server watches your `~/.claude/` directory for:
+### Two Detection Systems
+
+**1. Hooks (primary)** - Claude Code lifecycle hooks send HTTP events to the viewer server for instant, accurate state detection:
+- `PreToolUse`/`PostToolUse` - Real-time tool activity with rich descriptions
+- `PermissionRequest` - Definitive "needs your input" signal
+- `SubagentStart`/`SubagentStop` - Reliable subagent lifecycle
+- `Stop` - Agent finished responding
+- `PreCompact` - Context compaction in progress
+
+Install hooks with `npm run hooks:install` (adds to `~/.claude/settings.json`).
+
+**2. JSONL transcript parsing (fallback)** - Scans `~/.claude/projects/` for session transcripts. Provides session discovery and initial state on startup, and serves as a portable fallback for non-hook environments.
+
+### What Gets Watched
+
+- **Sessions**: `~/.claude/projects/{slug}/{sessionId}.jsonl`
 - **Teams**: `~/.claude/teams/{team-name}/config.json`
 - **Tasks**: `~/.claude/tasks/{team-name}/*.json`
-- **Transcripts**: `~/.claude/projects/{slug}/{sessionId}.jsonl` (for agent activity)
+- **Subagents**: `~/.claude/projects/{slug}/{sessionId}/subagents/*.jsonl`
 
-When you create a team using Claude Code's `TeamCreate` tool, the viewer picks it up and renders:
-- Animal characters at workstations (one per agent)
-- Pipes and conveyor belts connecting agents
-- Task cards in the sidebar
-- Animated data packets flowing when messages are sent
+### Git Status
 
-## Testing with Demo Data
+The branch badge on each agent shows:
+- Branch name with color coding (green for main, others hashed)
+- `!` when the branch has no upstream (not pushed)
+- `↑N` for unpushed commits, `↓N` for commits behind remote
+- Orange border when the working tree is dirty
 
-If you don't have an active Claude Code team, the repo includes a demo team:
-
-```bash
-# The demo team is already created at ~/.claude/teams/demo-team
-# Just start the dev server and visit http://localhost:5173
-npm run dev
-```
-
-You'll see 3 agents (team-lead, researcher, implementer) and 3 tasks.
-
-## Creating a Real Team
-
-In a separate terminal, start a Claude Code session:
-
-```bash
-cd ~/your-project
-claude
-```
-
-Then ask Claude to create a team:
-
-```
-Create a team called "my-test-team" with 2 agents (researcher and implementer).
-Create 3-4 tasks for them to work on.
-```
-
-The viewer will immediately show the new team, agents appearing at workstations, and tasks populating the sidebar.
+Click an agent to see the full detail popover with push/pull status.
 
 ## Architecture
 
@@ -76,40 +68,23 @@ The viewer will immediately show the new team, agents appearing at workstations,
 agent-viewer-town/
 ├── packages/
 │   ├── shared/          # TypeScript types shared between server & client
-│   ├── server/          # Express + WebSocket + Chokidar file watcher
+│   ├── server/          # Express + WebSocket + Chokidar file watcher + hooks handler
 │   └── client/          # Vite + React frontend with SVG animations
+├── hooks/               # Claude Code hook script + installer
 ```
 
-- **Server** (port 3001): Watches `~/.claude/` and broadcasts state via WebSocket
-- **Client** (port 5173): React app with animated SVG scene and sidebar
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for technical details.
-
-## Visual Design
-
-**Theme**: "The Workshop in the Woods" - A cozy woodland clearing where animal engineers operate an Incredible Machine-style contraption.
-
-**Agent Roles**:
-| Role | Animal | Workstation | Color |
-|------|--------|-------------|-------|
-| Lead | 🦫 Beaver | Control desk with levers | Gold |
-| Researcher | 🦉 Owl | Treehouse with telescope | Blue |
-| Implementer | 🦊 Fox | Workbench with tools | Red |
-| Tester | 🐻 Bear | Quality control anvil | Green |
-| Planner | 🐰 Rabbit | Blueprint drafting table | White |
-
-**Evolution Stages**:
-- **Stage 1** (0 tasks): Basic character
-- **Stage 2** (3+ tasks): Glowing outline + accessory
-- **Stage 3** (6+ tasks): Fully evolved with particle effects
-
-See [DESIGN.md](DESIGN.md) for the full visual system.
+- **Server** (port 3001): Watches `~/.claude/`, processes hook events, broadcasts state via WebSocket
+- **Client** (port 5173): React app with animated SVG scene, session picker, and sidebar
 
 ## Development
 
 ```bash
-# Run tests
-npm test
+# Run tests (312 tests)
+npx vitest run --config packages/server/vitest.config.ts
+
+# Type check
+npx tsc --noEmit -p packages/server/tsconfig.json
+npx tsc --noEmit -p packages/client/tsconfig.json
 
 # Build for production
 npm run build
@@ -121,17 +96,31 @@ npm run dev -w packages/server
 npm run dev -w packages/client
 ```
 
+## Visual Design
+
+**Theme**: "The Workshop in the Woods" - A cozy woodland clearing where animal engineers operate an Incredible Machine-style contraption.
+
+**Agent Roles**:
+| Role | Animal | Color |
+|------|--------|-------|
+| Lead | Beaver | Gold |
+| Researcher | Owl | Blue |
+| Implementer | Fox | Red |
+| Tester | Bear | Green |
+| Planner | Rabbit | White |
+
+**Evolution Stages**:
+- **Stage 1** (0 tasks): Basic character
+- **Stage 2** (3+ tasks): Glowing outline
+- **Stage 3** (6+ tasks): Fully evolved with particle effects
+
 ## Tech Stack
 
 - **Monorepo**: NPM workspaces
 - **Server**: Express 5 + ws (WebSocket) + Chokidar 4 (file watching)
 - **Client**: Vite 7 + React 19
 - **Graphics**: Inline SVG with CSS animations
-- **Testing**: Vitest (unit) + Playwright (E2E)
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+- **Testing**: Vitest
 
 ## Repository
 
@@ -144,4 +133,4 @@ MIT
 
 ---
 
-Built with Claude Code agent teams 🤖
+Built with Claude Code agent teams
