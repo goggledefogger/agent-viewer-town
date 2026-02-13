@@ -23,18 +23,18 @@ function computeTeamPositions(agents: AgentState[]): Map<string, { x: number; y:
   const mainAgents = agents.filter((a) => !a.isSubagent);
   const subagents = agents.filter((a) => a.isSubagent);
 
-  // Check if agents have unique roles or are all the same
+  // Check if agents have unique roles or if any roles are duplicated
   const roleSet = new Set(mainAgents.map((a) => a.role));
-  const allSameRole = roleSet.size <= 1 && mainAgents.length > 1;
+  const hasDuplicateRoles = mainAgents.length > roleSet.size;
 
-  if (allSameRole || mainAgents.length > 5) {
+  if (hasDuplicateRoles || mainAgents.length > 5) {
     // Dynamic grid layout: spread agents evenly
     const cols = Math.min(mainAgents.length, 4);
     const rows = Math.ceil(mainAgents.length / cols);
     const xPad = 120;
     const yPad = 100;
     const xSpan = 900 - xPad * 2;
-    const ySpan = 350;
+    const ySpan = 280;
     const yStart = 140;
 
     mainAgents.forEach((agent, i) => {
@@ -62,13 +62,21 @@ function computeTeamPositions(agents: AgentState[]): Map<string, { x: number; y:
 
   for (const [parentId, subs] of subsByParent) {
     const parentPos = positions.get(parentId) || { x: 450, y: 300 };
+    const scale = mainAgents.length > 3 ? 0.5 : 1;
     subs.forEach((sub, si) => {
-      const offset = SUBAGENT_OFFSETS[si % SUBAGENT_OFFSETS.length];
-      // Scale down offsets when there are many agents to avoid going off-screen
-      const scale = mainAgents.length > 3 ? 0.5 : 1;
+      let offset: { x: number; y: number };
+      if (subs.length <= SUBAGENT_OFFSETS.length) {
+        // Use predefined offsets for small counts
+        offset = SUBAGENT_OFFSETS[si];
+      } else {
+        // Circular layout for many subagents — evenly spaced around parent
+        const angle = (si / subs.length) * Math.PI * 2 - Math.PI / 2;
+        const radius = 160;
+        offset = { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+      }
       positions.set(sub.id, {
         x: Math.max(60, Math.min(840, parentPos.x + offset.x * scale)),
-        y: Math.max(80, Math.min(520, parentPos.y + offset.y * scale)),
+        y: Math.max(80, Math.min(430, parentPos.y + offset.y * scale)),
       });
     });
   }
@@ -88,10 +96,23 @@ const SUBAGENT_OFFSETS = [
   { x: 0, y: -120 },
 ];
 
-function getStationPos(agent: AgentState, index: number, isSoloMode: boolean, subagentIndex: number) {
+function getSubagentOffset(index: number, total: number): { x: number; y: number } {
+  if (total <= SUBAGENT_OFFSETS.length) {
+    return SUBAGENT_OFFSETS[index];
+  }
+  // Circular layout for many subagents
+  const angle = (index / total) * Math.PI * 2 - Math.PI / 2;
+  const radius = 160;
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+}
+
+function getStationPos(agent: AgentState, index: number, isSoloMode: boolean, subagentIndex: number, totalSubagents: number) {
   if (agent.isSubagent && isSoloMode) {
-    const offset = SUBAGENT_OFFSETS[subagentIndex % SUBAGENT_OFFSETS.length];
-    return { x: SOLO_POSITION.x + offset.x, y: SOLO_POSITION.y + offset.y };
+    const offset = getSubagentOffset(subagentIndex, totalSubagents);
+    return {
+      x: Math.max(60, Math.min(840, SOLO_POSITION.x + offset.x)),
+      y: Math.max(80, Math.min(430, SOLO_POSITION.y + offset.y)),
+    };
   }
   if (isSoloMode) return SOLO_POSITION;
   return STATION_POSITIONS[agent.role] || { x: 200 + index * 180, y: 250 };
@@ -286,9 +307,9 @@ function AgentDetail({ agent, x, y, onClose, tasks }: { agent: AgentState; x: nu
   const totalHeight = headerHeight + bodyHeight + 8;
   const boxWidth = 260;
 
-  // Position: above the agent, clamped to viewport
+  // Position: above the agent, clamped to viewport (arrow tip adds ~6px below popY)
   const popX = Math.max(boxWidth / 2 + 5, Math.min(900 - boxWidth / 2 - 5, x));
-  const popY = Math.max(totalHeight + 10, y - 70);
+  const popY = Math.min(590, Math.max(totalHeight + 10, y - 70));
 
   let cursorY = headerHeight + 12;
 
@@ -453,7 +474,7 @@ export function Scene({ state }: SceneProps) {
           const parentId = sub.parentAgentId || '';
           const parentPos = teamPositions?.get(parentId) || SOLO_POSITION;
           const subPos = teamPositions?.get(sub.id)
-            || (() => { const o = SUBAGENT_OFFSETS[si % SUBAGENT_OFFSETS.length]; return { x: SOLO_POSITION.x + o.x, y: SOLO_POSITION.y + o.y }; })();
+            || (() => { const o = getSubagentOffset(si, subagents.length); return { x: SOLO_POSITION.x + o.x, y: SOLO_POSITION.y + o.y }; })();
           const mx = (parentPos.x + subPos.x) / 2;
           const my = (parentPos.y + subPos.y) / 2 - 20;
           const d = `M ${parentPos.x} ${parentPos.y} Q ${mx} ${my} ${subPos.x} ${subPos.y}`;
@@ -491,7 +512,7 @@ export function Scene({ state }: SceneProps) {
         {/* Agent characters at their stations */}
         {state.agents.map((agent, i) => {
           const subIdx = agent.isSubagent ? subagents.indexOf(agent) : 0;
-          const pos = teamPositions?.get(agent.id) || getStationPos(agent, i, isSoloMode, subIdx);
+          const pos = teamPositions?.get(agent.id) || getStationPos(agent, i, isSoloMode, subIdx, subagents.length);
           // For subagents: translate to position, scale down, translate back.
           // This ensures scaling happens around the agent's center, not SVG origin.
           const subScale = agent.isSubagent
@@ -516,7 +537,7 @@ export function Scene({ state }: SceneProps) {
           const agent = state.agents.find((a) => a.id === selectedAgentId);
           if (!agent) return null;
           const subIdx = agent.isSubagent ? subagents.indexOf(agent) : 0;
-          const pos = teamPositions?.get(agent.id) || getStationPos(agent, state.agents.indexOf(agent), isSoloMode, subIdx);
+          const pos = teamPositions?.get(agent.id) || getStationPos(agent, state.agents.indexOf(agent), isSoloMode, subIdx, subagents.length);
           return <AgentDetail agent={agent} x={pos.x} y={pos.y} onClose={() => setSelectedAgentId(null)} tasks={state.tasks} />;
         })()}
       </svg>
