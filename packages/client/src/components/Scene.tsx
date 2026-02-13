@@ -107,16 +107,29 @@ function getSubagentOffset(index: number, total: number): { x: number; y: number
   return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
 }
 
-function getStationPos(agent: AgentState, index: number, isSoloMode: boolean, subagentIndex: number, totalSubagents: number) {
-  if (agent.isSubagent && isSoloMode) {
-    const offset = getSubagentOffset(subagentIndex, totalSubagents);
-    return {
-      x: Math.max(60, Math.min(840, SOLO_POSITION.x + offset.x)),
-      y: Math.max(80, Math.min(430, SOLO_POSITION.y + offset.y)),
-    };
+/** Compute positions for all agents in any mode (solo or team) */
+function computeAllPositions(agents: AgentState[]): Map<string, { x: number; y: number }> {
+  const mainAgents = agents.filter((a) => !a.isSubagent);
+  const subagents = agents.filter((a) => a.isSubagent);
+
+  if (mainAgents.length <= 1) {
+    // Solo mode: main agent centered, subagents fanned around it
+    const positions = new Map<string, { x: number; y: number }>();
+    if (mainAgents.length > 0) {
+      positions.set(mainAgents[0].id, SOLO_POSITION);
+    }
+    subagents.forEach((sub, si) => {
+      const offset = getSubagentOffset(si, subagents.length);
+      positions.set(sub.id, {
+        x: Math.max(60, Math.min(840, SOLO_POSITION.x + offset.x)),
+        y: Math.max(80, Math.min(430, SOLO_POSITION.y + offset.y)),
+      });
+    });
+    return positions;
   }
-  if (isSoloMode) return SOLO_POSITION;
-  return STATION_POSITIONS[agent.role] || { x: 200 + index * 180, y: 250 };
+
+  // Team mode: classic roles or dynamic grid with subagent placement
+  return computeTeamPositions(agents);
 }
 
 /** Prominent alert bubble when agent needs user input */
@@ -412,8 +425,8 @@ export function Scene({ state, className }: SceneProps) {
   const isSoloMode = mainAgents.length <= 1;
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
-  // Precompute positions for all agents (handles overlapping roles in team mode)
-  const teamPositions = !isSoloMode ? computeTeamPositions(state.agents) : null;
+  // Precompute positions for all agents (solo + team modes)
+  const allPositions = computeAllPositions(state.agents);
 
   if (!state.name && state.agents.length === 0) {
     return (
@@ -468,14 +481,13 @@ export function Scene({ state, className }: SceneProps) {
         ))}
 
         {/* Machine connections between agents (team mode) */}
-        {!isSoloMode && state.agents.length > 1 && <Machine agents={state.agents} messages={state.messages} />}
+        {!isSoloMode && state.agents.length > 1 && <Machine agents={state.agents} messages={state.messages} positions={allPositions} />}
 
         {/* Subagent tether lines — energy connections from parent to subagents */}
         {subagents.length > 0 && subagents.map((sub, si) => {
           const parentId = sub.parentAgentId || '';
-          const parentPos = teamPositions?.get(parentId) || SOLO_POSITION;
-          const subPos = teamPositions?.get(sub.id)
-            || (() => { const o = getSubagentOffset(si, subagents.length); return { x: SOLO_POSITION.x + o.x, y: SOLO_POSITION.y + o.y }; })();
+          const parentPos = allPositions.get(parentId) || SOLO_POSITION;
+          const subPos = allPositions.get(sub.id) || SOLO_POSITION;
           const mx = (parentPos.x + subPos.x) / 2;
           const my = (parentPos.y + subPos.y) / 2 - 20;
           const d = `M ${parentPos.x} ${parentPos.y} Q ${mx} ${my} ${subPos.x} ${subPos.y}`;
@@ -512,8 +524,7 @@ export function Scene({ state, className }: SceneProps) {
 
         {/* Agent characters at their stations */}
         {state.agents.map((agent, i) => {
-          const subIdx = agent.isSubagent ? subagents.indexOf(agent) : 0;
-          const pos = teamPositions?.get(agent.id) || getStationPos(agent, i, isSoloMode, subIdx, subagents.length);
+          const pos = allPositions.get(agent.id) || { x: 450, y: 300 };
           // For subagents: translate to position, scale down, translate back.
           // This ensures scaling happens around the agent's center, not SVG origin.
           const subScale = agent.isSubagent
@@ -537,8 +548,7 @@ export function Scene({ state, className }: SceneProps) {
         {selectedAgentId && (() => {
           const agent = state.agents.find((a) => a.id === selectedAgentId);
           if (!agent) return null;
-          const subIdx = agent.isSubagent ? subagents.indexOf(agent) : 0;
-          const pos = teamPositions?.get(agent.id) || getStationPos(agent, state.agents.indexOf(agent), isSoloMode, subIdx, subagents.length);
+          const pos = allPositions.get(agent.id) || { x: 450, y: 300 };
           return <AgentDetail agent={agent} x={pos.x} y={pos.y} onClose={() => setSelectedAgentId(null)} tasks={state.tasks} />;
         })()}
       </svg>
