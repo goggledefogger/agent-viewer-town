@@ -15,6 +15,7 @@ import {
   parseSessionMetadata,
   readNewLines,
   cleanProjectName,
+  detectGitWorktree,
 } from './parser';
 
 const CLAUDE_DIR = join(homedir(), '.claude');
@@ -445,22 +446,16 @@ export function startWatcher(stateManager: StateManager) {
       }
     }
 
-    // Always read the real git branch from the working directory when possible.
+    // Always read the real git branch and worktree info from the working directory.
     // JSONL metadata may be stale (branch changed after session started) or
     // missing entirely (compacted/continued sessions lose gitBranch metadata).
-    // A git repo can only be on one branch at a time, so this is always accurate.
     if (meta.projectPath) {
-      try {
-        const { stdout } = await execFileAsync('git', ['branch', '--show-current'], {
-          cwd: meta.projectPath,
-          timeout: 3000,
-        });
-        const branch = stdout.trim();
-        if (branch) {
-          meta.gitBranch = branch;
-        }
-      } catch {
-        // git not available or not a repo — keep whatever we had
+      const gitInfo = await detectGitWorktree(meta.projectPath, execFileAsync);
+      if (gitInfo.gitBranch) {
+        meta.gitBranch = gitInfo.gitBranch;
+      }
+      if (gitInfo.gitWorktree) {
+        meta.gitWorktree = gitInfo.gitWorktree;
       }
     }
 
@@ -502,6 +497,8 @@ export function startWatcher(stateManager: StateManager) {
           tasksCompleted: 0,
           currentAction: initialStatus === 'working' ? initialAction : undefined,
           waitingForInput: initialStatus === 'working' ? initialWaiting : false,
+          gitBranch: meta.gitBranch,
+          gitWorktree: meta.gitWorktree,
         });
       }
 
@@ -691,6 +688,7 @@ export function startWatcher(stateManager: StateManager) {
   const stalenessInterval = setInterval(() => {
     const now = Date.now();
 
+    // --- Check JSONL-tracked sessions (solo sessions and subagents) ---
     for (const [, tracked] of trackedSessions) {
       if (!tracked.isSolo) continue;
 
@@ -725,6 +723,30 @@ export function startWatcher(stateManager: StateManager) {
         if (agent?.isSubagent && idleSeconds >= 300) {
           stateManager.removeAgent(tracked.sessionId);
           trackedSessions.delete(tracked.filePath);
+        }
+      }
+    }
+
+    // --- Check hook-tracked agents (team members without JSONL entries) ---
+    // Team agents created via hooks may not have trackedSessions entries.
+    // Use hook-updated session.lastActivity as the activity source.
+    const checkedIds = new Set([...trackedSessions.values()].map(t => t.sessionId));
+    for (const session of stateManager.getSessions().values()) {
+      // Skip sessions already covered by JSONL tracking above
+      if (checkedIds.has(session.sessionId)) continue;
+
+      const idleSeconds = (now - session.lastActivity) / 1000;
+      if (idleSeconds < IDLE_THRESHOLD_S) continue;
+
+      // Mark all working agents for this session as idle
+      const state = stateManager.getState();
+      for (const agent of state.agents) {
+        if (agent.status !== 'working') continue;
+
+        // Check if this agent belongs to this session (team member or the session agent itself)
+        if (agent.id === session.sessionId || agent.teamName === session.teamName) {
+          stateManager.setAgentWaitingById(agent.id, false);
+          stateManager.updateAgentActivityById(agent.id, 'idle');
         }
       }
     }

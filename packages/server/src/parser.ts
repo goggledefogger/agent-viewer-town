@@ -474,6 +474,45 @@ export async function readFirstLine(filePath: string): Promise<string | null> {
   }
 }
 
+/**
+ * Detect if a directory is inside a git worktree.
+ * Returns { gitBranch, gitWorktree } if it is, or null values if not.
+ */
+export async function detectGitWorktree(
+  cwd: string,
+  execFileAsync: (cmd: string, args: string[], opts: { cwd: string; timeout: number }) => Promise<{ stdout: string }>
+): Promise<{ gitBranch?: string; gitWorktree?: string }> {
+  try {
+    // Get the current branch
+    const { stdout: branchOut } = await execFileAsync('git', ['branch', '--show-current'], {
+      cwd, timeout: 3000,
+    });
+    const gitBranch = branchOut.trim() || undefined;
+
+    // Check if this is a worktree (git rev-parse --git-common-dir differs from --git-dir)
+    const [{ stdout: gitDirOut }, { stdout: commonDirOut }] = await Promise.all([
+      execFileAsync('git', ['rev-parse', '--git-dir'], { cwd, timeout: 3000 }),
+      execFileAsync('git', ['rev-parse', '--git-common-dir'], { cwd, timeout: 3000 }),
+    ]);
+    const gitDir = gitDirOut.trim();
+    const commonDir = commonDirOut.trim();
+
+    // If git-dir !== git-common-dir, this is a worktree
+    let gitWorktree: string | undefined;
+    if (gitDir !== commonDir && gitDir !== '.git') {
+      // The cwd itself is the worktree root (or a subdirectory of it)
+      const { stdout: toplevelOut } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
+        cwd, timeout: 3000,
+      });
+      gitWorktree = toplevelOut.trim() || undefined;
+    }
+
+    return { gitBranch, gitWorktree };
+  } catch {
+    return {};
+  }
+}
+
 interface FileError extends Error {
   code: string;
 }

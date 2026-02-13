@@ -65,6 +65,9 @@ export class StateManager {
         agent.actionContext = prev.actionContext;
         agent.currentTaskId = prev.currentTaskId;
         agent.recentActions = prev.recentActions;
+        agent.gitBranch = prev.gitBranch;
+        agent.gitWorktree = prev.gitWorktree;
+        agent.teamName = prev.teamName;
       }
       this.allAgents.set(agent.id, agent);
     }
@@ -91,10 +94,11 @@ export class StateManager {
       this.broadcast({ type: 'agent_update', data: agent });
     } else {
       // Add to display if this agent belongs to the active session
-      // (either it IS the session agent, or it's a subagent of the active session)
-      const activeSessionId = this.state.session?.sessionId;
+      const activeSession = this.state.session;
+      const activeSessionId = activeSession?.sessionId;
       const shouldDisplay = activeSessionId === agent.id ||
-        (agent.isSubagent && agent.parentAgentId === activeSessionId);
+        (agent.isSubagent && agent.parentAgentId === activeSessionId) ||
+        (agent.teamName && activeSession?.isTeam && agent.teamName === activeSession.teamName);
       if (shouldDisplay) {
         this.state.agents.push(agent);
         this.broadcast({ type: 'agent_added', data: agent });
@@ -294,6 +298,28 @@ export class StateManager {
     agent.recentActions.push({ action, timestamp: Date.now() });
     if (agent.recentActions.length > 5) {
       agent.recentActions = agent.recentActions.slice(-5);
+    }
+  }
+
+  /** Update git branch/worktree info on an agent and its session */
+  updateAgentGitInfo(agentId: string, gitBranch?: string, gitWorktree?: string) {
+    const agent = this.allAgents.get(agentId);
+    if (agent) {
+      if (gitBranch !== undefined) agent.gitBranch = gitBranch;
+      if (gitWorktree !== undefined) agent.gitWorktree = gitWorktree;
+    }
+    // Also update the session info
+    const session = this.sessions.get(agentId);
+    if (session) {
+      if (gitBranch !== undefined) session.gitBranch = gitBranch;
+      if (gitWorktree !== undefined) session.gitWorktree = gitWorktree;
+    }
+    // Broadcast if the agent is displayed
+    const displayed = this.state.agents.find((a) => a.id === agentId);
+    if (displayed) {
+      if (gitBranch !== undefined) displayed.gitBranch = gitBranch;
+      if (gitWorktree !== undefined) displayed.gitWorktree = gitWorktree;
+      this.broadcast({ type: 'agent_update', data: displayed });
     }
   }
 

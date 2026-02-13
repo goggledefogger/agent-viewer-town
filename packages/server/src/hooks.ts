@@ -15,7 +15,11 @@
  */
 
 import { StateManager } from './state';
-import { inferRole } from './parser';
+import { inferRole, detectGitWorktree } from './parser';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 /** Common fields present in all hook events */
 interface HookEventBase {
@@ -230,6 +234,9 @@ function resolveAgentName(stateManager: StateManager, sessionId: string): string
  * and updates the StateManager.
  */
 export function createHookHandler(stateManager: StateManager) {
+  /** Track sessions whose git info has already been detected from cwd */
+  const gitInfoDetected = new Set<string>();
+
   /**
    * Track pending Task tool calls so we can associate SubagentStart
    * events with their description/prompt. Keyed by tool_use_id for
@@ -241,6 +248,8 @@ export function createHookHandler(stateManager: StateManager) {
     subagentType: string;
     sessionId: string;
     timestamp: number;
+    /** If present, this spawn is for a team member (not a subagent) */
+    teamName?: string;
   }>();
 
   /** Clean up old pending spawns (> 60s) */
@@ -262,6 +271,17 @@ export function createHookHandler(stateManager: StateManager) {
 
     // Update session activity timestamp
     stateManager.updateSessionActivity(sessionId);
+
+    // Detect git branch/worktree from cwd on first event for this session
+    if (event.cwd && !gitInfoDetected.has(sessionId)) {
+      gitInfoDetected.add(sessionId);
+      // Run async detection without blocking the event handler
+      detectGitWorktree(event.cwd, execFileAsync).then((gitInfo) => {
+        if (gitInfo.gitBranch || gitInfo.gitWorktree) {
+          stateManager.updateAgentGitInfo(sessionId, gitInfo.gitBranch, gitInfo.gitWorktree);
+        }
+      }).catch(() => { /* ignore */ });
+    }
 
     switch (event.hook_event_name) {
       case 'PreToolUse':
@@ -316,6 +336,8 @@ export function createHookHandler(stateManager: StateManager) {
     // Track Task tool spawns for subagent correlation
     if (event.tool_name === 'Task' && event.tool_use_id && event.tool_input) {
       cleanPendingSpawns();
+      const teamName = typeof event.tool_input.team_name === 'string'
+        ? event.tool_input.team_name : undefined;
       pendingTaskSpawns.set(event.tool_use_id, {
         description: typeof event.tool_input.description === 'string'
           ? event.tool_input.description : '',
@@ -325,6 +347,7 @@ export function createHookHandler(stateManager: StateManager) {
           ? event.tool_input.subagent_type : 'general-purpose',
         sessionId,
         timestamp: Date.now(),
+        teamName,
       });
     }
 
@@ -556,6 +579,7 @@ export function createHookHandler(stateManager: StateManager) {
     // Try to find the description from a pending Task spawn
     let name = event.agent_type || 'subagent';
     let role: 'implementer' | 'researcher' | 'planner' = 'implementer';
+    let teamName: string | undefined;
 
     // Find the oldest pending spawn from this session (FIFO order) and consume it.
     // This correctly handles simultaneous subagent spawns: each SubagentStart
@@ -572,38 +596,51 @@ export function createHookHandler(stateManager: StateManager) {
       const bestMatch = pendingTaskSpawns.get(bestKey)!;
       name = bestMatch.description || bestMatch.prompt || name;
       role = inferRole(bestMatch.subagentType, name) as typeof role;
+      teamName = bestMatch.teamName;
       // Consume this spawn entry so the next SubagentStart gets a different one
       pendingTaskSpawns.delete(bestKey);
     }
 
-    // Register and display the subagent
-    const subagent = {
+    // If the spawn had a team_name, this is a team member — not a subagent.
+    // Team members are top-level agents that participate in the team workflow.
+    const isTeamMember = !!teamName;
+
+    // Register and display the agent
+    const agent = {
       id: agentId,
       name,
       role,
       status: 'working' as const,
       tasksCompleted: 0,
-      isSubagent: true,
-      parentAgentId: sessionId,
+      isSubagent: !isTeamMember,
+      parentAgentId: isTeamMember ? undefined : sessionId,
+      teamName,
     };
-    stateManager.registerAgent(subagent);
-    stateManager.updateAgent(subagent);
+    stateManager.registerAgent(agent);
+    stateManager.updateAgent(agent);
 
-    console.log(`[hooks] SubagentStart: ${agentId} parent=${sessionId.slice(0, 8)} name="${name}" type=${event.agent_type}`);
+    console.log(`[hooks] SubagentStart: ${agentId} parent=${sessionId.slice(0, 8)} name="${name}" type=${event.agent_type} team=${teamName || 'none'}`);
   }
 
   function handleSubagentStop(event: SubagentStopEvent, sessionId: string) {
     const agentId = event.agent_id;
     const agent = stateManager.getAgentById(agentId);
     if (agent) {
-      stateManager.updateAgentActivityById(agentId, 'done', 'Done');
+      // Team members transition to idle (they persist); subagents transition to done
+      if (agent.teamName) {
+        stateManager.updateAgentActivityById(agentId, 'idle');
+      } else {
+        stateManager.updateAgentActivityById(agentId, 'done', 'Done');
+      }
     }
     console.log(`[hooks] SubagentStop: ${agentId} parent=${sessionId.slice(0, 8)}`);
 
-    // Schedule removal after 2 minutes (let user see the "done" state)
-    setTimeout(() => {
-      stateManager.removeAgent(agentId);
-    }, 120_000);
+    // Only schedule removal for subagents (not team members)
+    if (!agent?.teamName) {
+      setTimeout(() => {
+        stateManager.removeAgent(agentId);
+      }, 120_000);
+    }
   }
 
   function handlePreCompact(sessionId: string) {
