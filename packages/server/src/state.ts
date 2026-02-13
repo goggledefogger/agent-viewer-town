@@ -24,6 +24,12 @@ export class StateManager {
   /** How long to debounce rapid activity updates (ms) */
   private activityDebounceMs = 200;
 
+  /**
+   * Sessions where a Stop hook has fired, preventing JSONL watcher from
+   * overriding the idle state. Cleared when UserPromptSubmit fires (new turn).
+   */
+  private stoppedSessions = new Set<string>();
+
   subscribe(listener: Listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -350,6 +356,21 @@ export class StateManager {
     if (session) {
       session.lastActivity = Date.now();
     }
+  }
+
+  /** Mark a session as stopped (Stop hook fired). Prevents JSONL watcher from overriding idle state. */
+  markSessionStopped(sessionId: string) {
+    this.stoppedSessions.add(sessionId);
+  }
+
+  /** Clear the stopped flag (new turn started via UserPromptSubmit). */
+  clearSessionStopped(sessionId: string) {
+    this.stoppedSessions.delete(sessionId);
+  }
+
+  /** Check if a session has been stopped and shouldn't be overridden by JSONL. */
+  isSessionStopped(sessionId: string): boolean {
+    return this.stoppedSessions.has(sessionId);
   }
 
   removeSession(sessionId: string) {

@@ -310,6 +310,9 @@ export function createHookHandler(stateManager: StateManager) {
   function handlePreToolUse(event: PreToolUseEvent, sessionId: string) {
     const { action, context } = describeToolAction(event.tool_name, event.tool_input);
 
+    // Agent is actively working — clear any stopped flag so JSONL watcher can update
+    stateManager.clearSessionStopped(sessionId);
+
     // Track Task tool spawns for subagent correlation
     if (event.tool_name === 'Task' && event.tool_use_id && event.tool_input) {
       cleanPendingSpawns();
@@ -612,6 +615,10 @@ export function createHookHandler(stateManager: StateManager) {
   function handleStop(sessionId: string) {
     stateManager.setAgentWaitingById(sessionId, false);
     stateManager.updateAgentActivityById(sessionId, 'idle');
+    // Prevent the JSONL watcher from overriding this idle state.
+    // The watcher may process trailing JSONL lines (from before the Stop)
+    // after this hook fires, which would incorrectly set the agent back to working.
+    stateManager.markSessionStopped(sessionId);
     console.log(`[hooks] Stop: ${sessionId.slice(0, 8)}`);
   }
 
@@ -674,6 +681,7 @@ export function createHookHandler(stateManager: StateManager) {
 
   function handleUserPromptSubmit(event: UserPromptSubmitEvent, sessionId: string) {
     // User submitted a prompt — agent is about to start working
+    stateManager.clearSessionStopped(sessionId);
     stateManager.setAgentWaitingById(sessionId, false);
     stateManager.updateAgentActivityById(sessionId, 'working', 'Processing prompt...');
     console.log(`[hooks] UserPromptSubmit: ${sessionId.slice(0, 8)}`);

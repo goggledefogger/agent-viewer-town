@@ -1099,6 +1099,25 @@ describe('StateManager', () => {
     });
   });
 
+  describe('stoppedSessions (Stop hook prevents JSONL override)', () => {
+    it('marks and checks stopped sessions', () => {
+      expect(sm.isSessionStopped('s1')).toBe(false);
+      sm.markSessionStopped('s1');
+      expect(sm.isSessionStopped('s1')).toBe(true);
+    });
+
+    it('clears stopped flag', () => {
+      sm.markSessionStopped('s1');
+      sm.clearSessionStopped('s1');
+      expect(sm.isSessionStopped('s1')).toBe(false);
+    });
+
+    it('clearing non-existent session does not throw', () => {
+      sm.clearSessionStopped('nonexistent');
+      expect(sm.isSessionStopped('nonexistent')).toBe(false);
+    });
+  });
+
   describe('selectSession with unknown session', () => {
     it('does nothing for unknown session ID', () => {
       sm.registerAgent(makeAgent('s1', 'agent-a'));

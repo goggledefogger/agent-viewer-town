@@ -781,6 +781,50 @@ describe('Hook Event Handlers', () => {
       expect(agent?.waitingForInput).toBe(false);
       expect(agent?.status).toBe('idle');
     });
+
+    it('marks session as stopped to prevent JSONL override', () => {
+      setupAgent('sess-1', 'coder', { status: 'working' });
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'Stop',
+      });
+
+      expect(sm.isSessionStopped('sess-1')).toBe(true);
+    });
+
+    it('stopped flag is cleared by PreToolUse', () => {
+      setupAgent('sess-1', 'coder', { status: 'working' });
+
+      handler.handleEvent({ session_id: 'sess-1', hook_event_name: 'Stop' });
+      expect(sm.isSessionStopped('sess-1')).toBe(true);
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/tmp/test.ts' },
+      });
+
+      expect(sm.isSessionStopped('sess-1')).toBe(false);
+      expect(sm.getAgentById('sess-1')?.status).toBe('working');
+    });
+
+    it('stopped flag is cleared by UserPromptSubmit', () => {
+      setupAgent('sess-1', 'coder', { status: 'working' });
+
+      handler.handleEvent({ session_id: 'sess-1', hook_event_name: 'Stop' });
+      expect(sm.isSessionStopped('sess-1')).toBe(true);
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'UserPromptSubmit',
+        prompt: 'hello',
+      });
+
+      expect(sm.isSessionStopped('sess-1')).toBe(false);
+      expect(sm.getAgentById('sess-1')?.status).toBe('working');
+    });
   });
 
   describe('PreCompact', () => {

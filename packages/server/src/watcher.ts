@@ -410,6 +410,13 @@ export function startWatcher(stateManager: StateManager) {
       initialStatus = ageSeconds < IDLE_THRESHOLD_S ? 'working' : 'idle';
     } catch { /* default to idle, current time */ }
 
+    // If a Stop hook has already fired for this session, respect it.
+    // This handles the case where the server restarts (tsx watch) and re-detects
+    // sessions — the stoppedSessions set persists in StateManager.
+    if (stateManager.isSessionStopped(meta.sessionId)) {
+      initialStatus = 'idle';
+    }
+
     // Read the tail of the transcript to determine accurate initial state.
     // Without this, agents show as just "working" or "idle" with no currentAction.
     let initialAction: string | undefined;
@@ -522,6 +529,13 @@ export function startWatcher(stateManager: StateManager) {
 
     const currentTracked = trackedSessions.get(filePath);
 
+    // If a Stop hook has fired for this session, don't let trailing JSONL lines
+    // override the idle state. The Stop hook is the definitive signal that the
+    // agent finished responding. Still process messages and other non-status data.
+    const sessionStopped = currentTracked
+      ? stateManager.isSessionStopped(currentTracked.sessionId)
+      : false;
+
     // Only update last activity when there are actual new lines to process
     // (prevents empty file touches from making old sessions look active)
     let hadMeaningfulActivity = false;
@@ -536,6 +550,10 @@ export function startWatcher(stateManager: StateManager) {
       if (parsed.type === 'message' && parsed.message) {
         stateManager.addMessage(parsed.message);
       }
+
+      // Skip activity/status updates if the session was stopped by a hook.
+      // Trailing JSONL lines from before the Stop must not override idle state.
+      if (sessionStopped) continue;
 
       // Handle conversation compacting — show as a special agent action
       if (parsed.type === 'compact') {
