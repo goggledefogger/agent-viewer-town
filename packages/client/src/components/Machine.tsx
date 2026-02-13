@@ -3,15 +3,8 @@ import type { AgentState, MessageState } from '@agent-viewer/shared';
 interface MachineProps {
   agents: AgentState[];
   messages: MessageState[];
+  positions: Map<string, { x: number; y: number }>;
 }
-
-const STATION_POSITIONS: Record<string, { x: number; y: number }> = {
-  lead:        { x: 450, y: 200 },
-  researcher:  { x: 200, y: 120 },
-  implementer: { x: 450, y: 380 },
-  tester:      { x: 700, y: 380 },
-  planner:     { x: 200, y: 380 },
-};
 
 const ROLE_COLORS: Record<string, string> = {
   lead: '#FFD700',
@@ -86,7 +79,9 @@ function SmallGear({ x, y, color, speed }: { x: number; y: number; color: string
   );
 }
 
-export function Machine({ agents, messages }: MachineProps) {
+const DEFAULT_POS = { x: 450, y: 300 };
+
+export function Machine({ agents, messages, positions }: MachineProps) {
   const connections = new Map<string, { from: AgentState; to: AgentState }>();
 
   for (const msg of messages) {
@@ -121,8 +116,8 @@ export function Machine({ agents, messages }: MachineProps) {
     <g>
       {/* Pipe connections */}
       {Array.from(connections.values()).map(({ from, to }, i) => {
-        const fromPos = STATION_POSITIONS[from.role] || { x: 450, y: 300 };
-        const toPos = STATION_POSITIONS[to.role] || { x: 450, y: 300 };
+        const fromPos = positions.get(from.id) || DEFAULT_POS;
+        const toPos = positions.get(to.id) || DEFAULT_POS;
         const pathId = `pipe-${i}`;
         const active = isConnectionActive(from, to);
 
@@ -142,6 +137,7 @@ export function Machine({ agents, messages }: MachineProps) {
               strokeWidth="2"
               strokeDasharray="4 8"
               opacity={active ? 0.6 : 0.25}
+              markerEnd={active ? 'url(#pipeArrow)' : 'url(#pipeArrowIdle)'}
               style={{ animation: `conveyor-move ${active ? '0.6s' : '2s'} linear infinite` }}
             />
             {active && (
@@ -165,8 +161,8 @@ export function Machine({ agents, messages }: MachineProps) {
         const toAgent = agents.find((a) => a.name === msg.to);
         if (!fromAgent || !toAgent) return null;
 
-        const fromPos = STATION_POSITIONS[fromAgent.role] || { x: 450, y: 300 };
-        const toPos = STATION_POSITIONS[toAgent.role] || { x: 450, y: 300 };
+        const fromPos = positions.get(fromAgent.id) || DEFAULT_POS;
+        const toPos = positions.get(toAgent.id) || DEFAULT_POS;
         const mx = (fromPos.x + toPos.x) / 2;
         const my = (fromPos.y + toPos.y) / 2 - 30;
         const pathD = `M ${fromPos.x} ${fromPos.y} Q ${mx} ${my} ${toPos.x} ${toPos.y}`;
@@ -202,7 +198,7 @@ export function Machine({ agents, messages }: MachineProps) {
 
       {/* Interlocking gears at working agent stations */}
       {agents.filter((a) => a.status === 'working').map((agent) => {
-        const pos = STATION_POSITIONS[agent.role];
+        const pos = positions.get(agent.id);
         if (!pos) return null;
         const color = ROLE_COLORS[agent.role] || '#FFD700';
         const gearSpeed = Math.max(0.5, 2.5 - agent.tasksCompleted * 0.3);
@@ -215,8 +211,14 @@ export function Machine({ agents, messages }: MachineProps) {
         );
       })}
 
-      {/* SVG filter for packet glow */}
+      {/* SVG markers and filters */}
       <defs>
+        <marker id="pipeArrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto">
+          <path d="M 0 0 L 6 3 L 0 6 z" fill="#4169E1" opacity="0.5" />
+        </marker>
+        <marker id="pipeArrowIdle" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto">
+          <path d="M 0 0 L 6 3 L 0 6 z" fill="#334155" opacity="0.3" />
+        </marker>
         <filter id="packetGlow" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="2" result="blur" />
           <feMerge>
