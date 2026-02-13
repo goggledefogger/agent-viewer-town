@@ -420,18 +420,19 @@ function AgentDetail({ agent, x, y, onClose, tasks }: { agent: AgentState; x: nu
   );
 }
 
-/** Compute branch lane positions in the ground area (y=488+) */
+/** Compute branch lane positions in the ground area (y=488+).
+ *  Single-branch: one subtle lane, no tethers.
+ *  Multi-branch: colored lanes with tether lines to agents. */
 function computeBranchLanes(agents: AgentState[]): Map<string, { y: number; color: string }> {
   const branches = new Set<string>();
   for (const agent of agents) {
     if (agent.gitBranch && !agent.isSubagent) branches.add(agent.gitBranch);
   }
-  // Only show lanes when there are 2+ distinct branches
-  if (branches.size < 2) return new Map();
+  if (branches.size === 0) return new Map();
 
   const lanes = new Map<string, { y: number; color: string }>();
-  const laneHeight = 14;
-  const laneStart = 490;
+  const laneHeight = 22;
+  const laneStart = 488;
   let i = 0;
   for (const branch of branches) {
     lanes.set(branch, {
@@ -496,7 +497,7 @@ export function Scene({ state, className }: SceneProps) {
               x="0"
               y={lane.y}
               width="900"
-              height="12"
+              height="18"
               fill={lane.color}
               opacity="0.12"
             />
@@ -511,13 +512,13 @@ export function Scene({ state, className }: SceneProps) {
             {/* Branch name label at left edge of lane */}
             <text
               x="8"
-              y={lane.y + 9}
+              y={lane.y + 12}
               fill={lane.color}
-              fontSize="6"
+              fontSize="7"
               fontFamily="'Courier New', monospace"
               opacity="0.5"
             >
-              {'\u2387 '}{branch.length > 24 ? branch.slice(0, 23) + '\u2026' : branch}
+              {'\u2387 '}{branch.length > 20 ? branch.slice(0, 19) + '\u2026' : branch}
             </text>
           </g>
         ))}
@@ -584,15 +585,16 @@ export function Scene({ state, className }: SceneProps) {
           );
         })}
 
-        {/* Branch tether lines — vertical dashes from agent platforms to ground lanes */}
-        {branchLanes.size > 0 && state.agents.map((agent, i) => {
+        {/* Branch tether lines — vertical dashes from agent platforms to ground lanes.
+            Only drawn when 2+ branches exist (single-branch = no tethers per design). */}
+        {branchLanes.size >= 2 && state.agents.map((agent, i) => {
           if (!agent.gitBranch || agent.isSubagent) return null;
           const lane = branchLanes.get(agent.gitBranch);
           if (!lane) return null;
           const pos = teamPositions?.get(agent.id) || getStationPos(agent, i, isSoloMode, 0, 0);
-          // Tether from platform bottom (agent y + 28) to lane center
+          // Tether from platform bottom (agent y + 28) to lane midpoint
           const tetherTop = pos.y + 28;
-          const tetherBottom = lane.y + 6;
+          const tetherBottom = lane.y + 9;
           if (tetherBottom <= tetherTop) return null;
           return (
             <line
@@ -603,8 +605,8 @@ export function Scene({ state, className }: SceneProps) {
               y2={tetherBottom}
               stroke={lane.color}
               strokeWidth="1"
-              strokeDasharray="3 4"
-              opacity="0.25"
+              strokeDasharray="2 4"
+              opacity="0.2"
             />
           );
         })}

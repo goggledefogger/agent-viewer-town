@@ -29,24 +29,26 @@ const ANIMAL_COMPONENTS: Record<string, React.FC<{ stage: number }>> = {
   planner: Rabbit,
 };
 
-/** Deterministic color for a branch name — stable across re-renders */
+/** Deterministic color for a branch name — stable across re-renders.
+ *  main/master always get green; others hash into the remaining palette. */
 const BRANCH_PALETTE = [
-  '#4169E1', // royal blue
-  '#E8A317', // goldenrod
-  '#28A745', // green
-  '#DC3545', // red
-  '#9B59B6', // purple
-  '#E67E22', // orange
-  '#1ABC9C', // teal
-  '#FF69B4', // pink
+  '#4CAF50', // green — reserved for main/master
+  '#42A5F5', // blue — feature branches
+  '#FF7043', // orange — fix/hotfix
+  '#AB47BC', // purple — release
+  '#26C6DA', // cyan — dev/staging
+  '#FFCA28', // amber — experiment
 ];
 
 export function getBranchColor(branch: string): string {
+  const lower = branch.toLowerCase();
+  if (lower === 'main' || lower === 'master') return BRANCH_PALETTE[0];
   let hash = 0;
   for (let i = 0; i < branch.length; i++) {
     hash = ((hash << 5) - hash + branch.charCodeAt(i)) | 0;
   }
-  return BRANCH_PALETTE[Math.abs(hash) % BRANCH_PALETTE.length];
+  // Skip index 0 (reserved for main/master)
+  return BRANCH_PALETTE[1 + (Math.abs(hash) % (BRANCH_PALETTE.length - 1))];
 }
 
 const STEAM_COLORS = ['#aaa', '#ccc', '#999', '#bbb'];
@@ -261,7 +263,7 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
         <g transform="translate(0, 56)">
           {(() => {
             const branchColor = getBranchColor(agent.gitBranch);
-            const maxBranchLen = 18;
+            const maxBranchLen = 16;
             const displayBranch = agent.gitBranch.length > maxBranchLen
               ? agent.gitBranch.slice(0, maxBranchLen - 1) + '\u2026'
               : agent.gitBranch;
