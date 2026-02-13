@@ -19,6 +19,11 @@ export class StateManager {
   private listeners: Set<Listener> = new Set();
   private maxMessages = 200;
 
+  /** Debounce timers for activity broadcasts (200ms window) */
+  private activityDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** How long to debounce rapid activity updates (ms) */
+  private activityDebounceMs = 200;
+
   subscribe(listener: Listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -185,6 +190,9 @@ export class StateManager {
    * Update agent activity by ID instead of name.
    * This is essential for solo sessions where multiple sessions in the same
    * project would have agents with the same name (slug).
+   *
+   * Broadcasts are debounced by 200ms so rapid tool sequences (Read->Edit->Write)
+   * don't cause the UI to flash each intermediate action.
    */
   updateAgentActivityById(agentId: string, status: 'idle' | 'working' | 'done', action?: string, actionContext?: string) {
     const agent = this.allAgents.get(agentId);
@@ -208,7 +216,26 @@ export class StateManager {
       if (status === 'idle' || status === 'done') {
         displayed.waitingForInput = false;
       }
-      this.broadcast({ type: 'agent_update', data: displayed });
+
+      // For status transitions (idle, done) broadcast immediately.
+      // For rapid working updates, debounce to reduce UI flicker.
+      if (status !== 'working') {
+        // Cancel any pending debounce and broadcast immediately
+        const existing = this.activityDebounceTimers.get(agentId);
+        if (existing) {
+          clearTimeout(existing);
+          this.activityDebounceTimers.delete(agentId);
+        }
+        this.broadcast({ type: 'agent_update', data: displayed });
+      } else {
+        // Debounce working updates — cancel previous and schedule new
+        const existing = this.activityDebounceTimers.get(agentId);
+        if (existing) clearTimeout(existing);
+        this.activityDebounceTimers.set(agentId, setTimeout(() => {
+          this.activityDebounceTimers.delete(agentId);
+          this.broadcast({ type: 'agent_update', data: displayed });
+        }, this.activityDebounceMs));
+      }
     }
   }
 

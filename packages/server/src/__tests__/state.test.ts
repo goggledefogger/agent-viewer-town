@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { StateManager } from '../state';
 import type { SessionInfo, AgentState, WSMessage } from '@agent-viewer/shared';
 
@@ -320,17 +320,22 @@ describe('StateManager', () => {
     });
 
     it('updateAgentActivityById broadcasts update when agent is displayed', () => {
+      vi.useFakeTimers();
       sm.registerAgent(makeAgent('s1', 'agent-a'));
       sm.addSession(makeSession('s1', 'project-a'));
 
       messages = []; // clear setup messages
       sm.updateAgentActivityById('s1', 'working', 'Running tests');
 
+      // Working updates are debounced by 200ms
+      vi.advanceTimersByTime(200);
+
       const updates = messages.filter((m) => m.type === 'agent_update');
       expect(updates).toHaveLength(1);
       if (updates[0].type === 'agent_update') {
         expect(updates[0].data.status).toBe('working');
       }
+      vi.useRealTimers();
     });
 
     it('updateAgentActivityById does not broadcast when agent is not displayed', () => {

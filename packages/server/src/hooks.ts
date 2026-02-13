@@ -232,7 +232,8 @@ function resolveAgentName(stateManager: StateManager, sessionId: string): string
 export function createHookHandler(stateManager: StateManager) {
   /**
    * Track pending Task tool calls so we can associate SubagentStart
-   * events with their description/prompt.
+   * events with their description/prompt. Keyed by tool_use_id for
+   * precise correlation when multiple subagents spawn simultaneously.
    */
   const pendingTaskSpawns = new Map<string, {
     description: string;
@@ -242,6 +243,12 @@ export function createHookHandler(stateManager: StateManager) {
     timestamp: number;
   }>();
 
+  /**
+   * Track sessions that are currently compacting so we can clear the
+   * "Compacting..." action after a timeout or when the next tool event arrives.
+   */
+  const compactingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
   /** Clean up old pending spawns (> 60s) */
   function cleanPendingSpawns() {
     const now = Date.now();
@@ -249,6 +256,15 @@ export function createHookHandler(stateManager: StateManager) {
       if (now - val.timestamp > 60_000) {
         pendingTaskSpawns.delete(key);
       }
+    }
+  }
+
+  /** Clear compacting state for a session if it was set */
+  function clearCompactingTimer(sessionId: string) {
+    const timer = compactingTimers.get(sessionId);
+    if (timer) {
+      clearTimeout(timer);
+      compactingTimers.delete(sessionId);
     }
   }
 
@@ -309,6 +325,9 @@ export function createHookHandler(stateManager: StateManager) {
   function handlePreToolUse(event: PreToolUseEvent, sessionId: string) {
     const { action, context } = describeToolAction(event.tool_name, event.tool_input);
 
+    // Clear any compacting state — the agent has resumed working
+    clearCompactingTimer(sessionId);
+
     // Track Task tool spawns for subagent correlation
     if (event.tool_name === 'Task' && event.tool_use_id && event.tool_input) {
       cleanPendingSpawns();
@@ -330,8 +349,9 @@ export function createHookHandler(stateManager: StateManager) {
   }
 
   function handlePostToolUse(event: PostToolUseEvent, sessionId: string) {
-    // Tool finished — clear waiting state
+    // Tool finished — clear waiting state and any compacting indicator
     stateManager.setAgentWaitingById(sessionId, false);
+    clearCompactingTimer(sessionId);
 
     // Extract rich data from specific team coordination tools
     if (event.tool_input) {
@@ -553,16 +573,23 @@ export function createHookHandler(stateManager: StateManager) {
     let name = event.agent_type || 'subagent';
     let role: 'implementer' | 'researcher' | 'planner' = 'implementer';
 
-    // Search pending spawns for a match (use most recent one from this session)
-    let bestMatch: { description: string; prompt: string; subagentType: string } | undefined;
-    for (const [, spawn] of pendingTaskSpawns) {
-      if (spawn.sessionId === sessionId) {
-        bestMatch = spawn;
+    // Find the oldest pending spawn from this session (FIFO order) and consume it.
+    // This correctly handles simultaneous subagent spawns: each SubagentStart
+    // consumes the earliest unused Task tool call from the same session.
+    let bestKey: string | undefined;
+    let bestTimestamp = Infinity;
+    for (const [key, spawn] of pendingTaskSpawns) {
+      if (spawn.sessionId === sessionId && spawn.timestamp < bestTimestamp) {
+        bestKey = key;
+        bestTimestamp = spawn.timestamp;
       }
     }
-    if (bestMatch) {
+    if (bestKey) {
+      const bestMatch = pendingTaskSpawns.get(bestKey)!;
       name = bestMatch.description || bestMatch.prompt || name;
       role = inferRole(bestMatch.subagentType, name) as typeof role;
+      // Consume this spawn entry so the next SubagentStart gets a different one
+      pendingTaskSpawns.delete(bestKey);
     }
 
     // Register and display the subagent
@@ -598,6 +625,18 @@ export function createHookHandler(stateManager: StateManager) {
   function handlePreCompact(sessionId: string) {
     stateManager.setAgentWaitingById(sessionId, false);
     stateManager.updateAgentActivityById(sessionId, 'working', 'Compacting conversation...');
+
+    // Schedule automatic recovery: clear the compacting state after 30s
+    // if no PreToolUse/PostToolUse event clears it sooner.
+    clearCompactingTimer(sessionId);
+    compactingTimers.set(sessionId, setTimeout(() => {
+      compactingTimers.delete(sessionId);
+      const agent = stateManager.getAgentById(sessionId);
+      if (agent && agent.currentAction === 'Compacting conversation...') {
+        stateManager.updateAgentActivityById(sessionId, 'working', 'Resuming...');
+      }
+    }, 30_000));
+
     console.log(`[hooks] PreCompact: ${sessionId.slice(0, 8)}`);
   }
 
