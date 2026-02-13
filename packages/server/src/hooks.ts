@@ -636,10 +636,11 @@ export function createHookHandler(stateManager: StateManager) {
     console.log(`[hooks] SubagentStop: ${agentId} parent=${sessionId.slice(0, 8)}`);
 
     // Only schedule removal for subagents (not team members)
+    // Brief delay so user can see the done checkmark before removal
     if (!agent?.teamName) {
       setTimeout(() => {
         stateManager.removeAgent(agentId);
-      }, 120_000);
+      }, 15_000);
     }
   }
 
