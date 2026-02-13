@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { TeamState, AgentState } from '@agent-viewer/shared';
-import { AgentCharacter } from './AgentCharacter';
+import { AgentCharacter, getBranchColor } from './AgentCharacter';
 import { Machine } from './Machine';
 
 interface SceneProps {
@@ -300,8 +300,11 @@ function AgentDetail({ agent, x, y, onClose, tasks }: { agent: AgentState; x: nu
 
   const lineHeight = 11;
   const headerHeight = 18;
+  const hasBranch = !!agent.gitBranch;
+
   let contentLines = nameLines.length + actionLines.length + 1;
   if (contextLine) contentLines += 1;
+  if (hasBranch) contentLines += 2; // label + branch name (+ optional worktree)
   if (currentTask) contentLines += 2; // label + task subject
   if (recentActions.length > 0) contentLines += 1 + Math.min(recentActions.length, 3); // label + entries
   const bodyHeight = contentLines * lineHeight + 8;
@@ -369,6 +372,18 @@ function AgentDetail({ agent, x, y, onClose, tasks }: { agent: AgentState; x: nu
           </text>
         )}
         {(() => { if (contextLine) cursorY += lineHeight; return null; })()}
+        {/* Git Branch */}
+        {hasBranch && (<>
+          <text x={-boxWidth / 2 + 8} y={cursorY + 2}
+                fill={getBranchColor(agent.gitBranch!)} fontSize="6.5" fontFamily="'Courier New', monospace" fontWeight="bold">
+            {'\u2387'} BRANCH
+          </text>
+          <text x={-boxWidth / 2 + 8} y={cursorY + 2 + lineHeight}
+                fill="#94a3b8" fontSize="7" fontFamily="'Courier New', monospace">
+            {agent.gitBranch}{agent.gitWorktree ? ' (worktree)' : ''}
+          </text>
+        </>)}
+        {(() => { if (hasBranch) cursorY += 2 + 2 * lineHeight; return null; })()}
         {/* Current Task */}
         {currentTask && (<>
           <text x={-boxWidth / 2 + 8} y={cursorY + 2}
@@ -405,6 +420,29 @@ function AgentDetail({ agent, x, y, onClose, tasks }: { agent: AgentState; x: nu
   );
 }
 
+/** Compute branch lane positions in the ground area (y=488+) */
+function computeBranchLanes(agents: AgentState[]): Map<string, { y: number; color: string }> {
+  const branches = new Set<string>();
+  for (const agent of agents) {
+    if (agent.gitBranch && !agent.isSubagent) branches.add(agent.gitBranch);
+  }
+  // Only show lanes when there are 2+ distinct branches
+  if (branches.size < 2) return new Map();
+
+  const lanes = new Map<string, { y: number; color: string }>();
+  const laneHeight = 14;
+  const laneStart = 490;
+  let i = 0;
+  for (const branch of branches) {
+    lanes.set(branch, {
+      y: laneStart + i * laneHeight,
+      color: getBranchColor(branch),
+    });
+    i++;
+  }
+  return lanes;
+}
+
 export function Scene({ state, className }: SceneProps) {
   const mainAgents = state.agents.filter((a) => !a.isSubagent);
   const subagents = state.agents.filter((a) => a.isSubagent);
@@ -414,6 +452,9 @@ export function Scene({ state, className }: SceneProps) {
 
   // Precompute positions for all agents (handles overlapping roles in team mode)
   const teamPositions = !isSoloMode ? computeTeamPositions(state.agents) : null;
+
+  // Compute branch lanes for the ground area
+  const branchLanes = computeBranchLanes(state.agents);
 
   if (!state.name && state.agents.length === 0) {
     return (
@@ -447,6 +488,39 @@ export function Scene({ state, className }: SceneProps) {
         {/* Ground */}
         <rect x="0" y="480" width="900" height="120" fill="#2d5a27" rx="0" />
         <rect x="0" y="480" width="900" height="4" fill="#4a6741" />
+
+        {/* Branch lanes in ground area — colored strips per unique branch */}
+        {branchLanes.size > 0 && Array.from(branchLanes.entries()).map(([branch, lane]) => (
+          <g key={`lane-${branch}`}>
+            <rect
+              x="0"
+              y={lane.y}
+              width="900"
+              height="12"
+              fill={lane.color}
+              opacity="0.12"
+            />
+            <rect
+              x="0"
+              y={lane.y}
+              width="900"
+              height="1"
+              fill={lane.color}
+              opacity="0.2"
+            />
+            {/* Branch name label at left edge of lane */}
+            <text
+              x="8"
+              y={lane.y + 9}
+              fill={lane.color}
+              fontSize="6"
+              fontFamily="'Courier New', monospace"
+              opacity="0.5"
+            >
+              {'\u2387 '}{branch.length > 24 ? branch.slice(0, 23) + '\u2026' : branch}
+            </text>
+          </g>
+        ))}
 
         {/* Trees (background decoration) */}
         <g opacity="0.6">
@@ -507,6 +581,31 @@ export function Scene({ state, className }: SceneProps) {
               )}
               <path id={`tether-path-${si}`} d={d} fill="none" stroke="none" />
             </g>
+          );
+        })}
+
+        {/* Branch tether lines — vertical dashes from agent platforms to ground lanes */}
+        {branchLanes.size > 0 && state.agents.map((agent, i) => {
+          if (!agent.gitBranch || agent.isSubagent) return null;
+          const lane = branchLanes.get(agent.gitBranch);
+          if (!lane) return null;
+          const pos = teamPositions?.get(agent.id) || getStationPos(agent, i, isSoloMode, 0, 0);
+          // Tether from platform bottom (agent y + 28) to lane center
+          const tetherTop = pos.y + 28;
+          const tetherBottom = lane.y + 6;
+          if (tetherBottom <= tetherTop) return null;
+          return (
+            <line
+              key={`branch-tether-${agent.id}`}
+              x1={pos.x}
+              y1={tetherTop}
+              x2={pos.x}
+              y2={tetherBottom}
+              stroke={lane.color}
+              strokeWidth="1"
+              strokeDasharray="3 4"
+              opacity="0.25"
+            />
           );
         })}
 

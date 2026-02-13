@@ -29,6 +29,26 @@ const ANIMAL_COMPONENTS: Record<string, React.FC<{ stage: number }>> = {
   planner: Rabbit,
 };
 
+/** Deterministic color for a branch name — stable across re-renders */
+const BRANCH_PALETTE = [
+  '#4169E1', // royal blue
+  '#E8A317', // goldenrod
+  '#28A745', // green
+  '#DC3545', // red
+  '#9B59B6', // purple
+  '#E67E22', // orange
+  '#1ABC9C', // teal
+  '#FF69B4', // pink
+];
+
+export function getBranchColor(branch: string): string {
+  let hash = 0;
+  for (let i = 0; i < branch.length; i++) {
+    hash = ((hash << 5) - hash + branch.charCodeAt(i)) | 0;
+  }
+  return BRANCH_PALETTE[Math.abs(hash) % BRANCH_PALETTE.length];
+}
+
 const STEAM_COLORS = ['#aaa', '#ccc', '#999', '#bbb'];
 const SPARK_COLORS = ['#FFD700', '#FF6347', '#4169E1', '#28A745', '#FF69B4'];
 const CONFETTI_COLORS = ['#FFD700', '#DC3545', '#4169E1', '#28A745', '#FF69B4', '#FF8C00'];
@@ -236,6 +256,46 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
                   : ''
             }`}
       </text>
+      {/* Git branch badge pill */}
+      {agent.gitBranch && (
+        <g transform="translate(0, 56)">
+          {(() => {
+            const branchColor = getBranchColor(agent.gitBranch);
+            const maxBranchLen = 18;
+            const displayBranch = agent.gitBranch.length > maxBranchLen
+              ? agent.gitBranch.slice(0, maxBranchLen - 1) + '\u2026'
+              : agent.gitBranch;
+            const pillWidth = Math.max(36, displayBranch.length * 3.8 + 12);
+            return (
+              <>
+                <rect
+                  x={-pillWidth / 2}
+                  y="-5"
+                  width={pillWidth}
+                  height="10"
+                  rx="5"
+                  fill={branchColor}
+                  opacity="0.15"
+                  stroke={branchColor}
+                  strokeWidth="0.5"
+                  strokeOpacity="0.4"
+                />
+                <text
+                  x="0"
+                  y="2.5"
+                  textAnchor="middle"
+                  fill={branchColor}
+                  fontSize="5.5"
+                  fontFamily="'Courier New', monospace"
+                  opacity="0.9"
+                >
+                  {'\u2387 '}{displayBranch}
+                </text>
+              </>
+            );
+          })()}
+        </g>
+      )}
     </g>
   );
 }
