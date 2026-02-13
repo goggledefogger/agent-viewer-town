@@ -17,6 +17,12 @@ export interface AgentState {
   isSubagent?: boolean;
   /** The parent session/agent ID that spawned this subagent */
   parentAgentId?: string;
+  /** Team name if this agent is a team member (not a subagent) */
+  teamName?: string;
+  /** Current git branch the agent is working on */
+  gitBranch?: string;
+  /** Git worktree path if the agent is using a worktree */
+  gitWorktree?: string;
 }
 
 export type AgentRole = 'lead' | 'researcher' | 'implementer' | 'tester' | 'planner';
@@ -51,6 +57,8 @@ export interface SessionInfo {
   /** Cleaned project name, e.g. "my-project" */
   projectName: string;
   gitBranch?: string;
+  /** Git worktree path if the session is running in a worktree */
+  gitWorktree?: string;
   /** Whether this session is part of an agent team */
   isTeam: boolean;
   /** Team name if isTeam is true */

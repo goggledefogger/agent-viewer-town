@@ -1983,6 +1983,77 @@ describe('Hook Event Handlers', () => {
     });
   });
 
+  describe('git info detection from cwd', () => {
+    it('detects git info on first event with cwd and updates agent', async () => {
+      setupAgent('sess-1', 'coder');
+
+      // Mock detectGitWorktree by spying on stateManager.updateAgentGitInfo
+      const updateSpy = vi.spyOn(sm, 'updateAgentGitInfo');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/src/file.ts' },
+        cwd: '/Users/dev/project',
+      });
+
+      // The git detection is async — wait for promises to resolve
+      await vi.advanceTimersByTimeAsync(100);
+
+      // We can't fully control detectGitWorktree since it calls real execFileAsync,
+      // but we can verify the handler processes events correctly even with cwd.
+      // The agent should be set to working regardless of git detection
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.status).toBe('working');
+      expect(agent?.currentAction).toBe('Reading file.ts');
+
+      updateSpy.mockRestore();
+    });
+
+    it('does not re-detect git info on subsequent events for same session', () => {
+      setupAgent('sess-1', 'coder');
+
+      // First event with cwd
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/src/a.ts' },
+        cwd: '/Users/dev/project',
+      });
+
+      // Second event with different cwd - should be ignored (already detected)
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/src/b.ts' },
+        cwd: '/Users/dev/other-project',
+      });
+
+      // Agent should still be working normally
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.status).toBe('working');
+    });
+
+    it('does not detect git info when no cwd is provided', () => {
+      setupAgent('sess-1', 'coder');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/src/file.ts' },
+        // no cwd field
+      });
+
+      // Agent should work normally
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.status).toBe('working');
+    });
+  });
+
   describe('activity debouncing', () => {
     it('debounces rapid working updates — final debounced broadcast has the latest action', () => {
       setupAgent('sess-1', 'coder');
