@@ -30,6 +30,21 @@ export class StateManager {
    */
   private stoppedSessions = new Set<string>();
 
+  /**
+   * Recently removed agent IDs with removal timestamp.
+   * Prevents the JSONL watcher from re-registering agents that were
+   * already removed (e.g., subagents after SubagentStop → 15s removal).
+   * Entries expire after 5 minutes.
+   */
+  private removedAgents = new Map<string, number>();
+
+  /**
+   * Sessions with recent hook activity, keyed by sessionId → last hook timestamp.
+   * When hooks are actively providing events for a session, the JSONL watcher
+   * should defer to hooks for activity/status updates to avoid stale overrides.
+   */
+  private hookActiveSessions = new Map<string, number>();
+
   subscribe(listener: Listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -84,8 +99,13 @@ export class StateManager {
     return this.allAgents.get(id);
   }
 
-  /** Add agent to registry only — does NOT add to displayed state.agents */
+  /** Add agent to registry only — does NOT add to displayed state.agents.
+   *  Skips registration if the agent was recently removed (prevents JSONL
+   *  watcher from re-registering subagents after SubagentStop removal). */
   registerAgent(agent: AgentState) {
+    if (this.wasRecentlyRemoved(agent.id)) {
+      return;
+    }
     this.allAgents.set(agent.id, agent);
   }
 
@@ -113,6 +133,7 @@ export class StateManager {
   removeAgent(id: string) {
     this.allAgents.delete(id);
     this.state.agents = this.state.agents.filter((a) => a.id !== id);
+    this.removedAgents.set(id, Date.now());
     this.broadcast({ type: 'agent_removed', data: { id } });
   }
 
@@ -415,6 +436,42 @@ export class StateManager {
     return this.stoppedSessions.has(sessionId);
   }
 
+  /** Check if an agent was recently removed (within 5 minutes). */
+  wasRecentlyRemoved(id: string): boolean {
+    const removedAt = this.removedAgents.get(id);
+    if (!removedAt) return false;
+    if (Date.now() - removedAt > 300_000) {
+      this.removedAgents.delete(id);
+      return false;
+    }
+    return true;
+  }
+
+  /** Allow explicit re-registration (e.g., SubagentStart hook for a new spawn with same ID). */
+  clearRecentlyRemoved(id: string) {
+    this.removedAgents.delete(id);
+  }
+
+  /** Record that a hook event was received for this session. */
+  markHookActive(sessionId: string) {
+    this.hookActiveSessions.set(sessionId, Date.now());
+  }
+
+  /**
+   * Check if hooks have been actively providing events for this session recently.
+   * When true, JSONL watcher should defer activity/status updates to hooks.
+   */
+  isHookActive(sessionId: string, withinMs = 5000): boolean {
+    const lastHook = this.hookActiveSessions.get(sessionId);
+    if (!lastHook) return false;
+    return (Date.now() - lastHook) < withinMs;
+  }
+
+  /** Get the full agent registry (for staleness checks across all agents). */
+  getAllAgents(): Map<string, AgentState> {
+    return this.allAgents;
+  }
+
   removeSession(sessionId: string) {
     this.sessions.delete(sessionId);
     if (this.state.session?.sessionId === sessionId) {
@@ -595,6 +652,8 @@ export class StateManager {
     this.state = { name: '', agents: [], tasks: [], messages: [] };
     this.sessions.clear();
     this.allAgents.clear();
+    this.removedAgents.clear();
+    this.hookActiveSessions.clear();
     this.broadcastFullState();
   }
 }

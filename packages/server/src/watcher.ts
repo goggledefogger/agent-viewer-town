@@ -382,6 +382,13 @@ export function startWatcher(stateManager: StateManager) {
         } catch { /* skip */ }
       }
 
+      // Skip re-registration of recently removed subagents (prevents stale re-detection
+      // after SubagentStop hook → 15s removal → Chokidar delayed file detection)
+      if (stateManager.wasRecentlyRemoved(subagentId)) {
+        console.log(`[watcher] Skipping recently removed subagent: ${subagentId.slice(0, 8)}`);
+        return;
+      }
+
       // Register the subagent
       const subagent = {
         id: subagentId,
@@ -553,6 +560,13 @@ export function startWatcher(stateManager: StateManager) {
       ? stateManager.isSessionStopped(currentTracked.sessionId)
       : false;
 
+    // If hooks are actively providing events for this session, defer to them
+    // for activity/status updates. Hooks are more accurate and real-time than
+    // JSONL parsing. Still process messages and other non-status data.
+    const hookActive = currentTracked
+      ? stateManager.isHookActive(currentTracked.sessionId)
+      : false;
+
     // Only update last activity when there are actual new lines to process
     // (prevents empty file touches from making old sessions look active)
     let hadMeaningfulActivity = false;
@@ -568,9 +582,12 @@ export function startWatcher(stateManager: StateManager) {
         stateManager.addMessage(parsed.message);
       }
 
-      // Skip activity/status updates if the session was stopped by a hook.
-      // Trailing JSONL lines from before the Stop must not override idle state.
-      if (sessionStopped) continue;
+      // Skip activity/status updates if:
+      // 1. The session was stopped by a hook (trailing JSONL must not override idle)
+      // 2. Hooks are actively providing events (JSONL is delayed and would override
+      //    more accurate hook-set status, e.g., showing "Reading file" instead of
+      //    "Compacting conversation..." set by PreCompact hook)
+      if (sessionStopped || hookActive) continue;
 
       // Handle conversation compacting — show as a special agent action
       if (parsed.type === 'compact') {
@@ -768,6 +785,28 @@ export function startWatcher(stateManager: StateManager) {
           stateManager.setAgentWaitingById(agent.id, false);
           stateManager.updateAgentActivityById(agent.id, 'idle');
         }
+      }
+    }
+
+    // --- Catch-all: remove orphaned subagents from allAgents ---
+    // Subagents registered by hooks (SubagentStart) that were never properly
+    // cleaned up. This covers edge cases where SubagentStop never fires or
+    // the removal timer was lost (e.g., server restart).
+    for (const [agentId, agent] of stateManager.getAllAgents()) {
+      if (!agent.isSubagent) continue;
+      if (checkedIds.has(agentId)) continue; // Already handled above
+
+      // Check parent session activity
+      const parentSession = stateManager.getSessions().get(agent.parentAgentId || '');
+      const parentActivity = parentSession?.lastActivity ?? 0;
+      const hookLastActive = stateManager.isHookActive(agentId, 300_000) ? now : 0;
+      const mostRecent = Math.max(parentActivity, hookLastActive);
+      const orphanIdleS = mostRecent > 0 ? (now - mostRecent) / 1000 : Infinity;
+
+      // Remove orphaned subagents after 5 minutes of inactivity
+      if (orphanIdleS >= 300) {
+        console.log(`[watcher] Removing orphaned subagent: ${agentId.slice(0, 8)} (idle ${Math.round(orphanIdleS)}s)`);
+        stateManager.removeAgent(agentId);
       }
     }
   }, STALENESS_CHECK_INTERVAL_MS);

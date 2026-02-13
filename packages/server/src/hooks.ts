@@ -272,8 +272,9 @@ export function createHookHandler(stateManager: StateManager) {
       return;
     }
 
-    // Update session activity timestamp
+    // Update session activity timestamp and mark hooks as actively providing data
     stateManager.updateSessionActivity(sessionId);
+    stateManager.markHookActive(sessionId);
 
     // Store cwd for later git status refreshes
     if (event.cwd && !sessionCwd.has(sessionId)) {
