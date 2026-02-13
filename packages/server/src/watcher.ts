@@ -676,7 +676,13 @@ export function startWatcher(stateManager: StateManager) {
     for (const [, tracked] of trackedSessions) {
       if (!tracked.isSolo) continue;
 
-      const idleSeconds = (now - tracked.lastActivity) / 1000;
+      // Use the most recent activity from either JSONL file changes OR hook events.
+      // Hooks update session.lastActivity via stateManager.updateSessionActivity(),
+      // but that's a different timestamp than tracked.lastActivity (JSONL-based).
+      // We must check both so hook activity prevents false idle transitions.
+      const sessionActivity = stateManager.getSessions().get(tracked.sessionId)?.lastActivity ?? 0;
+      const mostRecentActivity = Math.max(tracked.lastActivity, sessionActivity);
+      const idleSeconds = (now - mostRecentActivity) / 1000;
 
       // Internal subagents (acompact): just clean up tracking when done, no display
       if (tracked.isInternalSubagent && idleSeconds >= IDLE_THRESHOLD_S) {
