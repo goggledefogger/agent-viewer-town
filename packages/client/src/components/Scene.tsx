@@ -88,13 +88,13 @@ function computeTeamPositions(agents: AgentState[]): Map<string, { x: number; y:
 // Center position for solo agent
 const SOLO_POSITION = { x: 450, y: 300 };
 
-// Subagent positions fan out around the parent
+// Subagent positions fan out around the parent — increased vertical gaps to reduce overlap
 const SUBAGENT_OFFSETS = [
-  { x: 250, y: -20 },
-  { x: -250, y: -20 },
-  { x: 250, y: 120 },
-  { x: -250, y: 120 },
-  { x: 0, y: -120 },
+  { x: 280, y: -60 },
+  { x: -280, y: -60 },
+  { x: 280, y: 140 },
+  { x: -280, y: 140 },
+  { x: 0, y: -160 },
 ];
 
 function getSubagentOffset(index: number, total: number): { x: number; y: number } {
@@ -225,10 +225,10 @@ function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number
     );
   }
 
-  const maxLen = 40;
+  const maxLen = 32;
   const display = displayText.length > maxLen ? displayText.slice(0, maxLen - 1) + '\u2026' : displayText;
   const context = agent.actionContext;
-  const maxCtxLen = 35;
+  const maxCtxLen = 28;
   const displayCtx = context && context.length > maxCtxLen ? context.slice(0, maxCtxLen - 1) + '\u2026' : context;
   const hasContext = !!displayCtx;
   const bubbleHeight = hasContext ? 32 : 22;
