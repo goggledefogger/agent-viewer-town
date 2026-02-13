@@ -326,11 +326,6 @@ export class StateManager {
 
   // --- Session management ---
 
-  /** @deprecated Use addSession instead */
-  setSession(session: SessionInfo) {
-    this.addSession(session);
-  }
-
   /**
    * Register a new session. Auto-selects it if:
    * - No session is currently active, OR
