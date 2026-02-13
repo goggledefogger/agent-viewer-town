@@ -101,9 +101,13 @@ function getStationPos(agent: AgentState, index: number, isSoloMode: boolean, su
 function WaitingBubble({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
   const label = '\u26A0 Needs your input!';
   const subtext = agent.currentAction || 'Waiting for approval';
+  const context = agent.actionContext;
   const maxLen = 30;
   const displaySub = subtext.length > maxLen ? subtext.slice(0, maxLen - 1) + '\u2026' : subtext;
-  const boxWidth = Math.max(140, Math.max(label.length, displaySub.length) * 5.5 + 28);
+  const displayCtx = context && context.length > 28 ? context.slice(0, 27) + '\u2026' : context;
+  const hasContext = !!displayCtx;
+  const bubbleHeight = hasContext ? 42 : 32;
+  const boxWidth = Math.max(140, Math.max(label.length, displaySub.length, (displayCtx || '').length) * 5.5 + 28);
 
   return (
     <g transform={`translate(${x}, ${y - 55})`}>
@@ -112,7 +116,7 @@ function WaitingBubble({ agent, x, y }: { agent: AgentState; x: number; y: numbe
         x={-boxWidth / 2 - 3}
         y="-20"
         width={boxWidth + 6}
-        height="36"
+        height={bubbleHeight + 4}
         rx="8"
         fill="#FFD700"
         opacity="0.15"
@@ -124,24 +128,30 @@ function WaitingBubble({ agent, x, y }: { agent: AgentState; x: number; y: numbe
         x={-boxWidth / 2}
         y="-18"
         width={boxWidth}
-        height="32"
+        height={bubbleHeight}
         rx="6"
         fill="#1a1a2e"
         stroke="#FFD700"
         strokeWidth="2"
         opacity="0.97"
       />
-      <polygon points="-5,14 5,14 0,20" fill="#1a1a2e" stroke="#FFD700" strokeWidth="2" />
-      <rect x="-6" y="12" width="12" height="4" fill="#1a1a2e" />
+      <polygon points={`-5,${bubbleHeight - 18} 5,${bubbleHeight - 18} 0,${bubbleHeight - 13}`} fill="#1a1a2e" stroke="#FFD700" strokeWidth="2" />
+      <rect x="-6" y={bubbleHeight - 20} width="12" height="4" fill="#1a1a2e" />
       {/* Alert text */}
       <text x="0" y="-4" textAnchor="middle" fill="#FFD700" fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold">
         {label}
         <animate attributeName="opacity" values="1;0.6;1" dur="1.2s" repeatCount="indefinite" />
       </text>
-      {/* Context */}
+      {/* Action */}
       <text x="0" y="8" textAnchor="middle" fill="#94a3b8" fontSize="7" fontFamily="'Courier New', monospace">
         {displaySub}
       </text>
+      {/* Context line */}
+      {hasContext && (
+        <text x="0" y="18" textAnchor="middle" fill="#64748b" fontSize="6.5" fontFamily="'Courier New', monospace">
+          {displayCtx}
+        </text>
+      )}
     </g>
   );
 }
@@ -177,9 +187,14 @@ function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number
     );
   }
 
-  const maxLen = 36;
+  const maxLen = 40;
   const display = displayText.length > maxLen ? displayText.slice(0, maxLen - 1) + '\u2026' : displayText;
-  const boxWidth = Math.max(80, display.length * 5.2 + 24);
+  const context = agent.actionContext;
+  const maxCtxLen = 35;
+  const displayCtx = context && context.length > maxCtxLen ? context.slice(0, maxCtxLen - 1) + '\u2026' : context;
+  const hasContext = !!displayCtx;
+  const bubbleHeight = hasContext ? 32 : 22;
+  const boxWidth = Math.max(80, Math.max(display.length, (displayCtx || '').length) * 5.2 + 24);
 
   return (
     <g transform={`translate(${x}, ${y - 50})`}>
@@ -187,16 +202,16 @@ function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number
         x={-boxWidth / 2}
         y="-14"
         width={boxWidth}
-        height="22"
+        height={bubbleHeight}
         rx="4"
         fill="#16213e"
         stroke="#334155"
         strokeWidth="1"
         opacity="0.95"
       />
-      <polygon points="-4,8 4,8 0,13" fill="#16213e" stroke="#334155" strokeWidth="1" />
-      <rect x="-5" y="7" width="10" height="2" fill="#16213e" />
-      <text x="0" y="0" textAnchor="middle" fill="#e2e8f0" fontSize="7.5" fontFamily="'Courier New', monospace">
+      <polygon points={`-4,${bubbleHeight - 14} 4,${bubbleHeight - 14} 0,${bubbleHeight - 9}`} fill="#16213e" stroke="#334155" strokeWidth="1" />
+      <rect x="-5" y={bubbleHeight - 15} width="10" height="2" fill="#16213e" />
+      <text x="0" y={hasContext ? "-3" : "0"} textAnchor="middle" fill="#e2e8f0" fontSize="7.5" fontFamily="'Courier New', monospace">
         {display}
         {isWorking && (
           <tspan fill="#e2e8f0">
@@ -205,53 +220,77 @@ function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number
           </tspan>
         )}
       </text>
+      {hasContext && (
+        <text x="0" y="9" textAnchor="middle" fill="#64748b" fontSize="6.5" fontFamily="'Courier New', monospace">
+          {displayCtx}
+        </text>
+      )}
     </g>
   );
 }
 
+/** Format a relative time string from a timestamp */
+function relativeTime(ts: number): string {
+  const diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return `${Math.floor(diff / 3600)}h ago`;
+}
+
+/** Word-wrap text into lines of maxLen chars */
+function wrapText(text: string, maxLen: number): string[] {
+  const lines: string[] = [];
+  const words = text.split(/\s+/);
+  let current = '';
+  for (const word of words) {
+    if (current.length + word.length + 1 > maxLen) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = current ? current + ' ' + word : word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 /** Detail popover shown when clicking an agent */
-function AgentDetail({ agent, x, y, onClose }: { agent: AgentState; x: number; y: number; onClose: () => void }) {
+function AgentDetail({ agent, x, y, onClose, tasks }: { agent: AgentState; x: number; y: number; onClose: () => void; tasks?: import('@agent-viewer/shared').TaskState[] }) {
   const name = agent.name;
   const action = agent.currentAction || (agent.status === 'done' ? 'Done' : agent.status === 'working' ? 'Working...' : 'Idle');
-  const role = agent.isSubagent ? 'Subagent' : agent.role.charAt(0).toUpperCase() + agent.role.slice(1);
+  const role = agent.isSubagent
+    ? `Subagent${agent.parentAgentId ? '' : ''}`
+    : agent.role.charAt(0).toUpperCase() + agent.role.slice(1);
   const statusColor = agent.status === 'working' ? '#4169E1' : agent.status === 'done' ? '#28A745' : '#94a3b8';
+  const statusLabel = agent.waitingForInput ? 'waiting' : agent.status;
 
-  // Word-wrap the name/description into lines of ~40 chars
-  const lines: string[] = [];
-  const words = name.split(/\s+/);
-  let currentLine = '';
-  for (const word of words) {
-    if (currentLine.length + word.length + 1 > 44) {
-      lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = currentLine ? currentLine + ' ' + word : word;
-    }
-  }
-  if (currentLine) lines.push(currentLine);
+  const nameLines = wrapText(name, 44);
+  const actionLines = wrapText(action, 44);
+  const contextLine = agent.actionContext ? agent.actionContext.slice(0, 44) : '';
 
-  const actionLines: string[] = [];
-  const actionWords = action.split(/\s+/);
-  let actionLine = '';
-  for (const word of actionWords) {
-    if (actionLine.length + word.length + 1 > 44) {
-      actionLines.push(actionLine);
-      actionLine = word;
-    } else {
-      actionLine = actionLine ? actionLine + ' ' + word : word;
-    }
-  }
-  if (actionLine) actionLines.push(actionLine);
+  // Find current task info
+  const currentTask = agent.currentTaskId && tasks
+    ? tasks.find(t => t.id === agent.currentTaskId)
+    : undefined;
+
+  // Recent actions (last 5)
+  const recentActions = agent.recentActions || [];
 
   const lineHeight = 11;
   const headerHeight = 18;
-  const bodyHeight = (lines.length + actionLines.length + 1) * lineHeight + 8;
+  let contentLines = nameLines.length + actionLines.length + 1;
+  if (contextLine) contentLines += 1;
+  if (currentTask) contentLines += 2; // label + task subject
+  if (recentActions.length > 0) contentLines += 1 + Math.min(recentActions.length, 3); // label + entries
+  const bodyHeight = contentLines * lineHeight + 8;
   const totalHeight = headerHeight + bodyHeight + 8;
-  const boxWidth = 240;
+  const boxWidth = 260;
 
   // Position: above the agent, clamped to viewport
   const popX = Math.max(boxWidth / 2 + 5, Math.min(900 - boxWidth / 2 - 5, x));
   const popY = Math.max(totalHeight + 10, y - 70);
+
+  let cursorY = headerHeight + 12;
 
   return (
     <g>
@@ -267,27 +306,72 @@ function AgentDetail({ agent, x, y, onClose }: { agent: AgentState; x: number; y
         <rect x={-boxWidth / 2} y="12" width={boxWidth} height="6" fill="#16213e" />
         {/* Role + status */}
         <text x={-boxWidth / 2 + 8} y="13" fill={statusColor} fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold">
-          {role}
+          {role} | {statusLabel}
         </text>
-        <circle cx={boxWidth / 2 - 12} cy="9" r="4" fill={statusColor} opacity="0.8" />
+        <circle cx={boxWidth / 2 - 12} cy="9" r="4" fill={statusColor} opacity="0.8">
+          {agent.status === 'working' && (
+            <animate attributeName="opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" />
+          )}
+        </circle>
         {/* Name lines */}
-        {lines.map((line, i) => (
-          <text key={`n${i}`} x={-boxWidth / 2 + 8} y={headerHeight + 12 + i * lineHeight}
-                fill="#e2e8f0" fontSize="7.5" fontFamily="'Courier New', monospace">
-            {line}
-          </text>
-        ))}
+        {nameLines.map((line, i) => {
+          const yPos = cursorY + i * lineHeight;
+          return (
+            <text key={`n${i}`} x={-boxWidth / 2 + 8} y={yPos}
+                  fill="#e2e8f0" fontSize="7.5" fontFamily="'Courier New', monospace">
+              {line}
+            </text>
+          );
+        })}
+        {(() => { cursorY += nameLines.length * lineHeight; return null; })()}
         {/* Divider */}
-        <line x1={-boxWidth / 2 + 8} y1={headerHeight + 6 + lines.length * lineHeight}
-              x2={boxWidth / 2 - 8} y2={headerHeight + 6 + lines.length * lineHeight}
+        <line x1={-boxWidth / 2 + 8} y1={cursorY - 4}
+              x2={boxWidth / 2 - 8} y2={cursorY - 4}
               stroke="#334155" strokeWidth="0.5" />
-        {/* Action lines */}
-        {actionLines.map((line, i) => (
-          <text key={`a${i}`} x={-boxWidth / 2 + 8} y={headerHeight + 16 + (lines.length + i) * lineHeight}
-                fill="#94a3b8" fontSize="7" fontFamily="'Courier New', monospace">
-            {line}
+        {/* Current Action */}
+        {actionLines.map((line, i) => {
+          const yPos = cursorY + 6 + i * lineHeight;
+          return (
+            <text key={`a${i}`} x={-boxWidth / 2 + 8} y={yPos}
+                  fill="#94a3b8" fontSize="7" fontFamily="'Courier New', monospace">
+              {line}
+            </text>
+          );
+        })}
+        {(() => { cursorY += 6 + actionLines.length * lineHeight; return null; })()}
+        {/* Action context */}
+        {contextLine && (
+          <text x={-boxWidth / 2 + 8} y={cursorY}
+                fill="#64748b" fontSize="6.5" fontFamily="'Courier New', monospace">
+            {contextLine}
           </text>
-        ))}
+        )}
+        {(() => { if (contextLine) cursorY += lineHeight; return null; })()}
+        {/* Current Task */}
+        {currentTask && (<>
+          <text x={-boxWidth / 2 + 8} y={cursorY + 2}
+                fill="#4169E1" fontSize="6.5" fontFamily="'Courier New', monospace" fontWeight="bold">
+            CURRENT TASK
+          </text>
+          <text x={-boxWidth / 2 + 8} y={cursorY + 2 + lineHeight}
+                fill="#94a3b8" fontSize="7" fontFamily="'Courier New', monospace">
+            #{currentTask.id}: {currentTask.subject.slice(0, 38)}
+          </text>
+        </>)}
+        {(() => { if (currentTask) cursorY += 2 + 2 * lineHeight; return null; })()}
+        {/* Recent Actions */}
+        {recentActions.length > 0 && (<>
+          <text x={-boxWidth / 2 + 8} y={cursorY + 2}
+                fill="#4169E1" fontSize="6.5" fontFamily="'Courier New', monospace" fontWeight="bold">
+            RECENT
+          </text>
+          {recentActions.slice(-3).reverse().map((ra, i) => (
+            <text key={`r${i}`} x={-boxWidth / 2 + 8} y={cursorY + 2 + (i + 1) * lineHeight}
+                  fill="#64748b" fontSize="6.5" fontFamily="'Courier New', monospace">
+              {relativeTime(ra.timestamp)}  {ra.action.slice(0, 34)}
+            </text>
+          ))}
+        </>)}
         {/* Pointer arrow */}
         <polygon
           points={`${x - popX - 5},${totalHeight} ${x - popX + 5},${totalHeight} ${x - popX},${totalHeight + 6}`}

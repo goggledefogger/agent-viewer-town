@@ -51,6 +51,9 @@ export class StateManager {
         agent.tasksCompleted = prev.tasksCompleted;
         agent.status = prev.status;
         agent.currentAction = prev.currentAction;
+        agent.actionContext = prev.actionContext;
+        agent.currentTaskId = prev.currentTaskId;
+        agent.recentActions = prev.recentActions;
       }
       this.allAgents.set(agent.id, agent);
     }
@@ -147,15 +150,20 @@ export class StateManager {
     this.broadcast({ type: 'new_message', data: message });
   }
 
-  updateAgentActivity(agentName: string, status: 'idle' | 'working' | 'done', action?: string) {
+  updateAgentActivity(agentName: string, status: 'idle' | 'working' | 'done', action?: string, actionContext?: string) {
     // Update in the full registry
     for (const agent of this.allAgents.values()) {
       if (agent.name === agentName) {
         agent.status = status;
         agent.currentAction = action;
+        agent.actionContext = actionContext;
         // Clear waiting flag when going idle or done
         if (status === 'idle' || status === 'done') {
           agent.waitingForInput = false;
+        }
+        // Push to recent actions ring buffer
+        if (action && status === 'working') {
+          this.pushRecentAction(agent, action);
         }
         break;
       }
@@ -165,6 +173,7 @@ export class StateManager {
     if (agent) {
       agent.status = status;
       agent.currentAction = action;
+      agent.actionContext = actionContext;
       if (status === 'idle' || status === 'done') {
         agent.waitingForInput = false;
       }
@@ -177,19 +186,25 @@ export class StateManager {
    * This is essential for solo sessions where multiple sessions in the same
    * project would have agents with the same name (slug).
    */
-  updateAgentActivityById(agentId: string, status: 'idle' | 'working' | 'done', action?: string) {
+  updateAgentActivityById(agentId: string, status: 'idle' | 'working' | 'done', action?: string, actionContext?: string) {
     const agent = this.allAgents.get(agentId);
     if (!agent) return;
     agent.status = status;
     agent.currentAction = action;
+    agent.actionContext = actionContext;
     if (status === 'idle' || status === 'done') {
       agent.waitingForInput = false;
+    }
+    // Push to recent actions ring buffer
+    if (action && status === 'working') {
+      this.pushRecentAction(agent, action);
     }
     // Also update in the displayed state if this agent is currently shown
     const displayed = this.state.agents.find((a) => a.id === agentId);
     if (displayed) {
       displayed.status = status;
       displayed.currentAction = action;
+      displayed.actionContext = actionContext;
       if (status === 'idle' || status === 'done') {
         displayed.waitingForInput = false;
       }
@@ -197,12 +212,13 @@ export class StateManager {
     }
   }
 
-  setAgentWaiting(agentName: string, waiting: boolean, action?: string) {
+  setAgentWaiting(agentName: string, waiting: boolean, action?: string, actionContext?: string) {
     // Update in the full registry
     for (const agent of this.allAgents.values()) {
       if (agent.name === agentName) {
         agent.waitingForInput = waiting;
         if (action) agent.currentAction = action;
+        if (actionContext !== undefined) agent.actionContext = actionContext;
         break;
       }
     }
@@ -211,6 +227,7 @@ export class StateManager {
     if (agent) {
       agent.waitingForInput = waiting;
       if (action) agent.currentAction = action;
+      if (actionContext !== undefined) agent.actionContext = actionContext;
       this.broadcast({ type: 'agent_update', data: agent });
     }
   }
@@ -220,16 +237,41 @@ export class StateManager {
    * This is essential for solo sessions where multiple sessions in the same
    * project would have agents with the same name (slug).
    */
-  setAgentWaitingById(agentId: string, waiting: boolean, action?: string) {
+  setAgentWaitingById(agentId: string, waiting: boolean, action?: string, actionContext?: string) {
     const agent = this.allAgents.get(agentId);
     if (!agent) return;
     agent.waitingForInput = waiting;
     if (action) agent.currentAction = action;
+    if (actionContext !== undefined) agent.actionContext = actionContext;
     // Also update in the displayed state if this agent is currently shown
     const displayed = this.state.agents.find((a) => a.id === agentId);
     if (displayed) {
       displayed.waitingForInput = waiting;
       if (action) displayed.currentAction = action;
+      if (actionContext !== undefined) displayed.actionContext = actionContext;
+      this.broadcast({ type: 'agent_update', data: displayed });
+    }
+  }
+
+  /** Push an action to the agent's recentActions ring buffer (max 5 entries) */
+  private pushRecentAction(agent: AgentState, action: string) {
+    if (!agent.recentActions) {
+      agent.recentActions = [];
+    }
+    agent.recentActions.push({ action, timestamp: Date.now() });
+    if (agent.recentActions.length > 5) {
+      agent.recentActions = agent.recentActions.slice(-5);
+    }
+  }
+
+  /** Set or clear the currentTaskId on an agent */
+  setAgentCurrentTask(agentId: string, taskId: string | undefined) {
+    const agent = this.allAgents.get(agentId);
+    if (!agent) return;
+    agent.currentTaskId = taskId;
+    const displayed = this.state.agents.find((a) => a.id === agentId);
+    if (displayed) {
+      displayed.currentTaskId = taskId;
       this.broadcast({ type: 'agent_update', data: displayed });
     }
   }
