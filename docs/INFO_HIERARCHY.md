@@ -189,6 +189,12 @@ Implementer  |  working on #3
 
 **On-click**: Full tool details that need approval, task context.
 
+**How waiting is detected**: `waitingForInput` is only set by:
+1. **Hooks `PermissionRequest`** — definitive signal from Claude Code when user approval is needed
+2. **JSONL immediate-trigger tools** — `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode` (these always require input)
+
+The old delayed-timeout heuristic (45s after tool_use without tool_result) was removed because it caused false positives. Permission prompts for other tools (Bash, Edit, etc.) are detected via hooks only.
+
 ---
 
 ### 4. Subagent, actively working

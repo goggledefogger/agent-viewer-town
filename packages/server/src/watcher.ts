@@ -14,7 +14,6 @@ import {
   parseTranscriptLine,
   parseSessionMetadata,
   readNewLines,
-  readFirstLine,
   cleanProjectName,
 } from './parser';
 
@@ -27,13 +26,6 @@ const PROJECTS_DIR = join(CLAUDE_DIR, 'projects');
 const IDLE_THRESHOLD_S = 60;
 /** How often to check for stale sessions (ms) */
 const STALENESS_CHECK_INTERVAL_MS = 15_000;
-/**
- * Seconds after a tool_use with no tool_result before heuristically marking
- * "waiting for input". Set higher to avoid false positives from long tool
- * executions (builds, tests, etc.). Tools like AskUserQuestion are detected
- * immediately regardless of this delay.
- */
-const WAITING_FOR_INPUT_DELAY_S = 45;
 
 function createDebouncer(delayMs: number) {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -76,10 +68,6 @@ interface TrackedSession {
   /** Project directory slug from the file path */
   dirSlug: string;
   lastActivity: number;
-  /** Timestamp of the last tool_use seen without a corresponding tool_result */
-  lastToolUseAt?: number;
-  /** Name of the pending tool (for display) */
-  pendingToolName?: string;
   /** True for internal subagents (acompact, etc.) that shouldn't be shown as characters */
   isInternalSubagent?: boolean;
 }
@@ -337,8 +325,11 @@ export function startWatcher(stateManager: StateManager) {
 
       // Filter out internal subagents (acompact = conversation compaction summarizer).
       // Instead of showing them as regular subagents, trigger the compact indicator on the parent.
+      // Only set compacting status if the acompact file is recent — stale files from
+      // past compactions should not mark the parent as currently compacting.
       if (subagentId.startsWith('agent-acompact')) {
-        if (parentSessionId) {
+        const acompactAgeS = (Date.now() - subMtime) / 1000;
+        if (parentSessionId && acompactAgeS < IDLE_THRESHOLD_S) {
           stateManager.updateAgentActivityById(parentSessionId, 'working', 'Compacting conversation...');
         }
         // Track the file so we can clear the compacting status when it finishes
@@ -419,6 +410,34 @@ export function startWatcher(stateManager: StateManager) {
       initialStatus = ageSeconds < IDLE_THRESHOLD_S ? 'working' : 'idle';
     } catch { /* default to idle, current time */ }
 
+    // Read the tail of the transcript to determine accurate initial state.
+    // Without this, agents show as just "working" or "idle" with no currentAction.
+    let initialAction: string | undefined;
+    let initialWaiting = false;
+    const tailLines = lines.slice(-30);
+    for (let i = tailLines.length - 1; i >= 0; i--) {
+      const parsed = parseTranscriptLine(tailLines[i]);
+      if (!parsed) continue;
+
+      if (parsed.type === 'tool_call' && parsed.toolName) {
+        initialAction = parsed.toolName;
+        if (parsed.isUserPrompt) initialWaiting = true;
+        break;
+      }
+      if (parsed.type === 'agent_activity') {
+        // Last meaningful event was a tool_result — agent is between actions
+        break;
+      }
+      if (parsed.type === 'thinking' && parsed.toolName) {
+        initialAction = parsed.toolName;
+        break;
+      }
+      if (parsed.type === 'compact') {
+        initialAction = 'Compacting conversation...';
+        break;
+      }
+    }
+
     // Always read the real git branch from the working directory when possible.
     // JSONL metadata may be stale (branch changed after session started) or
     // missing entirely (compacted/continued sessions lose gitBranch metadata).
@@ -474,6 +493,8 @@ export function startWatcher(stateManager: StateManager) {
           role: 'implementer',
           status: initialStatus,
           tasksCompleted: 0,
+          currentAction: initialStatus === 'working' ? initialAction : undefined,
+          waitingForInput: initialStatus === 'working' ? initialWaiting : false,
         });
       }
 
@@ -507,28 +528,25 @@ export function startWatcher(stateManager: StateManager) {
 
     for (const line of lines) {
       const parsed = parseTranscriptLine(line);
-      if (!parsed) continue;
+      if (!parsed || parsed.type === 'unknown') continue;
 
+      hadMeaningfulActivity = true;
+
+      // Extract messages (SendMessage tool calls from JSONL)
       if (parsed.type === 'message' && parsed.message) {
-        hadMeaningfulActivity = true;
         stateManager.addMessage(parsed.message);
       }
 
       // Handle conversation compacting — show as a special agent action
       if (parsed.type === 'compact') {
-        hadMeaningfulActivity = true;
         if (currentTracked?.isSolo) {
           stateManager.updateAgentActivityById(
             currentTracked.sessionId,
             'working',
             'Compacting conversation...'
           );
-          // Clear pending tool state since compacting resets the context
-          currentTracked.lastToolUseAt = undefined;
-          currentTracked.pendingToolName = undefined;
           stateManager.setAgentWaitingById(currentTracked.sessionId, false);
         } else {
-          // For team sessions, show compacting on the first agent (team lead)
           const state = stateManager.getState();
           if (state.agents.length > 0) {
             stateManager.updateAgentActivity(state.agents[0].name, 'working', 'Compacting conversation...');
@@ -536,14 +554,8 @@ export function startWatcher(stateManager: StateManager) {
         }
       }
 
-      // Handle thinking/responding state (assistant generating text between tool calls)
+      // Thinking/responding — agent is actively generating (not waiting for input)
       if (parsed.type === 'thinking' && parsed.toolName) {
-        hadMeaningfulActivity = true;
-        // Clear any pending waitingForInput — the model is actively generating
-        if (currentTracked) {
-          currentTracked.lastToolUseAt = undefined;
-          currentTracked.pendingToolName = undefined;
-        }
         if (currentTracked?.isSolo) {
           stateManager.setAgentWaitingById(currentTracked.sessionId, false);
           stateManager.updateAgentActivityById(
@@ -560,15 +572,12 @@ export function startWatcher(stateManager: StateManager) {
         }
       }
 
+      // Tool call — update activity display. Only set waitingForInput for tools
+      // that definitively require user input (AskUserQuestion, EnterPlanMode, etc.).
+      // For all other tools, waiting-for-input detection is left to hooks
+      // (PermissionRequest) which are more reliable.
       if (parsed.type === 'tool_call' && parsed.toolName) {
-        hadMeaningfulActivity = true;
-        // Record that a tool_use was seen — may trigger "waiting for input" later
-        if (currentTracked) {
-          currentTracked.lastToolUseAt = Date.now();
-          currentTracked.pendingToolName = parsed.toolName;
-        }
-
-        // Immediately mark as waiting for AskUserQuestion (always requires input)
+        // Immediately mark as waiting for tools that always require user input
         if (parsed.isUserPrompt && currentTracked) {
           if (currentTracked.isSolo) {
             stateManager.setAgentWaitingById(currentTracked.sessionId, true, parsed.toolName);
@@ -580,7 +589,7 @@ export function startWatcher(stateManager: StateManager) {
           }
         }
 
-        // For solo sessions, update the synthetic agent directly (by ID to avoid cross-session collision)
+        // Update the activity display (tool name / action)
         if (currentTracked?.isSolo) {
           stateManager.updateAgentActivityById(
             currentTracked.sessionId,
@@ -590,7 +599,6 @@ export function startWatcher(stateManager: StateManager) {
           continue;
         }
 
-        // For team sessions, match to the right agent
         if (parsed.agentName) {
           const state = stateManager.getState();
           const agent = state.agents.find((a) => a.name === parsed.agentName);
@@ -605,33 +613,18 @@ export function startWatcher(stateManager: StateManager) {
         }
       }
 
-      // Progress entries (bash_progress, etc.) mean the tool is actively running.
-      // Reset the waiting-for-input timer — definitely NOT waiting for approval.
+      // Progress entries — tool is actively running, clear any waiting state
       if (parsed.type === 'progress') {
-        hadMeaningfulActivity = true;
-        if (currentTracked) {
-          // Push the lastToolUseAt forward so the delayed timeout doesn't fire
-          currentTracked.lastToolUseAt = Date.now();
-        }
-        // Optionally update the action display
         if (parsed.toolName && currentTracked?.isSolo) {
           stateManager.setAgentWaitingById(currentTracked.sessionId, false);
         }
       }
 
-      // tool_result clears the "waiting for input" state but keeps the last action visible
+      // Tool result — clear waiting state, keep last action visible
       if (parsed.type === 'agent_activity') {
-        hadMeaningfulActivity = true;
-        if (currentTracked) {
-          currentTracked.lastToolUseAt = undefined;
-          currentTracked.pendingToolName = undefined;
-        }
         if (currentTracked?.isSolo) {
           stateManager.setAgentWaitingById(currentTracked.sessionId, false);
-          // Keep the last action visible — don't clear currentAction on tool_result.
-          // The next tool_call will overwrite it. This prevents flickering.
         } else {
-          // Clear waiting state for any agent in this session
           const agentName = parsed.agentName || findWorkingAgentName();
           if (agentName) {
             stateManager.setAgentWaiting(agentName, false);
@@ -656,25 +649,6 @@ export function startWatcher(stateManager: StateManager) {
       }
     }
 
-    // After processing all lines, schedule a delayed check for pending tool_use
-    // without a tool_result — this catches permission prompts faster than the
-    // periodic staleness check alone. Capture the exact timestamp so we only
-    // trigger for THIS specific tool_use (not a later one that happened to set
-    // a new lastToolUseAt).
-    // Skip for subagents and internal subagents — they don't need user input.
-    const trackedAgent = currentTracked ? stateManager.getAgentById(currentTracked.sessionId) : undefined;
-    if (currentTracked?.lastToolUseAt && currentTracked.isSolo && !trackedAgent?.isSubagent && !currentTracked.isInternalSubagent) {
-      const sessionId = currentTracked.sessionId;
-      const capturedToolUseAt = currentTracked.lastToolUseAt;
-      setTimeout(() => {
-        // Only mark waiting if THIS specific tool_use is still pending
-        // (a new tool_use would have a different timestamp)
-        if (currentTracked.lastToolUseAt === capturedToolUseAt) {
-          stateManager.setAgentWaitingById(sessionId, true, currentTracked.pendingToolName);
-        }
-      }, WAITING_FOR_INPUT_DELAY_S * 1000);
-    }
-
     function findWorkingAgentName(): string | undefined {
       const state = stateManager.getState();
       for (const agent of state.agents) {
@@ -694,7 +668,7 @@ export function startWatcher(stateManager: StateManager) {
   }
 
   // ================================================================
-  // Periodic staleness + waiting-for-input check
+  // Periodic staleness check — marks idle sessions, cleans up subagents
   // ================================================================
   const stalenessInterval = setInterval(() => {
     const now = Date.now();
@@ -704,20 +678,6 @@ export function startWatcher(stateManager: StateManager) {
 
       const idleSeconds = (now - tracked.lastActivity) / 1000;
 
-      // Check for "waiting for input": tool_use seen but no tool_result followed
-      // Skip for subagents and internal subagents — they don't need user input
-      const trackedAgentForStale = stateManager.getAgentById(tracked.sessionId);
-      if (tracked.lastToolUseAt && !trackedAgentForStale?.isSubagent && !tracked.isInternalSubagent) {
-        const waitingSeconds = (now - tracked.lastToolUseAt) / 1000;
-        if (waitingSeconds >= WAITING_FOR_INPUT_DELAY_S) {
-          stateManager.setAgentWaitingById(
-            tracked.sessionId,
-            true,
-            tracked.pendingToolName
-          );
-        }
-      }
-
       // Internal subagents (acompact): just clean up tracking when done, no display
       if (tracked.isInternalSubagent && idleSeconds >= IDLE_THRESHOLD_S) {
         trackedSessions.delete(tracked.filePath);
@@ -726,14 +686,10 @@ export function startWatcher(stateManager: StateManager) {
 
       // Mark as idle after inactivity (but don't remove the session)
       if (idleSeconds >= IDLE_THRESHOLD_S) {
-        // Clear stale waiting state — if truly idle, not waiting for input
-        tracked.lastToolUseAt = undefined;
-        tracked.pendingToolName = undefined;
         stateManager.setAgentWaitingById(tracked.sessionId, false);
 
         const agent = stateManager.getAgentById(tracked.sessionId);
         if (agent && agent.status === 'working') {
-          // For subagents, show "Done" when they finish instead of clearing the action
           if (agent.isSubagent) {
             stateManager.updateAgentActivityById(tracked.sessionId, 'done', 'Done');
           } else {

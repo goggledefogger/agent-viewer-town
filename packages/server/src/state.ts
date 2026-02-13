@@ -24,6 +24,7 @@ export class StateManager {
   /** How long to debounce rapid activity updates (ms) */
   private activityDebounceMs = 200;
 
+
   subscribe(listener: Listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
