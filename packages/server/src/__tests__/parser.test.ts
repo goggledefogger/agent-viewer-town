@@ -12,6 +12,7 @@ import {
   cleanProjectName,
   readFirstLine,
   extractRecordType,
+  detectGitWorktree,
 } from '../parser';
 
 const TMP = join(tmpdir(), 'avt-parser-test-' + Date.now());
@@ -804,5 +805,79 @@ describe('inferRole edge cases', () => {
   it('returns implementer for generic names', () => {
     expect(inferRole('', 'bob')).toBe('implementer');
     expect(inferRole('Worker', 'agent-42')).toBe('implementer');
+  });
+});
+
+describe('detectGitWorktree', () => {
+  it('detects branch and no worktree for normal repo', async () => {
+    const mockExec = async (cmd: string, args: string[]) => {
+      if (args[0] === 'branch') return { stdout: 'main\n' };
+      if (args[1] === '--git-dir') return { stdout: '.git\n' };
+      if (args[1] === '--git-common-dir') return { stdout: '.git\n' };
+      return { stdout: '' };
+    };
+    const result = await detectGitWorktree('/tmp/repo', mockExec as any);
+    expect(result.gitBranch).toBe('main');
+    expect(result.gitWorktree).toBeUndefined();
+  });
+
+  it('detects branch and worktree path for a worktree', async () => {
+    const mockExec = async (cmd: string, args: string[]) => {
+      if (args[0] === 'branch') return { stdout: 'feature/new\n' };
+      if (args[1] === '--git-dir') return { stdout: '/main-repo/.git/worktrees/wt1\n' };
+      if (args[1] === '--git-common-dir') return { stdout: '/main-repo/.git\n' };
+      if (args[1] === '--show-toplevel') return { stdout: '/Users/dev/project-wt\n' };
+      return { stdout: '' };
+    };
+    const result = await detectGitWorktree('/Users/dev/project-wt', mockExec as any);
+    expect(result.gitBranch).toBe('feature/new');
+    expect(result.gitWorktree).toBe('/Users/dev/project-wt');
+  });
+
+  it('returns empty object when git fails', async () => {
+    const mockExec = async () => {
+      throw new Error('git not found');
+    };
+    const result = await detectGitWorktree('/tmp/not-a-repo', mockExec as any);
+    expect(result.gitBranch).toBeUndefined();
+    expect(result.gitWorktree).toBeUndefined();
+  });
+
+  it('handles detached HEAD (empty branch output)', async () => {
+    const mockExec = async (cmd: string, args: string[]) => {
+      if (args[0] === 'branch') return { stdout: '\n' };
+      if (args[1] === '--git-dir') return { stdout: '.git\n' };
+      if (args[1] === '--git-common-dir') return { stdout: '.git\n' };
+      return { stdout: '' };
+    };
+    const result = await detectGitWorktree('/tmp/repo', mockExec as any);
+    expect(result.gitBranch).toBeUndefined();
+    expect(result.gitWorktree).toBeUndefined();
+  });
+
+  it('does not set worktree when git-dir equals .git (normal repo)', async () => {
+    const mockExec = async (cmd: string, args: string[]) => {
+      if (args[0] === 'branch') return { stdout: 'develop\n' };
+      if (args[1] === '--git-dir') return { stdout: '.git\n' };
+      if (args[1] === '--git-common-dir') return { stdout: '/some/other/dir\n' };
+      return { stdout: '' };
+    };
+    const result = await detectGitWorktree('/tmp/repo', mockExec as any);
+    expect(result.gitBranch).toBe('develop');
+    // git-dir is '.git', so even though common-dir differs, it's not a worktree
+    expect(result.gitWorktree).toBeUndefined();
+  });
+
+  it('handles empty show-toplevel output gracefully', async () => {
+    const mockExec = async (cmd: string, args: string[]) => {
+      if (args[0] === 'branch') return { stdout: 'feature/x\n' };
+      if (args[1] === '--git-dir') return { stdout: '/main/.git/worktrees/wt\n' };
+      if (args[1] === '--git-common-dir') return { stdout: '/main/.git\n' };
+      if (args[1] === '--show-toplevel') return { stdout: '\n' };
+      return { stdout: '' };
+    };
+    const result = await detectGitWorktree('/tmp/wt', mockExec as any);
+    expect(result.gitBranch).toBe('feature/x');
+    expect(result.gitWorktree).toBeUndefined();
   });
 });

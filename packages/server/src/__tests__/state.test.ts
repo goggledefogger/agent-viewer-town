@@ -1187,4 +1187,251 @@ describe('StateManager', () => {
       expect(list[2].sessionId).toBe('s3');
     });
   });
+
+  describe('updateAgentGitInfo', () => {
+    it('sets gitBranch on agent in registry', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentGitInfo('s1', 'feature/new-ui');
+
+      const agent = sm.getAgentById('s1');
+      expect(agent?.gitBranch).toBe('feature/new-ui');
+    });
+
+    it('sets gitWorktree on agent in registry', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentGitInfo('s1', undefined, '/Users/dev/project-worktree');
+
+      const agent = sm.getAgentById('s1');
+      expect(agent?.gitWorktree).toBe('/Users/dev/project-worktree');
+    });
+
+    it('sets both gitBranch and gitWorktree simultaneously', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentGitInfo('s1', 'feature/branch', '/Users/dev/worktree');
+
+      const agent = sm.getAgentById('s1');
+      expect(agent?.gitBranch).toBe('feature/branch');
+      expect(agent?.gitWorktree).toBe('/Users/dev/worktree');
+    });
+
+    it('updates session gitBranch when agent has a matching session', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentGitInfo('s1', 'main');
+
+      const session = sm.getSessions().get('s1');
+      expect(session?.gitBranch).toBe('main');
+    });
+
+    it('updates session gitWorktree', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentGitInfo('s1', undefined, '/tmp/worktree');
+
+      const session = sm.getSessions().get('s1');
+      expect(session?.gitWorktree).toBe('/tmp/worktree');
+    });
+
+    it('broadcasts agent_update when agent is displayed', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+      messages = [];
+
+      sm.updateAgentGitInfo('s1', 'develop');
+
+      const updates = messages.filter((m) => m.type === 'agent_update');
+      expect(updates).toHaveLength(1);
+      if (updates[0].type === 'agent_update') {
+        expect(updates[0].data.gitBranch).toBe('develop');
+      }
+    });
+
+    it('updates displayed agent gitBranch', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentGitInfo('s1', 'feature/x');
+
+      const displayed = sm.getState().agents[0];
+      expect(displayed.gitBranch).toBe('feature/x');
+    });
+
+    it('updates displayed agent gitWorktree', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentGitInfo('s1', undefined, '/Users/dev/wt');
+
+      const displayed = sm.getState().agents[0];
+      expect(displayed.gitWorktree).toBe('/Users/dev/wt');
+    });
+
+    it('does not broadcast when agent is not displayed', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.registerAgent(makeAgent('s2', 'agent-b'));
+      sm.addSession(makeSession('s1', 'project-a', { lastActivity: 1000 }));
+      sm.addSession(makeSession('s2', 'project-b', { lastActivity: 2000 }));
+      // s2 is active
+      messages = [];
+
+      sm.updateAgentGitInfo('s1', 'feature/hidden');
+
+      const updates = messages.filter((m) => m.type === 'agent_update');
+      expect(updates).toHaveLength(0);
+
+      // But registry was updated
+      expect(sm.getAgentById('s1')?.gitBranch).toBe('feature/hidden');
+    });
+
+    it('does nothing for unknown agent ID', () => {
+      sm.updateAgentGitInfo('nonexistent', 'main');
+      expect(sm.getAgentById('nonexistent')).toBeUndefined();
+    });
+
+    it('does not overwrite gitBranch when undefined is passed', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a', { gitBranch: 'main' }));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentGitInfo('s1', undefined, '/tmp/wt');
+
+      const agent = sm.getAgentById('s1');
+      expect(agent?.gitBranch).toBe('main');
+      expect(agent?.gitWorktree).toBe('/tmp/wt');
+    });
+
+    it('does not overwrite gitWorktree when undefined is passed', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a', { gitWorktree: '/tmp/wt' }));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentGitInfo('s1', 'develop');
+
+      const agent = sm.getAgentById('s1');
+      expect(agent?.gitBranch).toBe('develop');
+      expect(agent?.gitWorktree).toBe('/tmp/wt');
+    });
+  });
+
+  describe('setAgents preserves git fields', () => {
+    it('preserves gitBranch from existing agents', () => {
+      sm.registerAgent(makeAgent('a1', 'coder', { gitBranch: 'feature/x' }));
+
+      sm.setAgents([makeAgent('a1', 'coder')]);
+      const agent = sm.getState().agents[0];
+      expect(agent.gitBranch).toBe('feature/x');
+    });
+
+    it('preserves gitWorktree from existing agents', () => {
+      sm.registerAgent(makeAgent('a1', 'coder', { gitWorktree: '/tmp/wt' }));
+
+      sm.setAgents([makeAgent('a1', 'coder')]);
+      const agent = sm.getState().agents[0];
+      expect(agent.gitWorktree).toBe('/tmp/wt');
+    });
+
+    it('preserves both gitBranch and gitWorktree together', () => {
+      sm.registerAgent(makeAgent('a1', 'coder', {
+        gitBranch: 'feature/branch',
+        gitWorktree: '/Users/dev/project-wt',
+      }));
+
+      sm.setAgents([makeAgent('a1', 'coder')]);
+      const agent = sm.getState().agents[0];
+      expect(agent.gitBranch).toBe('feature/branch');
+      expect(agent.gitWorktree).toBe('/Users/dev/project-wt');
+    });
+  });
+
+  describe('getSessionsList includes git info', () => {
+    it('includes gitBranch in session list entries', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a', {
+        lastActivity: 1000,
+        gitBranch: 'feature/test',
+      }));
+
+      const list = sm.getSessionsList();
+      expect(list).toHaveLength(1);
+      expect(list[0].gitBranch).toBe('feature/test');
+    });
+
+    it('sessions without gitBranch have undefined in list', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a', { lastActivity: 1000 }));
+
+      const list = sm.getSessionsList();
+      expect(list[0].gitBranch).toBeUndefined();
+    });
+
+    it('multiple sessions show different branches', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.registerAgent(makeAgent('s2', 'agent-b'));
+
+      sm.addSession(makeSession('s1', 'project-a', {
+        lastActivity: 1000,
+        gitBranch: 'main',
+      }));
+      sm.addSession(makeSession('s2', 'project-a', {
+        lastActivity: 2000,
+        gitBranch: 'feature/new',
+      }));
+
+      const list = sm.getSessionsList();
+      expect(list).toHaveLength(2);
+      const branches = list.map((s) => s.gitBranch).sort();
+      expect(branches).toEqual(['feature/new', 'main']);
+    });
+
+    it('gitBranch is updated after updateAgentGitInfo', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a', {
+        lastActivity: 1000,
+        gitBranch: 'main',
+      }));
+
+      sm.updateAgentGitInfo('s1', 'develop');
+
+      const list = sm.getSessionsList();
+      expect(list[0].gitBranch).toBe('develop');
+    });
+  });
+
+  describe('git info persists across session switches', () => {
+    it('agent gitBranch is preserved when switching sessions', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a', { gitBranch: 'feature/a' }));
+      sm.registerAgent(makeAgent('s2', 'agent-b', { gitBranch: 'feature/b' }));
+
+      sm.addSession(makeSession('s1', 'project-a', { lastActivity: 1000, gitBranch: 'feature/a' }));
+      sm.addSession(makeSession('s2', 'project-b', { lastActivity: 2000, gitBranch: 'feature/b' }));
+
+      // s2 is active, switch to s1
+      sm.selectSession('s1');
+      expect(sm.getState().agents[0].gitBranch).toBe('feature/a');
+
+      // Switch back to s2
+      sm.selectSession('s2');
+      expect(sm.getState().agents[0].gitBranch).toBe('feature/b');
+    });
+
+    it('agent gitWorktree is preserved when switching sessions', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a', { gitWorktree: '/tmp/wt1' }));
+      sm.registerAgent(makeAgent('s2', 'agent-b', { gitWorktree: '/tmp/wt2' }));
+
+      sm.addSession(makeSession('s1', 'project-a', { lastActivity: 1000 }));
+      sm.addSession(makeSession('s2', 'project-b', { lastActivity: 2000 }));
+
+      sm.selectSession('s1');
+      expect(sm.getState().agents[0].gitWorktree).toBe('/tmp/wt1');
+
+      sm.selectSession('s2');
+      expect(sm.getState().agents[0].gitWorktree).toBe('/tmp/wt2');
+    });
+  });
 });
