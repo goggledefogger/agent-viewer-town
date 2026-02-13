@@ -517,7 +517,7 @@ export function Scene({ state }: SceneProps) {
           if (!agent) return null;
           const subIdx = agent.isSubagent ? subagents.indexOf(agent) : 0;
           const pos = teamPositions?.get(agent.id) || getStationPos(agent, state.agents.indexOf(agent), isSoloMode, subIdx);
-          return <AgentDetail agent={agent} x={pos.x} y={pos.y} onClose={() => setSelectedAgentId(null)} />;
+          return <AgentDetail agent={agent} x={pos.x} y={pos.y} onClose={() => setSelectedAgentId(null)} tasks={state.tasks} />;
         })()}
       </svg>
     </div>

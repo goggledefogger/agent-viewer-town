@@ -223,6 +223,19 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
             opacity={agent.status === 'done' ? 0.6 : 1}>
         {agent.name.length > 14 ? agent.name.slice(0, 13) + '\u2026' : agent.name}
       </text>
+      {/* Status line: role | progress */}
+      <text x="0" y="48" textAnchor="middle" fill="#64748b" fontSize="6.5" fontFamily="'Courier New', monospace"
+            opacity={agent.status === 'done' ? 0.5 : 0.8}>
+        {agent.isSubagent
+          ? `Subagent${agent.parentAgentId ? '' : ''}`
+          : `${agent.role.charAt(0).toUpperCase() + agent.role.slice(1)}${
+              agent.currentTaskId
+                ? ` | #${agent.currentTaskId}`
+                : agent.tasksCompleted > 0
+                  ? ` | ${agent.tasksCompleted} done`
+                  : ''
+            }`}
+      </text>
     </g>
   );
 }
