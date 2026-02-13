@@ -258,8 +258,8 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
                   : ''
             }`}
       </text>
-      {/* Git branch badge pill */}
-      {agent.gitBranch && (
+      {/* Git branch badge pill — hidden on subagents to reduce vertical overlap */}
+      {agent.gitBranch && !agent.isSubagent && (
         <g transform="translate(0, 56)">
           {(() => {
             const branchColor = getBranchColor(agent.gitBranch);
