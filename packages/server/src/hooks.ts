@@ -120,77 +120,102 @@ type HookEvent =
  * Describe a tool action in human-readable form.
  * Similar to parser.ts describeToolAction but works with hook event format.
  */
-function describeToolAction(toolName: string, toolInput?: Record<string, unknown>): string {
-  if (!toolInput) return toolName;
+interface ActionDescription {
+  action: string;
+  context?: string;
+}
+
+/**
+ * Describe a tool action in human-readable form with optional context.
+ * Returns { action, context } where context is a secondary line
+ * (directory path, file filter, etc.) shown below the primary action.
+ */
+function describeToolAction(toolName: string, toolInput?: Record<string, unknown>): ActionDescription {
+  if (!toolInput) return { action: toolName };
 
   switch (toolName) {
     case 'Edit':
     case 'Write':
     case 'Read': {
       const fp = typeof toolInput.file_path === 'string' ? toolInput.file_path : '';
-      const filename = fp.split('/').pop() || fp;
+      const parts = fp.split('/');
+      const filename = parts.pop() || fp;
+      const dir = parts.slice(-2).join('/');
       const verb = toolName === 'Edit' ? 'Editing' : toolName === 'Write' ? 'Writing' : 'Reading';
-      return filename ? `${verb} ${filename}` : toolName;
+      return {
+        action: filename ? `${verb} ${filename}` : toolName,
+        context: dir || undefined,
+      };
     }
     case 'Bash': {
       const desc = typeof toolInput.description === 'string' ? toolInput.description : '';
       const cmd = typeof toolInput.command === 'string' ? toolInput.command : '';
-      if (desc) return desc.slice(0, 60);
+      if (desc) return { action: desc.slice(0, 60) };
       if (cmd) {
         const short = cmd.split('&&')[0].split('|')[0].trim().slice(0, 50);
-        return `Running: ${short}`;
+        return { action: `Running: ${short}` };
       }
-      return 'Running command';
+      return { action: 'Running command' };
     }
     case 'Grep':
     case 'Glob': {
       const pattern = typeof toolInput.pattern === 'string' ? toolInput.pattern : '';
-      return pattern ? `Searching: ${pattern.slice(0, 40)}` : 'Searching files';
+      const glob = typeof toolInput.glob === 'string' ? toolInput.glob : '';
+      const path = typeof toolInput.path === 'string' ? toolInput.path : '';
+      const dir = path ? path.split('/').slice(-2).join('/') : undefined;
+      return {
+        action: pattern ? `Searching: ${pattern.slice(0, 40)}` : 'Searching files',
+        context: glob ? `in ${glob}` : dir ? `in ${dir}` : undefined,
+      };
     }
     case 'Task': {
       const desc = typeof toolInput.description === 'string' ? toolInput.description : '';
-      return desc ? `Spawning: ${desc.slice(0, 40)}` : 'Spawning agent';
+      const subType = typeof toolInput.subagent_type === 'string' ? toolInput.subagent_type : '';
+      return {
+        action: desc ? `Spawning: ${desc.slice(0, 40)}` : 'Spawning agent',
+        context: subType ? `(${subType})` : undefined,
+      };
     }
     case 'TaskCreate': {
       const subj = typeof toolInput.subject === 'string' ? toolInput.subject : '';
-      return subj ? `Creating task: ${subj.slice(0, 40)}` : 'Creating task';
+      return { action: subj ? `Creating task: ${subj.slice(0, 40)}` : 'Creating task' };
     }
     case 'TaskUpdate': {
       const taskId = typeof toolInput.taskId === 'string' ? toolInput.taskId : '';
       const status = typeof toolInput.status === 'string' ? toolInput.status : '';
-      if (status) return `Task #${taskId}: ${status}`;
-      return `Updating task #${taskId}`;
+      if (status) return { action: `Task #${taskId}: ${status}` };
+      return { action: `Updating task #${taskId}` };
     }
     case 'TaskList':
-      return 'Checking task list';
+      return { action: 'Checking task list' };
     case 'SendMessage':
     case 'SendMessageTool': {
       const msgType = typeof toolInput.type === 'string' ? toolInput.type : 'message';
       const to = typeof toolInput.recipient === 'string' ? toolInput.recipient : 'team';
-      if (msgType === 'broadcast') return 'Broadcasting to team';
-      if (msgType === 'shutdown_request') return `Requesting ${to} shutdown`;
-      return `Messaging ${to}`;
+      if (msgType === 'broadcast') return { action: 'Broadcasting to team' };
+      if (msgType === 'shutdown_request') return { action: `Requesting ${to} shutdown` };
+      return { action: `Messaging ${to}` };
     }
     case 'TeamCreate': {
       const name = typeof toolInput.team_name === 'string' ? toolInput.team_name : '';
-      return name ? `Creating team: ${name}` : 'Creating team';
+      return { action: name ? `Creating team: ${name}` : 'Creating team' };
     }
     case 'TeamDelete':
-      return 'Deleting team';
+      return { action: 'Deleting team' };
     case 'WebSearch': {
       const q = typeof toolInput.query === 'string' ? toolInput.query : '';
-      return q ? `Searching: ${q.slice(0, 40)}` : 'Web search';
+      return { action: q ? `Searching: ${q.slice(0, 40)}` : 'Web search' };
     }
     case 'WebFetch':
-      return 'Fetching web page';
+      return { action: 'Fetching web page' };
     case 'EnterPlanMode':
-      return 'Entering plan mode';
+      return { action: 'Entering plan mode' };
     case 'ExitPlanMode':
-      return 'Presenting plan for approval';
+      return { action: 'Presenting plan for approval' };
     case 'AskUserQuestion':
-      return 'Asking user a question';
+      return { action: 'Asking user a question' };
     default:
-      return toolName;
+      return { action: toolName };
   }
 }
 
@@ -282,7 +307,7 @@ export function createHookHandler(stateManager: StateManager) {
   }
 
   function handlePreToolUse(event: PreToolUseEvent, sessionId: string) {
-    const action = describeToolAction(event.tool_name, event.tool_input);
+    const { action, context } = describeToolAction(event.tool_name, event.tool_input);
 
     // Track Task tool spawns for subagent correlation
     if (event.tool_name === 'Task' && event.tool_use_id && event.tool_input) {
@@ -301,7 +326,7 @@ export function createHookHandler(stateManager: StateManager) {
 
     // Update agent activity — clear any waiting state, show working
     stateManager.setAgentWaitingById(sessionId, false);
-    stateManager.updateAgentActivityById(sessionId, 'working', action);
+    stateManager.updateAgentActivityById(sessionId, 'working', action, context);
   }
 
   function handlePostToolUse(event: PostToolUseEvent, sessionId: string) {
@@ -494,6 +519,22 @@ export function createHookHandler(stateManager: StateManager) {
       }
       stateManager.updateTask(updated);
       console.log(`[hooks] TaskUpdate: #${taskId} → ${status || 'updated'} owner=${owner || existing.owner || 'none'} session=${sessionId.slice(0, 8)}`);
+
+      // Track currentTaskId on the owning agent
+      const taskOwner = updated.owner || existing.owner;
+      if (taskOwner) {
+        const agent = stateManager.getState().agents.find(a => a.name === taskOwner);
+        if (agent) {
+          if (updated.status === 'in_progress') {
+            stateManager.setAgentCurrentTask(agent.id, taskId);
+          } else if (updated.status === 'completed' || updated.status === 'pending') {
+            // Clear currentTaskId if the agent's current task was this one
+            if (agent.currentTaskId === taskId) {
+              stateManager.setAgentCurrentTask(agent.id, undefined);
+            }
+          }
+        }
+      }
     }
 
     stateManager.reconcileAgentStatuses();
@@ -501,8 +542,8 @@ export function createHookHandler(stateManager: StateManager) {
 
   function handlePermissionRequest(event: PermissionRequestEvent, sessionId: string) {
     // DEFINITIVE signal: Claude needs user input for tool approval
-    const toolDesc = describeToolAction(event.tool_name, event.tool_input);
-    stateManager.setAgentWaitingById(sessionId, true, toolDesc);
+    const { action, context } = describeToolAction(event.tool_name, event.tool_input);
+    stateManager.setAgentWaitingById(sessionId, true, action, context);
   }
 
   function handleSubagentStart(event: SubagentStartEvent, sessionId: string) {

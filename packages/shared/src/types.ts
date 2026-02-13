@@ -5,6 +5,12 @@ export interface AgentState {
   status: AgentStatus;
   tasksCompleted: number;
   currentAction?: string;
+  /** Supporting context for the current action (directory path, file filter, recipient) */
+  actionContext?: string;
+  /** ID of the task this agent is currently working on */
+  currentTaskId?: string;
+  /** Ring buffer of recent actions for the detail panel (last 5) */
+  recentActions?: Array<{ action: string; timestamp: number }>;
   /** True when the agent is blocked waiting for user approval/input */
   waitingForInput?: boolean;
   /** True if this is a subagent spawned via the Task tool */

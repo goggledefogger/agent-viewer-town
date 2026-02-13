@@ -831,6 +831,165 @@ describe('Hook Event Handlers', () => {
     });
   });
 
+  describe('actionContext', () => {
+    it('sets actionContext for file operations', () => {
+      setupAgent('sess-1', 'coder');
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Edit',
+        tool_input: { file_path: '/src/components/Button.tsx' },
+      });
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.currentAction).toBe('Editing Button.tsx');
+      expect(agent?.actionContext).toBe('src/components');
+    });
+
+    it('sets actionContext for Grep with glob filter', () => {
+      setupAgent('sess-1', 'coder');
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Grep',
+        tool_input: { pattern: 'handleEvent', glob: '*.tsx' },
+      });
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.currentAction).toBe('Searching: handleEvent');
+      expect(agent?.actionContext).toBe('in *.tsx');
+    });
+
+    it('sets actionContext for Task spawning with subagent type', () => {
+      setupAgent('sess-1', 'lead');
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Task',
+        tool_input: { description: 'Research API', subagent_type: 'Explore' },
+        tool_use_id: 'tu-100',
+      });
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.currentAction).toBe('Spawning: Research API');
+      expect(agent?.actionContext).toBe('(Explore)');
+    });
+
+    it('has no actionContext for Bash commands', () => {
+      setupAgent('sess-1', 'coder');
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Bash',
+        tool_input: { command: 'npm test', description: 'Run tests' },
+      });
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.currentAction).toBe('Run tests');
+      expect(agent?.actionContext).toBeUndefined();
+    });
+
+    it('sets actionContext on PermissionRequest', () => {
+      setupAgent('sess-1', 'coder', { status: 'working' });
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PermissionRequest',
+        tool_name: 'Edit',
+        tool_input: { file_path: '/etc/config/settings.json' },
+      });
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.waitingForInput).toBe(true);
+      expect(agent?.currentAction).toBe('Editing settings.json');
+      expect(agent?.actionContext).toBe('etc/config');
+    });
+  });
+
+  describe('recentActions', () => {
+    it('builds up recent actions on tool use', () => {
+      setupAgent('sess-1', 'coder');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/src/app.ts' },
+      });
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Edit',
+        tool_input: { file_path: '/src/app.ts' },
+      });
+
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.recentActions).toHaveLength(2);
+      expect(agent?.recentActions?.[0].action).toBe('Reading app.ts');
+      expect(agent?.recentActions?.[1].action).toBe('Editing app.ts');
+    });
+
+    it('caps at 5 entries', () => {
+      setupAgent('sess-1', 'coder');
+      for (let i = 0; i < 7; i++) {
+        handler.handleEvent({
+          session_id: 'sess-1',
+          hook_event_name: 'PreToolUse',
+          tool_name: 'Read',
+          tool_input: { file_path: `/src/file${i}.ts` },
+        });
+      }
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.recentActions).toHaveLength(5);
+      expect(agent?.recentActions?.[0].action).toBe('Reading file2.ts');
+      expect(agent?.recentActions?.[4].action).toBe('Reading file6.ts');
+    });
+  });
+
+  describe('currentTaskId tracking', () => {
+    it('sets currentTaskId when task is set to in_progress', () => {
+      const coder = makeAgent('agent-coder', 'coder');
+      sm.setAgents([coder]);
+
+      sm.updateTask({
+        id: '20',
+        subject: 'Build feature',
+        status: 'pending',
+        owner: 'coder',
+        blockedBy: [],
+        blocks: [],
+      });
+
+      handler.handleEvent({
+        session_id: 'agent-coder',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TaskUpdate',
+        tool_input: { taskId: '20', status: 'in_progress' },
+      });
+
+      const agent = sm.getState().agents.find(a => a.name === 'coder');
+      expect(agent?.currentTaskId).toBe('20');
+    });
+
+    it('clears currentTaskId when task is completed', () => {
+      const coder = makeAgent('agent-coder', 'coder', { currentTaskId: '21' });
+      sm.setAgents([coder]);
+
+      sm.updateTask({
+        id: '21',
+        subject: 'Fix bug',
+        status: 'in_progress',
+        owner: 'coder',
+        blockedBy: [],
+        blocks: [],
+      });
+
+      handler.handleEvent({
+        session_id: 'agent-coder',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'TaskUpdate',
+        tool_input: { taskId: '21', status: 'completed' },
+      });
+
+      const agent = sm.getState().agents.find(a => a.name === 'coder');
+      expect(agent?.currentTaskId).toBeUndefined();
+    });
+  });
+
   describe('describeToolAction', () => {
     // Test indirectly via PreToolUse events that use describeToolAction
 
