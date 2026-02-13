@@ -7,6 +7,8 @@
  * - Subagent lifecycle (SubagentStart, SubagentStop)
  * - Context compaction (PreCompact)
  * - Session lifecycle (SessionStart, SessionEnd, Stop)
+ * - Team events (TeammateIdle, TaskCompleted, UserPromptSubmit)
+ * - Team coordination (TeamCreate, TeamDelete, SendMessage, TaskCreate/Update via PostToolUse)
  *
  * These are much more reliable than the JSONL-parsing heuristics
  * used by the file watcher.
@@ -79,6 +81,26 @@ interface SessionEndEvent extends HookEventBase {
   reason?: string;
 }
 
+interface TeammateIdleEvent extends HookEventBase {
+  hook_event_name: 'TeammateIdle';
+  teammate_name?: string;
+  team_name?: string;
+}
+
+interface TaskCompletedEvent extends HookEventBase {
+  hook_event_name: 'TaskCompleted';
+  task_id?: string;
+  task_subject?: string;
+  task_description?: string;
+  teammate_name?: string;
+  team_name?: string;
+}
+
+interface UserPromptSubmitEvent extends HookEventBase {
+  hook_event_name: 'UserPromptSubmit';
+  prompt?: string;
+}
+
 type HookEvent =
   | PreToolUseEvent
   | PostToolUseEvent
@@ -89,6 +111,9 @@ type HookEvent =
   | StopEvent
   | SessionStartEvent
   | SessionEndEvent
+  | TeammateIdleEvent
+  | TaskCompletedEvent
+  | UserPromptSubmitEvent
   | HookEventBase;
 
 /**
@@ -130,20 +155,49 @@ function describeToolAction(toolName: string, toolInput?: Record<string, unknown
       const subj = typeof toolInput.subject === 'string' ? toolInput.subject : '';
       return subj ? `Creating task: ${subj.slice(0, 40)}` : 'Creating task';
     }
+    case 'TaskUpdate': {
+      const taskId = typeof toolInput.taskId === 'string' ? toolInput.taskId : '';
+      const status = typeof toolInput.status === 'string' ? toolInput.status : '';
+      if (status) return `Task #${taskId}: ${status}`;
+      return `Updating task #${taskId}`;
+    }
+    case 'TaskList':
+      return 'Checking task list';
     case 'SendMessage':
     case 'SendMessageTool': {
+      const msgType = typeof toolInput.type === 'string' ? toolInput.type : 'message';
       const to = typeof toolInput.recipient === 'string' ? toolInput.recipient : 'team';
+      if (msgType === 'broadcast') return 'Broadcasting to team';
+      if (msgType === 'shutdown_request') return `Requesting ${to} shutdown`;
       return `Messaging ${to}`;
     }
+    case 'TeamCreate': {
+      const name = typeof toolInput.team_name === 'string' ? toolInput.team_name : '';
+      return name ? `Creating team: ${name}` : 'Creating team';
+    }
+    case 'TeamDelete':
+      return 'Deleting team';
     case 'WebSearch': {
       const q = typeof toolInput.query === 'string' ? toolInput.query : '';
       return q ? `Searching: ${q.slice(0, 40)}` : 'Web search';
     }
     case 'WebFetch':
       return 'Fetching web page';
+    case 'EnterPlanMode':
+      return 'Entering plan mode';
+    case 'ExitPlanMode':
+      return 'Presenting plan for approval';
+    case 'AskUserQuestion':
+      return 'Asking user a question';
     default:
       return toolName;
   }
+}
+
+/** Resolve an agent name from a session ID */
+function resolveAgentName(stateManager: StateManager, sessionId: string): string {
+  const agent = stateManager.getAgentById(sessionId);
+  return agent?.name || sessionId.slice(0, 8);
 }
 
 /**
@@ -211,8 +265,18 @@ export function createHookHandler(stateManager: StateManager) {
       case 'SessionEnd':
         handleSessionEnd(sessionId);
         break;
+      case 'TeammateIdle':
+        handleTeammateIdle(event as TeammateIdleEvent, sessionId);
+        break;
+      case 'TaskCompleted':
+        handleTaskCompleted(event as TaskCompletedEvent, sessionId);
+        break;
+      case 'UserPromptSubmit':
+        handleUserPromptSubmit(event as UserPromptSubmitEvent, sessionId);
+        break;
       default:
-        // Unknown event type — ignore
+        // Unknown event type — log for debugging new event types
+        console.log(`[hooks] Unhandled event: ${event.hook_event_name} session=${sessionId.slice(0, 8)}`);
         break;
     }
   }
@@ -241,9 +305,198 @@ export function createHookHandler(stateManager: StateManager) {
   }
 
   function handlePostToolUse(event: PostToolUseEvent, sessionId: string) {
-    // Tool finished — clear waiting state, keep the agent working
-    // (the next PreToolUse or thinking state will update the action)
+    // Tool finished — clear waiting state
     stateManager.setAgentWaitingById(sessionId, false);
+
+    // Extract rich data from specific team coordination tools
+    if (event.tool_input) {
+      switch (event.tool_name) {
+        case 'SendMessage':
+        case 'SendMessageTool':
+          extractMessage(event, sessionId);
+          break;
+        case 'TeamCreate':
+          extractTeamCreate(event, sessionId);
+          break;
+        case 'TeamDelete':
+          extractTeamDelete(sessionId);
+          break;
+        case 'TaskCreate':
+          extractTaskCreate(event, sessionId);
+          break;
+        case 'TaskUpdate':
+          extractTaskUpdate(event, sessionId);
+          break;
+      }
+    }
+  }
+
+  /** Extract SendMessage data and add to message log */
+  function extractMessage(event: PostToolUseEvent, sessionId: string) {
+    const input = event.tool_input;
+    if (!input) return;
+
+    const msgType = typeof input.type === 'string' ? input.type : 'message';
+    const content = typeof input.content === 'string' ? input.content : '';
+    const recipient = typeof input.recipient === 'string' ? input.recipient : '';
+    const summary = typeof input.summary === 'string' ? input.summary : '';
+
+    if (!content && !summary) return;
+
+    const fromName = resolveAgentName(stateManager, sessionId);
+
+    if (msgType === 'broadcast') {
+      // Broadcast — show as message to "team"
+      stateManager.addMessage({
+        id: `hook-msg-${sessionId.slice(0, 8)}-${Date.now()}`,
+        from: fromName,
+        to: 'team (broadcast)',
+        content: summary || content.slice(0, 200),
+        timestamp: Date.now(),
+      });
+    } else if (msgType === 'shutdown_request') {
+      stateManager.addMessage({
+        id: `hook-msg-${sessionId.slice(0, 8)}-${Date.now()}`,
+        from: fromName,
+        to: recipient,
+        content: `Shutdown request: ${content || 'wrapping up'}`,
+        timestamp: Date.now(),
+      });
+    } else if (msgType === 'message' && recipient) {
+      stateManager.addMessage({
+        id: `hook-msg-${sessionId.slice(0, 8)}-${Date.now()}`,
+        from: fromName,
+        to: recipient,
+        content: summary || content.slice(0, 200),
+        timestamp: Date.now(),
+      });
+    }
+  }
+
+  /** Extract TeamCreate data and register team immediately */
+  function extractTeamCreate(event: PostToolUseEvent, sessionId: string) {
+    const input = event.tool_input;
+    const response = event.tool_response;
+    if (!input) return;
+
+    const teamName = typeof input.team_name === 'string' ? input.team_name : '';
+    if (!teamName) return;
+
+    console.log(`[hooks] TeamCreate detected: ${teamName} session=${sessionId.slice(0, 8)}`);
+    stateManager.setTeamName(teamName);
+
+    // If response contains member info, register agents
+    if (response && typeof response === 'object') {
+      const members = Array.isArray((response as Record<string, unknown>).members)
+        ? (response as Record<string, unknown>).members as Array<Record<string, string>>
+        : [];
+      for (const member of members) {
+        const name = member.name || member.agent_id || 'unknown';
+        const role = inferRole(member.agent_type || '', name);
+        stateManager.registerAgent({
+          id: member.agent_id || name,
+          name,
+          role: role as 'lead' | 'researcher' | 'implementer' | 'tester' | 'planner',
+          status: 'idle',
+          tasksCompleted: 0,
+        });
+        stateManager.updateAgent({
+          id: member.agent_id || name,
+          name,
+          role: role as 'lead' | 'researcher' | 'implementer' | 'tester' | 'planner',
+          status: 'idle',
+          tasksCompleted: 0,
+        });
+      }
+    }
+
+    // Add a system message about team creation
+    stateManager.addMessage({
+      id: `hook-team-${Date.now()}`,
+      from: 'system',
+      to: 'all',
+      content: `Team "${teamName}" created`,
+      timestamp: Date.now(),
+    });
+  }
+
+  /** Handle TeamDelete — clear team state */
+  function extractTeamDelete(sessionId: string) {
+    console.log(`[hooks] TeamDelete detected: session=${sessionId.slice(0, 8)}`);
+    stateManager.clearTeamAgents();
+    stateManager.addMessage({
+      id: `hook-team-${Date.now()}`,
+      from: 'system',
+      to: 'all',
+      content: 'Team deleted',
+      timestamp: Date.now(),
+    });
+  }
+
+  /** Extract TaskCreate data for immediate task tracking */
+  function extractTaskCreate(event: PostToolUseEvent, sessionId: string) {
+    const input = event.tool_input;
+    const response = event.tool_response;
+    if (!input) return;
+
+    const subject = typeof input.subject === 'string' ? input.subject : '';
+    const description = typeof input.description === 'string' ? input.description : '';
+
+    // Try to get the task ID from the response
+    let taskId = '';
+    if (response && typeof response === 'object') {
+      // Response format: "Task #N created successfully: subject"
+      const resStr = typeof (response as Record<string, unknown>).result === 'string'
+        ? (response as Record<string, unknown>).result as string
+        : JSON.stringify(response);
+      const match = resStr.match(/Task #(\d+)/);
+      if (match) taskId = match[1];
+    }
+    if (!taskId) taskId = `hook-${Date.now()}`;
+
+    console.log(`[hooks] TaskCreate: #${taskId} "${subject}" session=${sessionId.slice(0, 8)}`);
+
+    stateManager.updateTask({
+      id: taskId,
+      subject: subject || description.slice(0, 60) || 'Untitled task',
+      status: 'pending',
+      owner: undefined,
+      blockedBy: [],
+      blocks: [],
+    });
+  }
+
+  /** Extract TaskUpdate data for immediate status tracking */
+  function extractTaskUpdate(event: PostToolUseEvent, sessionId: string) {
+    const input = event.tool_input;
+    if (!input) return;
+
+    const taskId = typeof input.taskId === 'string' ? input.taskId : '';
+    if (!taskId) return;
+
+    const status = typeof input.status === 'string' ? input.status : undefined;
+    const owner = typeof input.owner === 'string' ? input.owner : undefined;
+
+    // Find existing task and merge updates
+    const existing = stateManager.getState().tasks.find(t => t.id === taskId);
+    if (existing) {
+      const updated = { ...existing };
+      if (status === 'pending' || status === 'in_progress' || status === 'completed') {
+        updated.status = status;
+      }
+      if (owner !== undefined) {
+        updated.owner = owner;
+      }
+      if (status === 'deleted') {
+        stateManager.removeTask(taskId);
+        console.log(`[hooks] TaskUpdate: #${taskId} deleted session=${sessionId.slice(0, 8)}`);
+        return;
+      }
+      stateManager.updateTask(updated);
+      console.log(`[hooks] TaskUpdate: #${taskId} → ${status || 'updated'} owner=${owner || existing.owner || 'none'} session=${sessionId.slice(0, 8)}`);
+    }
+
+    stateManager.reconcileAgentStatuses();
   }
 
   function handlePermissionRequest(event: PermissionRequestEvent, sessionId: string) {
@@ -322,6 +575,59 @@ export function createHookHandler(stateManager: StateManager) {
   function handleSessionEnd(sessionId: string) {
     console.log(`[hooks] SessionEnd: ${sessionId.slice(0, 8)}`);
     stateManager.updateAgentActivityById(sessionId, 'idle');
+  }
+
+  function handleTeammateIdle(event: TeammateIdleEvent, sessionId: string) {
+    const teammateName = event.teammate_name;
+    const teamName = event.team_name;
+    console.log(`[hooks] TeammateIdle: ${teammateName || sessionId.slice(0, 8)} team=${teamName || 'unknown'}`);
+
+    // Mark the teammate as idle
+    if (teammateName) {
+      stateManager.updateAgentActivity(teammateName, 'idle');
+      stateManager.setAgentWaiting(teammateName, false);
+    } else {
+      stateManager.updateAgentActivityById(sessionId, 'idle');
+      stateManager.setAgentWaitingById(sessionId, false);
+    }
+  }
+
+  function handleTaskCompleted(event: TaskCompletedEvent, sessionId: string) {
+    const taskId = event.task_id;
+    const taskSubject = event.task_subject;
+    const teammateName = event.teammate_name;
+    console.log(`[hooks] TaskCompleted: #${taskId} "${taskSubject}" by ${teammateName || sessionId.slice(0, 8)}`);
+
+    // Update the task status if we're tracking it
+    if (taskId) {
+      const existing = stateManager.getState().tasks.find(t => t.id === taskId);
+      if (existing) {
+        stateManager.updateTask({
+          ...existing,
+          status: 'completed',
+          owner: teammateName || existing.owner,
+        });
+      }
+    }
+
+    // Increment tasksCompleted for the agent
+    if (teammateName) {
+      const agents = stateManager.getState().agents;
+      const agent = agents.find(a => a.name === teammateName);
+      if (agent) {
+        agent.tasksCompleted += 1;
+        stateManager.updateAgent(agent);
+      }
+    }
+
+    stateManager.reconcileAgentStatuses();
+  }
+
+  function handleUserPromptSubmit(event: UserPromptSubmitEvent, sessionId: string) {
+    // User submitted a prompt — agent is about to start working
+    stateManager.setAgentWaitingById(sessionId, false);
+    stateManager.updateAgentActivityById(sessionId, 'working', 'Processing prompt...');
+    console.log(`[hooks] UserPromptSubmit: ${sessionId.slice(0, 8)}`);
   }
 
   return { handleEvent };

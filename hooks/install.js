@@ -26,6 +26,9 @@ const HOOK_EVENTS = [
   'Stop',
   'SessionStart',
   'SessionEnd',
+  'TeammateIdle',
+  'TaskCompleted',
+  'UserPromptSubmit',
 ];
 
 const uninstall = process.argv.includes('--uninstall');

@@ -91,6 +91,15 @@ describe('WebSocket', () => {
   });
 
   it('receives agent_update when state changes', async () => {
+    // Set up agents directly so broadcast doesn't require an active session
+    stateManager.setAgents([{
+      id: 'agent-1',
+      name: 'test-coder',
+      role: 'implementer',
+      status: 'idle',
+      tasksCompleted: 0,
+    }]);
+
     const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
 
     // Wait for initial full_state
@@ -100,7 +109,7 @@ describe('WebSocket', () => {
       setTimeout(() => reject(new Error('timeout')), 3000);
     });
 
-    // Now trigger a state change
+    // Now trigger a state change via updateAgent (agent already in display list)
     const updatePromise = new Promise<string>((resolve, reject) => {
       ws.on('message', (data) => resolve(data.toString()));
       setTimeout(() => reject(new Error('timeout')), 3000);
@@ -115,8 +124,9 @@ describe('WebSocket', () => {
     });
 
     const msg = JSON.parse(await updatePromise);
-    expect(msg.type).toBe('agent_added');
+    expect(msg.type).toBe('agent_update');
     expect(msg.data.name).toBe('test-coder');
+    expect(msg.data.status).toBe('working');
 
     ws.close();
   });
