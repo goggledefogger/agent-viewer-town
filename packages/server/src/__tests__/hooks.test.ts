@@ -1281,4 +1281,317 @@ describe('Hook Event Handlers', () => {
       expect(updated!.lastActivity).toBeGreaterThanOrEqual(before);
     });
   });
+
+  describe('FIFO subagent spawn matching', () => {
+    it('matches multiple simultaneous subagents to correct Task spawns in FIFO order', () => {
+      setupAgent('sess-1', 'lead');
+
+      // Spawn two Task tools in quick succession
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Task',
+        tool_input: {
+          description: 'Research API patterns',
+          subagent_type: 'Explorer',
+        },
+        tool_use_id: 'tu-first',
+      });
+
+      vi.advanceTimersByTime(10);
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Task',
+        tool_input: {
+          description: 'Implement auth module',
+          subagent_type: 'Implementer',
+        },
+        tool_use_id: 'tu-second',
+      });
+
+      // First SubagentStart should get the FIRST spawn (Research API patterns)
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-a',
+        agent_type: 'general-purpose',
+      });
+
+      const subA = sm.getAgentById('sub-a');
+      expect(subA).toBeDefined();
+      expect(subA!.name).toBe('Research API patterns');
+      expect(subA!.role).toBe('researcher');
+
+      // Second SubagentStart should get the SECOND spawn (Implement auth module)
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-b',
+        agent_type: 'general-purpose',
+      });
+
+      const subB = sm.getAgentById('sub-b');
+      expect(subB).toBeDefined();
+      expect(subB!.name).toBe('Implement auth module');
+      expect(subB!.role).toBe('implementer');
+    });
+
+    it('consumes pending spawn entries so they are not reused', () => {
+      setupAgent('sess-1', 'lead');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Task',
+        tool_input: { description: 'Only spawn' },
+        tool_use_id: 'tu-only',
+      });
+
+      // First SubagentStart consumes the pending spawn
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-1',
+        agent_type: 'general-purpose',
+      });
+
+      expect(sm.getAgentById('sub-1')!.name).toBe('Only spawn');
+
+      // Second SubagentStart has no pending spawn — falls back to agent_type
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-2',
+        agent_type: 'general-purpose',
+      });
+
+      expect(sm.getAgentById('sub-2')!.name).toBe('general-purpose');
+    });
+
+    it('does not match spawns from a different session', () => {
+      setupAgent('sess-1', 'lead');
+      sm.registerAgent(makeAgent('sess-2', 'other'));
+      sm.addSession(makeSession('sess-2', 'other-project', { lastActivity: 500 }));
+
+      // Task spawn from sess-2
+      handler.handleEvent({
+        session_id: 'sess-2',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Task',
+        tool_input: { description: 'Wrong session spawn' },
+        tool_use_id: 'tu-wrong',
+      });
+
+      // SubagentStart from sess-1 should NOT match sess-2's spawn
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-x',
+        agent_type: 'explorer',
+      });
+
+      expect(sm.getAgentById('sub-x')!.name).toBe('explorer');
+    });
+  });
+
+  describe('post-compaction recovery', () => {
+    it('clears compacting action after 30s timeout', () => {
+      setupAgent('sess-1', 'coder', { status: 'working' });
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreCompact',
+        trigger: 'auto',
+      });
+
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.currentAction).toBe('Compacting conversation...');
+
+      // After 30 seconds, should auto-clear to "Resuming..."
+      vi.advanceTimersByTime(30_000);
+
+      expect(agent?.currentAction).toBe('Resuming...');
+      expect(agent?.status).toBe('working');
+    });
+
+    it('cancels compaction timeout when PreToolUse arrives', () => {
+      setupAgent('sess-1', 'coder', { status: 'working' });
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreCompact',
+        trigger: 'auto',
+      });
+
+      expect(sm.getAgentById('sess-1')?.currentAction).toBe('Compacting conversation...');
+
+      // PreToolUse arrives before timeout — should clear compacting and show new action
+      vi.advanceTimersByTime(5_000);
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/src/app.ts' },
+      });
+
+      expect(sm.getAgentById('sess-1')?.currentAction).toBe('Reading app.ts');
+
+      // After the original 30s, should NOT revert to "Resuming..."
+      vi.advanceTimersByTime(30_000);
+      expect(sm.getAgentById('sess-1')?.currentAction).toBe('Reading app.ts');
+    });
+
+    it('cancels compaction timeout when PostToolUse arrives', () => {
+      setupAgent('sess-1', 'coder', { status: 'working' });
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreCompact',
+        trigger: 'auto',
+      });
+
+      expect(sm.getAgentById('sess-1')?.currentAction).toBe('Compacting conversation...');
+
+      // PostToolUse clears the compacting timer but doesn't change the action text
+      vi.advanceTimersByTime(3_000);
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/src/file.ts' },
+      });
+
+      // After 30s the action should NOT have changed to "Resuming..." (timer was cleared)
+      vi.advanceTimersByTime(30_000);
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.currentAction).not.toBe('Resuming...');
+    });
+  });
+
+  describe('subagent tool event routing', () => {
+    it('routes PreToolUse events to subagent by session_id', () => {
+      setupAgent('sess-1', 'lead');
+
+      // Register a subagent
+      sm.registerAgent(makeAgent('sub-agent-1', 'researcher', {
+        isSubagent: true,
+        parentAgentId: 'sess-1',
+        status: 'working',
+      }));
+      sm.updateAgent(sm.getAgentById('sub-agent-1')!);
+
+      // PreToolUse with subagent's session_id
+      handler.handleEvent({
+        session_id: 'sub-agent-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Grep',
+        tool_input: { pattern: 'handleEvent' },
+      });
+
+      const subagent = sm.getAgentById('sub-agent-1');
+      expect(subagent?.status).toBe('working');
+      expect(subagent?.currentAction).toBe('Searching: handleEvent');
+
+      // Parent should not be affected
+      const parent = sm.getAgentById('sess-1');
+      expect(parent?.currentAction).not.toBe('Searching: handleEvent');
+    });
+
+    it('routes PermissionRequest to subagent — does NOT mark parent as waiting', () => {
+      setupAgent('sess-1', 'lead');
+
+      sm.registerAgent(makeAgent('sub-agent-1', 'coder-sub', {
+        isSubagent: true,
+        parentAgentId: 'sess-1',
+        status: 'working',
+      }));
+      sm.updateAgent(sm.getAgentById('sub-agent-1')!);
+
+      handler.handleEvent({
+        session_id: 'sub-agent-1',
+        hook_event_name: 'PermissionRequest',
+        tool_name: 'Bash',
+        tool_input: { command: 'npm install', description: 'Install deps' },
+      });
+
+      const subagent = sm.getAgentById('sub-agent-1');
+      expect(subagent?.waitingForInput).toBe(true);
+      expect(subagent?.currentAction).toBe('Install deps');
+
+      const parent = sm.getAgentById('sess-1');
+      expect(parent?.waitingForInput).toBeFalsy();
+    });
+  });
+
+  describe('activity debouncing', () => {
+    it('debounces rapid working updates — final debounced broadcast has the latest action', () => {
+      setupAgent('sess-1', 'coder');
+
+      // Rapid sequence of tool uses within 200ms debounce window
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/src/a.ts' },
+      });
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Edit',
+        tool_input: { file_path: '/src/a.ts' },
+      });
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Write',
+        tool_input: { file_path: '/src/a.ts' },
+      });
+
+      // Start tracking broadcasts AFTER the rapid sequence, before debounce fires
+      const debouncedBroadcasts: string[] = [];
+      sm.subscribe((msg) => {
+        if (msg.type === 'agent_update' && msg.data.id === 'sess-1' && msg.data.currentAction) {
+          debouncedBroadcasts.push(msg.data.currentAction);
+        }
+      });
+
+      // Advance past the debounce window — only the final action should fire
+      vi.advanceTimersByTime(200);
+
+      // The debounced broadcast should show only the final action
+      expect(debouncedBroadcasts).toHaveLength(1);
+      expect(debouncedBroadcasts[0]).toBe('Writing a.ts');
+
+      // The registry was updated eagerly (immediately) regardless of debounce
+      const agent = sm.getAgentById('sess-1');
+      expect(agent?.currentAction).toBe('Writing a.ts');
+      expect(agent?.status).toBe('working');
+    });
+
+    it('broadcasts idle/done status immediately without debounce', () => {
+      setupAgent('sess-1', 'coder', { status: 'working' });
+
+      // Track broadcasts that have idle status
+      const idleBroadcasts: Array<{ status: string; action?: string }> = [];
+      sm.subscribe((msg) => {
+        if (msg.type === 'agent_update' && msg.data.id === 'sess-1' && msg.data.status === 'idle') {
+          idleBroadcasts.push({ status: msg.data.status, action: msg.data.currentAction });
+        }
+      });
+
+      // Stop event -> idle status should be immediate
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'Stop',
+      });
+
+      // Idle broadcast should be immediate, without advancing timers
+      expect(idleBroadcasts).toHaveLength(1);
+      expect(idleBroadcasts[0].status).toBe('idle');
+    });
+  });
 });
