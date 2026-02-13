@@ -84,7 +84,7 @@ export function teamMemberToAgent(member: TeamConfig['members'][0]): AgentState 
 }
 
 export interface ParsedTranscriptLine {
-  type: 'message' | 'tool_call' | 'agent_activity' | 'compact' | 'thinking' | 'progress' | 'unknown';
+  type: 'message' | 'tool_call' | 'agent_activity' | 'compact' | 'thinking' | 'progress' | 'turn_end' | 'unknown';
   agentName?: string;
   toolName?: string;
   message?: MessageState;
@@ -236,6 +236,11 @@ export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
 
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     return null;
+  }
+
+  // Detect turn completion — definitive signal that a turn ended
+  if (data.type === 'system' && data.subtype === 'turn_duration') {
+    return { type: 'turn_end' };
   }
 
   // Detect conversation compacting (full compact or microcompact)
@@ -511,6 +516,74 @@ export async function detectGitWorktree(
   } catch {
     return {};
   }
+}
+
+export interface GitStatus {
+  ahead: number;
+  behind: number;
+  hasUpstream: boolean;
+  isDirty: boolean;
+}
+
+/** Cache git status results for 30 seconds per cwd */
+const gitStatusCache = new Map<string, { result: GitStatus; timestamp: number }>();
+const GIT_STATUS_CACHE_TTL = 30_000;
+
+/**
+ * Detect git push/pull status for a working directory.
+ * Returns ahead/behind counts relative to remote tracking branch.
+ */
+export async function detectGitStatus(
+  cwd: string,
+  execFileAsync: (cmd: string, args: string[], opts: { cwd: string; timeout: number }) => Promise<{ stdout: string }>
+): Promise<GitStatus> {
+  const cached = gitStatusCache.get(cwd);
+  if (cached && Date.now() - cached.timestamp < GIT_STATUS_CACHE_TTL) {
+    return cached.result;
+  }
+
+  const result: GitStatus = { ahead: 0, behind: 0, hasUpstream: false, isDirty: false };
+
+  try {
+    // Run upstream check, ahead/behind, and dirty check in parallel
+    const [upstreamResult, dirtyResult] = await Promise.all([
+      execFileAsync('git', ['rev-parse', '--verify', '@{u}'], { cwd, timeout: 3000 })
+        .then(() => true)
+        .catch(() => false),
+      execFileAsync('git', ['status', '--porcelain'], { cwd, timeout: 3000 })
+        .then(({ stdout }) => stdout.trim().length > 0)
+        .catch(() => false),
+    ]);
+
+    result.hasUpstream = upstreamResult;
+    result.isDirty = dirtyResult;
+
+    if (result.hasUpstream) {
+      try {
+        const { stdout } = await execFileAsync(
+          'git', ['rev-list', '--left-right', '--count', '@{u}...HEAD'],
+          { cwd, timeout: 3000 }
+        );
+        const parts = stdout.trim().split(/\s+/);
+        if (parts.length >= 2) {
+          result.behind = parseInt(parts[0], 10) || 0;
+          result.ahead = parseInt(parts[1], 10) || 0;
+        }
+      } catch {
+        // Failed to get counts — leave at 0
+      }
+    }
+  } catch {
+    // Git not available or not a repo — return defaults
+  }
+
+  gitStatusCache.set(cwd, { result, timestamp: Date.now() });
+  return result;
+}
+
+/** Clear cached git status for a specific cwd (e.g., after a git push) */
+export function clearGitStatusCache(cwd: string) {
+  gitStatusCache.delete(cwd);
 }
 
 interface FileError extends Error {

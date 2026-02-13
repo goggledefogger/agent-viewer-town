@@ -310,7 +310,7 @@ export function startWatcher(stateManager: StateManager) {
       const parentSessionId = relSegments[1];
       const subagentId = basename(filePath, '.jsonl');
 
-      // Determine initial status from file mtime
+      // Determine initial status from file mtime + tail scan
       let subagentStatus: 'working' | 'idle' = 'idle';
       let subMtime = Date.now();
       try {
@@ -323,6 +323,20 @@ export function startWatcher(stateManager: StateManager) {
         // (within 5 minutes to catch agents that just finished)
         if (isInitial && ageSeconds > 300) return;
       } catch { /* default to idle */ }
+
+      // Check tail for turn_end — overrides mtime-based status
+      if (subagentStatus === 'working') {
+        const subTail = lines.slice(-15);
+        for (let i = subTail.length - 1; i >= 0; i--) {
+          const parsed = parseTranscriptLine(subTail[i]);
+          if (!parsed) continue;
+          if (parsed.type === 'turn_end') {
+            subagentStatus = 'idle';
+            break;
+          }
+          if (parsed.type === 'tool_call' || parsed.type === 'thinking') break;
+        }
+      }
 
       // Filter out internal subagents (acompact = conversation compaction summarizer).
       // Instead of showing them as regular subagents, trigger the compact indicator on the parent.
@@ -427,6 +441,12 @@ export function startWatcher(stateManager: StateManager) {
       const parsed = parseTranscriptLine(tailLines[i]);
       if (!parsed) continue;
 
+      // turn_duration = definitive signal that the last turn completed.
+      // The session is idle regardless of file mtime.
+      if (parsed.type === 'turn_end') {
+        initialStatus = 'idle';
+        break;
+      }
       if (parsed.type === 'tool_call' && parsed.toolName) {
         initialAction = parsed.toolName;
         if (parsed.isUserPrompt) initialWaiting = true;

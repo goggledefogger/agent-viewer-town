@@ -15,7 +15,7 @@
  */
 
 import { StateManager } from './state';
-import { inferRole, detectGitWorktree } from './parser';
+import { inferRole, detectGitWorktree, detectGitStatus, clearGitStatusCache } from './parser';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 
@@ -237,6 +237,9 @@ export function createHookHandler(stateManager: StateManager) {
   /** Track sessions whose git info has already been detected from cwd */
   const gitInfoDetected = new Set<string>();
 
+  /** Track cwd per session for git status refreshes */
+  const sessionCwd = new Map<string, string>();
+
   /**
    * Track pending Task tool calls so we can associate SubagentStart
    * events with their description/prompt. Keyed by tool_use_id for
@@ -272,13 +275,22 @@ export function createHookHandler(stateManager: StateManager) {
     // Update session activity timestamp
     stateManager.updateSessionActivity(sessionId);
 
-    // Detect git branch/worktree from cwd on first event for this session
+    // Store cwd for later git status refreshes
+    if (event.cwd && !sessionCwd.has(sessionId)) {
+      sessionCwd.set(sessionId, event.cwd);
+    }
+
+    // Detect git branch/worktree/status from cwd on first event for this session
     if (event.cwd && !gitInfoDetected.has(sessionId)) {
       gitInfoDetected.add(sessionId);
+      const cwd = event.cwd;
       // Run async detection without blocking the event handler
-      detectGitWorktree(event.cwd, execFileAsync).then((gitInfo) => {
-        if (gitInfo.gitBranch || gitInfo.gitWorktree) {
-          stateManager.updateAgentGitInfo(sessionId, gitInfo.gitBranch, gitInfo.gitWorktree);
+      Promise.all([
+        detectGitWorktree(cwd, execFileAsync),
+        detectGitStatus(cwd, execFileAsync),
+      ]).then(([gitInfo, gitStatus]) => {
+        if (gitInfo.gitBranch || gitInfo.gitWorktree || gitStatus.hasUpstream) {
+          stateManager.updateAgentGitInfo(sessionId, gitInfo.gitBranch, gitInfo.gitWorktree, gitStatus);
         }
       }).catch(() => { /* ignore */ });
     }
@@ -359,6 +371,20 @@ export function createHookHandler(stateManager: StateManager) {
   function handlePostToolUse(event: PostToolUseEvent, sessionId: string) {
     // Tool finished — clear waiting state
     stateManager.setAgentWaitingById(sessionId, false);
+
+    // Refresh git status after git-related Bash commands
+    if (event.tool_name === 'Bash' && event.tool_input) {
+      const cmd = typeof event.tool_input.command === 'string' ? event.tool_input.command : '';
+      if (/git\s+(push|commit|pull|merge|rebase|checkout|switch)|gh\s+pr/.test(cmd)) {
+        const cwd = sessionCwd.get(sessionId);
+        if (cwd) {
+          clearGitStatusCache(cwd);
+          detectGitStatus(cwd, execFileAsync).then((gitStatus) => {
+            stateManager.updateAgentGitInfo(sessionId, undefined, undefined, gitStatus);
+          }).catch(() => { /* ignore */ });
+        }
+      }
+    }
 
     // Extract rich data from specific team coordination tools
     if (event.tool_input) {

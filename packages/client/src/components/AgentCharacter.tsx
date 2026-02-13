@@ -267,7 +267,21 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
             const displayBranch = agent.gitBranch.length > maxBranchLen
               ? agent.gitBranch.slice(0, maxBranchLen - 1) + '\u2026'
               : agent.gitBranch;
-            const pillWidth = Math.max(36, displayBranch.length * 3.8 + 12);
+            // Build status suffix
+            const notPushed = agent.gitHasUpstream === false;
+            const ahead = agent.gitAhead || 0;
+            const behind = agent.gitBehind || 0;
+            let statusSuffix = '';
+            if (notPushed) statusSuffix = ' !';
+            else if (ahead > 0 && behind > 0) statusSuffix = ` \u2191${ahead}\u2193${behind}`;
+            else if (ahead > 0) statusSuffix = ` \u2191${ahead}`;
+            else if (behind > 0) statusSuffix = ` \u2193${behind}`;
+            const fullLabel = displayBranch + statusSuffix;
+            const pillWidth = Math.max(36, fullLabel.length * 3.8 + 12);
+            const isDirty = agent.gitDirty === true;
+            const hasStatus = notPushed || ahead > 0 || behind > 0;
+            const strokeColor = isDirty ? '#FF7043' : branchColor;
+            const strokeW = isDirty ? '1' : '0.5';
             return (
               <>
                 <rect
@@ -278,9 +292,9 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
                   rx="5"
                   fill={branchColor}
                   opacity="0.15"
-                  stroke={branchColor}
-                  strokeWidth="0.5"
-                  strokeOpacity="0.4"
+                  stroke={strokeColor}
+                  strokeWidth={strokeW}
+                  strokeOpacity={isDirty ? '0.7' : '0.4'}
                 />
                 <text
                   x="0"
@@ -289,9 +303,12 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
                   fill={branchColor}
                   fontSize="5.5"
                   fontFamily="'Courier New', monospace"
-                  opacity="0.9"
+                  opacity={hasStatus ? '1' : '0.9'}
                 >
                   {'\u2387 '}{displayBranch}
+                  {statusSuffix && (
+                    <tspan fill={notPushed ? '#FF7043' : '#FFCA28'}>{statusSuffix}</tspan>
+                  )}
                 </text>
               </>
             );

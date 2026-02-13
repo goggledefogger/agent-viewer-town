@@ -320,7 +320,7 @@ function AgentDetail({ agent, x, y, onClose, tasks }: { agent: AgentState; x: nu
 
   let contentLines = nameLines.length + actionLines.length + 1;
   if (contextLine) contentLines += 1;
-  if (hasBranch) contentLines += 2; // label + branch name (+ optional worktree)
+  if (hasBranch) contentLines += 3; // label + branch name + push status
   if (currentTask) contentLines += 2; // label + task subject
   if (recentActions.length > 0) contentLines += 1 + Math.min(recentActions.length, 3); // label + entries
   const bodyHeight = contentLines * lineHeight + 8;
@@ -398,8 +398,23 @@ function AgentDetail({ agent, x, y, onClose, tasks }: { agent: AgentState; x: nu
                 fill="#94a3b8" fontSize="7" fontFamily="'Courier New', monospace">
             {agent.gitBranch}{agent.gitWorktree ? ' (worktree)' : ''}
           </text>
+          {/* Git push status line */}
+          <text x={-boxWidth / 2 + 8} y={cursorY + 2 + lineHeight * 2}
+                fill={agent.gitHasUpstream === false ? '#FF7043' : (agent.gitAhead || agent.gitBehind) ? '#FFCA28' : '#64748b'}
+                fontSize="6.5" fontFamily="'Courier New', monospace">
+            {agent.gitHasUpstream === false
+              ? 'Not pushed to remote'
+              : (agent.gitAhead || 0) > 0 && (agent.gitBehind || 0) > 0
+                ? `${agent.gitAhead} ahead, ${agent.gitBehind} behind`
+                : (agent.gitAhead || 0) > 0
+                  ? `${agent.gitAhead} commit${agent.gitAhead === 1 ? '' : 's'} ahead`
+                  : (agent.gitBehind || 0) > 0
+                    ? `${agent.gitBehind} commit${agent.gitBehind === 1 ? '' : 's'} behind`
+                    : 'Up to date'}
+            {agent.gitDirty ? ' \u2022 dirty' : ''}
+          </text>
         </>)}
-        {(() => { if (hasBranch) cursorY += 2 + 2 * lineHeight; return null; })()}
+        {(() => { if (hasBranch) cursorY += 2 + 3 * lineHeight; return null; })()}
         {/* Current Task */}
         {currentTask && (<>
           <text x={-boxWidth / 2 + 8} y={cursorY + 2}

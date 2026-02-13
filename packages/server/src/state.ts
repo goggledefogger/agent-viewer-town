@@ -67,6 +67,10 @@ export class StateManager {
         agent.recentActions = prev.recentActions;
         agent.gitBranch = prev.gitBranch;
         agent.gitWorktree = prev.gitWorktree;
+        agent.gitAhead = prev.gitAhead;
+        agent.gitBehind = prev.gitBehind;
+        agent.gitHasUpstream = prev.gitHasUpstream;
+        agent.gitDirty = prev.gitDirty;
         agent.teamName = prev.teamName;
       }
       this.allAgents.set(agent.id, agent);
@@ -302,11 +306,17 @@ export class StateManager {
   }
 
   /** Update git branch/worktree info on an agent and its session */
-  updateAgentGitInfo(agentId: string, gitBranch?: string, gitWorktree?: string) {
+  updateAgentGitInfo(agentId: string, gitBranch?: string, gitWorktree?: string, gitStatus?: { ahead?: number; behind?: number; hasUpstream?: boolean; isDirty?: boolean }) {
     const agent = this.allAgents.get(agentId);
     if (agent) {
       if (gitBranch !== undefined) agent.gitBranch = gitBranch;
       if (gitWorktree !== undefined) agent.gitWorktree = gitWorktree;
+      if (gitStatus) {
+        if (gitStatus.ahead !== undefined) agent.gitAhead = gitStatus.ahead;
+        if (gitStatus.behind !== undefined) agent.gitBehind = gitStatus.behind;
+        if (gitStatus.hasUpstream !== undefined) agent.gitHasUpstream = gitStatus.hasUpstream;
+        if (gitStatus.isDirty !== undefined) agent.gitDirty = gitStatus.isDirty;
+      }
     }
     // Also update the session info
     const session = this.sessions.get(agentId);
@@ -319,6 +329,12 @@ export class StateManager {
     if (displayed) {
       if (gitBranch !== undefined) displayed.gitBranch = gitBranch;
       if (gitWorktree !== undefined) displayed.gitWorktree = gitWorktree;
+      if (gitStatus) {
+        if (gitStatus.ahead !== undefined) displayed.gitAhead = gitStatus.ahead;
+        if (gitStatus.behind !== undefined) displayed.gitBehind = gitStatus.behind;
+        if (gitStatus.hasUpstream !== undefined) displayed.gitHasUpstream = gitStatus.hasUpstream;
+        if (gitStatus.isDirty !== undefined) displayed.gitDirty = gitStatus.isDirty;
+      }
       this.broadcast({ type: 'agent_update', data: displayed });
     }
   }

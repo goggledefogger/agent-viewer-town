@@ -23,6 +23,14 @@ export interface AgentState {
   gitBranch?: string;
   /** Git worktree path if the agent is using a worktree */
   gitWorktree?: string;
+  /** Commits ahead of remote tracking branch */
+  gitAhead?: number;
+  /** Commits behind remote tracking branch */
+  gitBehind?: number;
+  /** Whether the branch tracks a remote upstream */
+  gitHasUpstream?: boolean;
+  /** Whether the working tree has uncommitted changes */
+  gitDirty?: boolean;
 }
 
 export type AgentRole = 'lead' | 'researcher' | 'implementer' | 'tester' | 'planner';
