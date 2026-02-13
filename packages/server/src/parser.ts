@@ -149,8 +149,12 @@ function parseSendMessageInput(
   if (!content) return null;
 
   const summary = typeof input.summary === 'string' ? input.summary : undefined;
-  const recipient = typeof input.recipient === 'string' ? input.recipient : (msgType === 'broadcast' ? 'all' : 'unknown');
-  const from = agentName || 'unknown';
+  const recipient = typeof input.recipient === 'string' ? input.recipient : (msgType === 'broadcast' ? 'all' : undefined);
+
+  // Don't emit messages with unknown sender — the hooks handler
+  // (which has access to StateManager for name resolution) will capture these instead
+  if (!agentName || !recipient) return null;
+  const from = agentName;
 
   return {
     id: blockId || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
