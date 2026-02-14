@@ -1434,4 +1434,112 @@ describe('StateManager', () => {
       expect(sm.getState().agents[0].gitWorktree).toBe('/tmp/wt2');
     });
   });
+
+  describe('removedAgents guard (prevents zombie re-registration)', () => {
+    it('registerAgent skips recently removed agent', () => {
+      sm.registerAgent(makeAgent('sub-1', 'worker', { isSubagent: true, parentAgentId: 's1' }));
+      sm.addSession(makeSession('s1', 'project-a'));
+      sm.updateAgent(sm.getAgentById('sub-1')!);
+
+      // Remove the subagent
+      sm.removeAgent('sub-1');
+      expect(sm.getAgentById('sub-1')).toBeUndefined();
+
+      // Try to re-register — should be blocked
+      sm.registerAgent(makeAgent('sub-1', 'worker', { isSubagent: true, parentAgentId: 's1' }));
+      expect(sm.getAgentById('sub-1')).toBeUndefined();
+    });
+
+    it('updateAgent skips recently removed agent', () => {
+      sm.registerAgent(makeAgent('sub-1', 'worker', { isSubagent: true, parentAgentId: 's1' }));
+      sm.addSession(makeSession('s1', 'project-a'));
+      sm.updateAgent(sm.getAgentById('sub-1')!);
+
+      sm.removeAgent('sub-1');
+
+      // Try to updateAgent — should be blocked
+      sm.updateAgent(makeAgent('sub-1', 'worker-v2', { isSubagent: true, parentAgentId: 's1' }));
+      expect(sm.getAgentById('sub-1')).toBeUndefined();
+      expect(sm.getState().agents.find(a => a.id === 'sub-1')).toBeUndefined();
+    });
+
+    it('clearRecentlyRemoved allows re-registration', () => {
+      sm.registerAgent(makeAgent('sub-1', 'worker', { isSubagent: true, parentAgentId: 's1' }));
+      sm.addSession(makeSession('s1', 'project-a'));
+      sm.updateAgent(sm.getAgentById('sub-1')!);
+
+      sm.removeAgent('sub-1');
+      expect(sm.wasRecentlyRemoved('sub-1')).toBe(true);
+
+      sm.clearRecentlyRemoved('sub-1');
+      expect(sm.wasRecentlyRemoved('sub-1')).toBe(false);
+
+      // Now registration should succeed
+      sm.registerAgent(makeAgent('sub-1', 'worker-new', { isSubagent: true, parentAgentId: 's1' }));
+      expect(sm.getAgentById('sub-1')).toBeDefined();
+      expect(sm.getAgentById('sub-1')!.name).toBe('worker-new');
+    });
+
+    it('full subagent lifecycle: start -> stop -> remove -> JSONL re-detect blocked', () => {
+      sm.registerAgent(makeAgent('s1', 'parent'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      // 1. SubagentStart: register subagent
+      const sub = makeAgent('sub-1', 'explorer', {
+        isSubagent: true,
+        parentAgentId: 's1',
+        status: 'working',
+      });
+      sm.registerAgent(sub);
+      sm.updateAgent(sub);
+      expect(sm.getState().agents).toHaveLength(2);
+
+      // 2. SubagentStop: mark done
+      sm.updateAgentActivityById('sub-1', 'done', 'Done');
+      expect(sm.getAgentById('sub-1')?.status).toBe('done');
+
+      // 3. Removal after delay
+      sm.removeAgent('sub-1');
+      expect(sm.getAgentById('sub-1')).toBeUndefined();
+      expect(sm.getState().agents).toHaveLength(1);
+
+      // 4. JSONL watcher tries to re-register (should be blocked)
+      sm.registerAgent(makeAgent('sub-1', 'explorer-v2', { isSubagent: true, parentAgentId: 's1' }));
+      expect(sm.getAgentById('sub-1')).toBeUndefined();
+
+      sm.updateAgent(makeAgent('sub-1', 'explorer-v2', { isSubagent: true, parentAgentId: 's1' }));
+      expect(sm.getAgentById('sub-1')).toBeUndefined();
+    });
+
+    it('wasRecentlyRemoved expires after 5 minutes', () => {
+      vi.useFakeTimers();
+
+      sm.removeAgent('sub-1'); // remove to add to removedAgents
+      expect(sm.wasRecentlyRemoved('sub-1')).toBe(true);
+
+      vi.advanceTimersByTime(300_001); // 5 min + 1ms
+      expect(sm.wasRecentlyRemoved('sub-1')).toBe(false);
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe('hookActiveSessions', () => {
+    it('markHookActive and isHookActive track active hooks', () => {
+      expect(sm.isHookActive('s1')).toBe(false);
+      sm.markHookActive('s1');
+      expect(sm.isHookActive('s1')).toBe(true);
+    });
+
+    it('isHookActive returns false after withinMs expires', () => {
+      vi.useFakeTimers();
+      sm.markHookActive('s1');
+      expect(sm.isHookActive('s1', 5000)).toBe(true);
+
+      vi.advanceTimersByTime(5001);
+      expect(sm.isHookActive('s1', 5000)).toBe(false);
+
+      vi.useRealTimers();
+    });
+  });
 });

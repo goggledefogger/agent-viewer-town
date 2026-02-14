@@ -109,8 +109,13 @@ export class StateManager {
     this.allAgents.set(agent.id, agent);
   }
 
-  /** Add/update agent in both registry and displayed state */
+  /** Add/update agent in both registry and displayed state.
+   *  Skips update if the agent was recently removed (prevents JSONL
+   *  watcher from re-displaying subagents after SubagentStop removal). */
   updateAgent(agent: AgentState) {
+    if (this.wasRecentlyRemoved(agent.id)) {
+      return;
+    }
     this.allAgents.set(agent.id, agent);
     const idx = this.state.agents.findIndex((a) => a.id === agent.id);
     if (idx >= 0) {

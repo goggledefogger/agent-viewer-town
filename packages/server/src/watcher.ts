@@ -81,6 +81,9 @@ export function startWatcher(stateManager: StateManager) {
   /** Track which sessionIds have been registered to prevent race-condition double-registration */
   const registeredSessions = new Set<string>();
 
+  /** Track which subagent IDs have been registered to prevent duplicate subagent detection */
+  const registeredSubagents = new Set<string>();
+
   /** Map from JSONL file path to session tracking info */
   const trackedSessions = new Map<string, TrackedSession>();
 
@@ -240,6 +243,7 @@ export function startWatcher(stateManager: StateManager) {
     const tracked = trackedSessions.get(filePath);
     if (tracked) {
       trackedSessions.delete(filePath);
+      registeredSubagents.delete(tracked.sessionId);
       // Only remove the session if no other files reference the same sessionId
       const hasOtherFiles = [...trackedSessions.values()].some(
         (t) => t.sessionId === tracked.sessionId
@@ -360,8 +364,9 @@ export function startWatcher(stateManager: StateManager) {
         return;
       }
 
-      // Extract a meaningful name from the subagent's first user message (the prompt)
+      // Extract a meaningful name and subagent type from the JSONL content
       let subagentName = subagentId.slice(0, 12);
+      let subagentType: string | undefined;
       for (const line of linesToScan) {
         try {
           const d = JSON.parse(line);
@@ -379,7 +384,17 @@ export function startWatcher(stateManager: StateManager) {
               break;
             }
           }
+          // System messages may contain agent metadata with subagent_type
+          if (d.type === 'system' && d.subagent_type) {
+            subagentType = d.subagent_type;
+          }
         } catch { /* skip */ }
+      }
+      // Fall back to inferring type from agent ID prefix pattern
+      if (!subagentType) {
+        if (subagentId.startsWith('agent-explore')) subagentType = 'Explore';
+        else if (subagentId.startsWith('agent-plan')) subagentType = 'Plan';
+        else if (subagentId.startsWith('agent-bash')) subagentType = 'Bash';
       }
 
       // Skip re-registration of recently removed subagents (prevents stale re-detection
@@ -388,6 +403,21 @@ export function startWatcher(stateManager: StateManager) {
         console.log(`[watcher] Skipping recently removed subagent: ${subagentId.slice(0, 8)}`);
         return;
       }
+
+      // Skip if already registered (prevents duplicate detection from multiple file events)
+      if (registeredSubagents.has(subagentId)) {
+        return;
+      }
+
+      // Skip if hooks already registered this subagent and it's done
+      // (SubagentStop already marked it as finished — don't resurrect it)
+      const existingSubagent = stateManager.getAgentById(subagentId);
+      if (existingSubagent?.status === 'done') {
+        console.log(`[watcher] Skipping done subagent: ${subagentId.slice(0, 8)}`);
+        return;
+      }
+
+      registeredSubagents.add(subagentId);
 
       // Register the subagent
       const subagent = {
@@ -398,6 +428,7 @@ export function startWatcher(stateManager: StateManager) {
         tasksCompleted: 0,
         isSubagent: true,
         parentAgentId: parentSessionId,
+        subagentType,
       };
       stateManager.registerAgent(subagent);
 
@@ -760,6 +791,7 @@ export function startWatcher(stateManager: StateManager) {
         if (agent?.isSubagent && idleSeconds >= 300) {
           stateManager.removeAgent(tracked.sessionId);
           trackedSessions.delete(tracked.filePath);
+          registeredSubagents.delete(tracked.sessionId);
         }
       }
     }

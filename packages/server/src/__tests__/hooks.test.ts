@@ -1629,9 +1629,207 @@ describe('Hook Event Handlers', () => {
     });
   });
 
+  describe('auto-registration (Stage 1)', () => {
+    it('auto-registers agent when hooks fire for unknown session with cwd', () => {
+      // No agent or session registered — only cwd is available
+      handler.handleEvent({
+        session_id: 'new-sess',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/src/file.ts' },
+        cwd: '/Users/dev/my-project',
+      });
+
+      const agent = sm.getAgentById('new-sess');
+      expect(agent).toBeDefined();
+      expect(agent!.name).toBe('my-project');
+      expect(agent!.status).toBe('working');
+
+      // Session should also be registered
+      const session = sm.getSessions().get('new-sess');
+      expect(session).toBeDefined();
+      expect(session!.projectName).toBe('my-project');
+    });
+
+    it('auto-registers agent when session exists but agent is missing', () => {
+      // Register session without agent (simulates context continuation)
+      sm.addSession(makeSession('continued-sess', 'my-project', { lastActivity: 1000 }));
+      expect(sm.getAgentById('continued-sess')).toBeUndefined();
+
+      handler.handleEvent({
+        session_id: 'continued-sess',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Edit',
+        tool_input: { file_path: '/src/app.ts' },
+      });
+
+      const agent = sm.getAgentById('continued-sess');
+      expect(agent).toBeDefined();
+      expect(agent!.name).toBe('slug-continued-sess');
+      expect(agent!.status).toBe('working');
+    });
+
+    it('does not auto-register for SubagentStart events', () => {
+      // SubagentStart has its own registration flow — auto-registration should skip it
+      handler.handleEvent({
+        session_id: 'parent-sess',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-new',
+        agent_type: 'Explore',
+        cwd: '/Users/dev/project',
+      } as any);
+
+      // parent-sess should NOT be auto-registered as an agent
+      // (SubagentStart creates the subagent, not the parent)
+      expect(sm.getAgentById('parent-sess')).toBeUndefined();
+    });
+
+    it('does not auto-register for SubagentStop events', () => {
+      handler.handleEvent({
+        session_id: 'parent-sess',
+        hook_event_name: 'SubagentStop',
+        agent_id: 'sub-old',
+        cwd: '/Users/dev/project',
+      } as any);
+
+      expect(sm.getAgentById('parent-sess')).toBeUndefined();
+    });
+
+    it('does not auto-register when agent already exists', () => {
+      setupAgent('sess-1', 'existing-agent');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/src/file.ts' },
+        cwd: '/Users/dev/other-project',
+      });
+
+      // Should still have original agent, not replaced
+      const agent = sm.getAgentById('sess-1');
+      expect(agent!.name).toBe('existing-agent');
+    });
+
+    it('does not auto-register when no session and no cwd', () => {
+      handler.handleEvent({
+        session_id: 'orphan-sess',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Read',
+        tool_input: { file_path: '/src/file.ts' },
+        // no cwd
+      });
+
+      expect(sm.getAgentById('orphan-sess')).toBeUndefined();
+    });
+  });
+
+  describe('SubagentStart clears recently-removed flag', () => {
+    it('clears recently-removed flag to allow re-spawn registration', () => {
+      setupAgent('sess-1', 'lead');
+
+      // Register and remove a subagent
+      const sub = makeAgent('sub-respawn', 'worker', {
+        isSubagent: true,
+        parentAgentId: 'sess-1',
+        status: 'working',
+      });
+      sm.registerAgent(sub);
+      sm.updateAgent(sub);
+      sm.removeAgent('sub-respawn');
+      expect(sm.wasRecentlyRemoved('sub-respawn')).toBe(true);
+
+      // SubagentStart should clear the flag and successfully register
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-respawn',
+        agent_type: 'Explore',
+      });
+
+      expect(sm.wasRecentlyRemoved('sub-respawn')).toBe(false);
+      const agent = sm.getAgentById('sub-respawn');
+      expect(agent).toBeDefined();
+      expect(agent!.status).toBe('working');
+    });
+  });
+
+  describe('subagentType population', () => {
+    it('populates subagentType from pending Task spawn', () => {
+      setupAgent('sess-1', 'lead');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Task',
+        tool_input: {
+          description: 'Search codebase',
+          subagent_type: 'Explore',
+        },
+        tool_use_id: 'tu-type-test',
+      });
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-typed',
+        agent_type: 'general-purpose',
+      });
+
+      const agent = sm.getAgentById('sub-typed');
+      expect(agent).toBeDefined();
+      expect(agent!.subagentType).toBe('Explore');
+    });
+
+    it('falls back to agent_type when no pending spawn', () => {
+      setupAgent('sess-1', 'lead');
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'sub-fallback',
+        agent_type: 'Plan',
+      });
+
+      const agent = sm.getAgentById('sub-fallback');
+      expect(agent).toBeDefined();
+      expect(agent!.subagentType).toBe('Plan');
+    });
+
+    it('does not set subagentType on team members', () => {
+      setupAgent('sess-1', 'lead');
+
+      // Create a Task spawn with team_name (team member, not subagent)
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Task',
+        tool_input: {
+          description: 'Build feature',
+          subagent_type: 'general-purpose',
+          team_name: 'my-team',
+        },
+        tool_use_id: 'tu-team',
+      });
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStart',
+        agent_id: 'team-member-1',
+        agent_type: 'general-purpose',
+      });
+
+      const agent = sm.getAgentById('team-member-1');
+      expect(agent).toBeDefined();
+      expect(agent!.isSubagent).toBe(false);
+      expect(agent!.subagentType).toBeUndefined();
+    });
+  });
+
   describe('resolveAgentName fallback', () => {
-    it('uses truncated session ID when agent is not registered', () => {
-      // Don't set up agent, just create a session without agent
+    it('auto-registers agent from session and uses slug as name', () => {
+      // Don't set up agent, just create a session without agent.
+      // Auto-registration (Stage 1) should create the agent from session metadata.
       const session = makeSession('abcdefgh-long-session-id', 'project', { lastActivity: 1000 });
       sm.addSession(session);
 
@@ -1647,9 +1845,14 @@ describe('Hook Event Handlers', () => {
         },
       });
 
+      // Auto-registration creates agent with slug from the session
+      const agent = sm.getAgentById('abcdefgh-long-session-id');
+      expect(agent).toBeDefined();
+      expect(agent!.name).toBe('slug-abcdefgh-long-session-id');
+
       const msg = sm.getState().messages.find(m => m.to === 'someone');
       expect(msg).toBeDefined();
-      expect(msg!.from).toBe('abcdefgh'); // truncated to first 8 chars
+      expect(msg!.from).toBe('slug-abcdefgh-long-session-id');
     });
   });
 
