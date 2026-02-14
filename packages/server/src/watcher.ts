@@ -180,11 +180,12 @@ export function startWatcher(stateManager: StateManager) {
     const taskDir = join(TASKS_DIR, teamName);
     try {
       const files = await readdir(taskDir);
-      for (const file of files) {
+      const promises = files.map(async (file) => {
         if (file.endsWith('.json') && file !== 'config.json') {
           await handleTaskFile(join(taskDir, file));
         }
-      }
+      });
+      await Promise.all(promises);
     } catch (err) {
       if (isNodeError(err) && err.code !== 'ENOENT') {
         console.warn(`[watcher] Error scanning tasks in ${taskDir}:`, err.message);
