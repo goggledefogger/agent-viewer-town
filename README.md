@@ -185,6 +185,10 @@ npm run dev -w packages/client
 - **Default branch**: `main`
 - **GitHub**: https://github.com/goggledefogger/agent-viewer-town
 
+## Inspiration
+
+- [claude-office](https://github.com/paulrobello/claude-office) - Original concept for visualizing Claude's activities
+
 ## License
 
 MIT
