@@ -633,6 +633,49 @@ describe('Hook Event Handlers', () => {
       vi.advanceTimersByTime(300_000);
       expect(sm.getAgentById('team-member-1')).toBeDefined();
     });
+
+    it('marks subagent session as stopped to prevent watcher resurrection during done→remove window', () => {
+      setupAgent('sess-1', 'lead');
+
+      sm.registerAgent(makeAgent('sub-stopped', 'worker', {
+        isSubagent: true,
+        parentAgentId: 'sess-1',
+        status: 'working',
+      }));
+      sm.updateAgent(sm.getAgentById('sub-stopped')!);
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStop',
+        agent_id: 'sub-stopped',
+      });
+
+      // During the 15s done→remove window, session should be marked stopped
+      // so watcher cannot resurrect it from trailing JSONL logs
+      expect(sm.isSessionStopped('sub-stopped')).toBe(true);
+      expect(sm.getAgentById('sub-stopped')?.status).toBe('done');
+    });
+
+    it('does not mark team member session as stopped on SubagentStop', () => {
+      setupAgent('sess-1', 'lead');
+
+      sm.registerAgent(makeAgent('team-idle', 'coder', {
+        isSubagent: false,
+        teamName: 'my-team',
+        status: 'working',
+      }));
+      sm.updateAgent(sm.getAgentById('team-idle')!);
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStop',
+        agent_id: 'team-idle',
+      });
+
+      // Team members go idle, not stopped — they persist
+      expect(sm.isSessionStopped('team-idle')).toBe(false);
+      expect(sm.getAgentById('team-idle')?.status).toBe('idle');
+    });
   });
 
   describe('TeammateIdle', () => {

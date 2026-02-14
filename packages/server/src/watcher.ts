@@ -757,8 +757,17 @@ export function startWatcher(stateManager: StateManager) {
     const now = Date.now();
 
     // --- Check JSONL-tracked sessions (solo sessions and subagents) ---
-    for (const [, tracked] of trackedSessions) {
+    for (const [filePath, tracked] of trackedSessions) {
       if (!tracked.isSolo) continue;
+
+      // Cleanup tracked sessions for agents removed by hooks (SubagentStop).
+      // If the agent is gone from registry and this isn't the current session,
+      // stop tracking it to prevent memory leaks from accumulating entries.
+      const trackedAgent = stateManager.getAgentById(tracked.sessionId);
+      if (!trackedAgent && tracked.sessionId !== stateManager.getState().session?.sessionId) {
+        trackedSessions.delete(filePath);
+        continue;
+      }
 
       // Use the most recent activity from either JSONL file changes OR hook events.
       // Hooks update session.lastActivity via stateManager.updateSessionActivity(),
