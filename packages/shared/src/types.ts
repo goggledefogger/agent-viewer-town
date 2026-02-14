@@ -136,20 +136,39 @@ export interface GroupedSessionsList {
   flatSessions: SessionListEntry[];
 }
 
-/** Types of inbox notifications */
-export type NotificationType = 'permission' | 'question' | 'plan_review' | 'task_completed' | 'error' | 'idle';
+// ============================================================================
+// INBOX / NOTIFICATION TYPES
+// ============================================================================
 
-/** A notification in the agent inbox */
+export type NotificationType =
+  | 'permission_request'
+  | 'ask_user_question'
+  | 'plan_approval'
+  | 'task_completed'
+  | 'agent_error'
+  | 'agent_idle'
+  | 'agent_stopped';
+
 export interface InboxNotification {
   id: string;
+  type: NotificationType;
+  timestamp: number;
+  title: string;
+  body: string;
+  context?: string;
   agentId: string;
   agentName: string;
-  type: NotificationType;
-  message: string;
-  timestamp: number;
+  sessionId: string;
+  projectName: string;
+  gitBranch?: string;
   read: boolean;
-  /** Whether the condition that triggered this notification is still active */
   resolved: boolean;
+}
+
+export interface InboxState {
+  notifications: InboxNotification[];
+  unreadCount: number;
+  activeCount: number;
 }
 
 export type WSMessage =

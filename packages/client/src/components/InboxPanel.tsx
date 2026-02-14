@@ -12,21 +12,23 @@ interface InboxPanelProps {
 }
 
 const PRIORITY_COLORS: Record<NotificationType, string> = {
-  permission: '#FFD700',
-  question: '#4169E1',
-  plan_review: '#9B59B6',
+  permission_request: '#FFD700',
+  ask_user_question: '#4169E1',
+  plan_approval: '#9B59B6',
   task_completed: '#28A745',
-  error: '#DC3545',
-  idle: '#94a3b8',
+  agent_error: '#DC3545',
+  agent_idle: '#94a3b8',
+  agent_stopped: '#6c757d',
 };
 
 const TYPE_LABELS: Record<NotificationType, string> = {
-  permission: 'Permission',
-  question: 'Question',
-  plan_review: 'Plan Review',
+  permission_request: 'Permission',
+  ask_user_question: 'Question',
+  plan_approval: 'Plan Review',
   task_completed: 'Completed',
-  error: 'Error',
-  idle: 'Idle',
+  agent_error: 'Error',
+  agent_idle: 'Idle',
+  agent_stopped: 'Stopped',
 };
 
 /** Pixel-art style notification icon */
@@ -35,7 +37,7 @@ function NotificationIcon({ type }: { type: NotificationType }) {
   const size = 16;
 
   switch (type) {
-    case 'permission':
+    case 'permission_request':
       // Shield icon
       return (
         <svg width={size} height={size} viewBox="0 0 16 16">
@@ -44,7 +46,7 @@ function NotificationIcon({ type }: { type: NotificationType }) {
           <path d="M6 8l2 2 3-4" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       );
-    case 'question':
+    case 'ask_user_question':
       // Question mark
       return (
         <svg width={size} height={size} viewBox="0 0 16 16">
@@ -52,7 +54,7 @@ function NotificationIcon({ type }: { type: NotificationType }) {
           <text x="8" y="11" textAnchor="middle" fill={color} fontSize="9" fontWeight="bold" fontFamily="monospace">?</text>
         </svg>
       );
-    case 'plan_review':
+    case 'plan_approval':
       // Clipboard icon
       return (
         <svg width={size} height={size} viewBox="0 0 16 16">
@@ -70,7 +72,7 @@ function NotificationIcon({ type }: { type: NotificationType }) {
           <path d="M5 8l2 2.5 4-5" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       );
-    case 'error':
+    case 'agent_error':
       // Warning triangle
       return (
         <svg width={size} height={size} viewBox="0 0 16 16">
@@ -131,7 +133,7 @@ function NotificationCard({
           <span>{notification.agentName}</span>
         )}
       </div>
-      <div className="inbox-item-message">{notification.message}</div>
+      <div className="inbox-item-message">{notification.body}</div>
       {isActive && (
         <div className="inbox-item-status-dot" style={{ backgroundColor: color }} />
       )}

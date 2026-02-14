@@ -67,7 +67,7 @@ export default function App() {
   const { team: state, sessions, groupedSessions, connectionStatus, selectSession } = useWebSocket('ws://localhost:3001/ws');
   const notifications = useNotifications(state.agents);
   const navigation = useNavigation(groupedSessions);
-  const inbox = useInbox(state.agents);
+  const inbox = useInbox(state.agents, state.session);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileTab, setMobileTab] = useState<MobileTab>('scene');
   const isMobile = useIsMobile();

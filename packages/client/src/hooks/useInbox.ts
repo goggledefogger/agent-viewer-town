@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { AgentState, InboxNotification, NotificationType } from '@agent-viewer/shared';
+import type { AgentState, InboxNotification, NotificationType, SessionInfo } from '@agent-viewer/shared';
 
 interface InboxResult {
   activeNotifications: InboxNotification[];
@@ -11,25 +11,26 @@ interface InboxResult {
 }
 
 const PRIORITY_ORDER: Record<NotificationType, number> = {
-  permission: 0,
-  question: 1,
-  plan_review: 2,
-  error: 3,
+  permission_request: 0,
+  ask_user_question: 1,
+  plan_approval: 2,
+  agent_error: 3,
   task_completed: 4,
-  idle: 5,
+  agent_idle: 5,
+  agent_stopped: 6,
 };
 
 function getNotificationType(agent: AgentState): NotificationType | null {
   if (!agent.waitingForInput) return null;
   const action = (agent.currentAction || '').toLowerCase();
-  if (action.includes('permission') || action.includes('approve')) return 'permission';
-  if (action.includes('question') || action.includes('ask')) return 'question';
-  if (action.includes('plan')) return 'plan_review';
-  return 'permission'; // default waiting = permission request
+  if (action.includes('permission') || action.includes('approve')) return 'permission_request';
+  if (action.includes('question') || action.includes('ask')) return 'ask_user_question';
+  if (action.includes('plan')) return 'plan_approval';
+  return 'permission_request'; // default waiting = permission request
 }
 
 /** Client-side inbox: generates notifications from agent state transitions */
-export function useInbox(agents: AgentState[]): InboxResult {
+export function useInbox(agents: AgentState[], session?: SessionInfo): InboxResult {
   const [notifications, setNotifications] = useState<InboxNotification[]>([]);
   const prevWaiting = useRef<Set<string>>(new Set());
 
@@ -43,13 +44,19 @@ export function useInbox(agents: AgentState[]): InboxResult {
 
         // New waiting agent — create notification
         if (!prevWaiting.current.has(agent.id)) {
-          const type = getNotificationType(agent) || 'permission';
+          const type = getNotificationType(agent) || 'permission_request';
+          const actionText = agent.currentAction || 'Waiting for input';
           const notif: InboxNotification = {
             id: `${agent.id}-${Date.now()}`,
             agentId: agent.id,
             agentName: agent.name,
             type,
-            message: agent.currentAction || 'Waiting for input',
+            title: `${agent.name} needs input`,
+            body: actionText,
+            context: agent.actionContext,
+            sessionId: session?.sessionId || 'unknown',
+            projectName: session?.projectName || 'Unknown Project',
+            gitBranch: agent.gitBranch || session?.gitBranch,
             timestamp: Date.now(),
             read: false,
             resolved: false,
@@ -70,7 +77,7 @@ export function useInbox(agents: AgentState[]): InboxResult {
     );
 
     prevWaiting.current = currentWaiting;
-  }, [agents]);
+  }, [agents, session]);
 
   const markRead = useCallback((id: string) => {
     setNotifications((prev) =>
