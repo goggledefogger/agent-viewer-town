@@ -5,13 +5,17 @@ A real-time animated visualization for Claude Code sessions and agent teams. Wat
 ## Features
 
 - **Pixel-art SVG characters** - Each agent role is a different animal (Beaver, Owl, Fox, Bear, Rabbit)
+- **Subagent-specific characters** - Subagents get unique animals by type (Squirrel=Explore, Chipmunk=Plan, Woodpecker=Bash, Mouse=general)
 - **Live activity tracking** - See what each agent is doing in real-time (editing files, running commands, searching, etc.)
 - **Claude Code hooks integration** - First-class lifecycle events for instant, accurate state detection
 - **Subagent differentiation** - Subagent type labels (Explore, Plan, Bash, etc.) for distinguishing parallel subagents
 - **Session auto-detection** - Works with solo sessions and multi-agent teams
 - **Git branch visibility** - Branch badges with push/pull status indicators per agent
+- **Branch grouping** - Visual zones grouping agents that share the same branch
+- **Browser notifications** - Desktop alerts when an agent needs your input (tab-hidden only)
 - **Multi-tab support** - Each browser tab can watch a different session independently
 - **Responsive design** - Mobile-friendly with collapsible sidebar
+- **Extensible theme system** - Swappable visual themes with palette, background, and environment components
 - **Evolution system** - Agents visually "level up" as they complete more tasks
 
 ## Quick Start
@@ -82,6 +86,16 @@ agent-viewer-town/
 │   │       ├── watcher.ts # JSONL transcript watcher (fallback detection)
 │   │       └── parser.ts  # Transcript parsing + git detection
 │   └── client/          # Vite + React frontend with SVG animations
+│       └── src/
+│           ├── components/    # React components (Scene, AgentCharacter, Sidebar, etc.)
+│           ├── constants/     # Consolidated color constants
+│           ├── hooks/         # React hooks (useNotifications, etc.)
+│           └── svg/           # Visual assets
+│               ├── characters/  # Animal sprites + registry
+│               ├── themes/      # Extensible theme system (palettes, backgrounds)
+│               ├── effects/     # Steam, sparks, confetti animations
+│               ├── environment/ # Trees, bushes, scenery
+│               └── machines/    # Workstation, conveyor, pipes
 ├── hooks/               # Claude Code hook script + installer
 ├── docs/                # Engineering review, info hierarchy, analysis
 ```
@@ -121,6 +135,14 @@ npm run dev -w packages/client
 | Implementer | Fox | Red |
 | Tester | Bear | Green |
 | Planner | Rabbit | White |
+
+**Subagent Types**:
+| Type | Animal | Color |
+|------|--------|-------|
+| Explore | Squirrel | Cyan |
+| Plan | Chipmunk | Amber |
+| Bash | Woodpecker | Orange |
+| General | Mouse | Slate |
 
 **Evolution Stages**:
 - **Stage 1** (0 tasks): Basic character
