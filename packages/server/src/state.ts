@@ -45,6 +45,14 @@ export class StateManager {
    */
   private hookActiveSessions = new Map<string, number>();
 
+  /**
+   * Maps JSONL session IDs to team agent IDs.
+   * Hook events use JSONL session UUIDs (e.g., "23576460-b068-...") but team agents
+   * are registered with config-based IDs (e.g., "researcher@visual-upgrade").
+   * This mapping lets hooks route activity updates to the correct team agent.
+   */
+  private sessionToTeamAgent = new Map<string, string>();
+
   subscribe(listener: Listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -457,6 +465,20 @@ export class StateManager {
     this.removedAgents.delete(id);
   }
 
+  /** Register a mapping from a JSONL session ID to a team agent ID.
+   *  This allows hook events (which use session UUIDs) to route to the
+   *  correct team agent (which uses config-based IDs like "researcher@team"). */
+  registerSessionToAgentMapping(sessionId: string, teamAgentId: string) {
+    this.sessionToTeamAgent.set(sessionId, teamAgentId);
+    console.log(`[state] Session mapping: ${sessionId.slice(0, 8)} -> ${teamAgentId}`);
+  }
+
+  /** Resolve a JSONL session ID to the effective agent ID.
+   *  Returns the team agent ID if a mapping exists, otherwise the session ID itself. */
+  resolveAgentId(sessionId: string): string {
+    return this.sessionToTeamAgent.get(sessionId) || sessionId;
+  }
+
   /** Record that a hook event was received for this session. */
   markHookActive(sessionId: string) {
     this.hookActiveSessions.set(sessionId, Date.now());
@@ -479,6 +501,12 @@ export class StateManager {
 
   removeSession(sessionId: string) {
     this.sessions.delete(sessionId);
+    // Clean up any session-to-agent mappings for this session
+    for (const [sid, agentId] of this.sessionToTeamAgent) {
+      if (sid === sessionId || agentId === sessionId) {
+        this.sessionToTeamAgent.delete(sid);
+      }
+    }
     if (this.state.session?.sessionId === sessionId) {
       this.state.session = undefined;
     }
@@ -582,7 +610,7 @@ export class StateManager {
         gitBranch: session.gitBranch,
         isTeam: session.isTeam,
         agentCount: session.isTeam
-          ? this.state.agents.filter((a) => this.state.name === session.teamName).length
+          ? this.getAgentsForSession(session).length
           : 1,
         lastActivity: session.lastActivity,
         active: effectiveActiveId === session.sessionId,
@@ -640,6 +668,7 @@ export class StateManager {
     this.allAgents.clear();
     this.removedAgents.clear();
     this.hookActiveSessions.clear();
+    this.sessionToTeamAgent.clear();
     this.broadcastFullState();
   }
 }
