@@ -1,64 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import type { AgentState } from '@agent-viewer/shared';
-import { Beaver } from '../svg/animals/Beaver';
-import { Owl } from '../svg/animals/Owl';
-import { Fox } from '../svg/animals/Fox';
-import { Bear } from '../svg/animals/Bear';
-import { Rabbit } from '../svg/animals/Rabbit';
+import { resolveCharacter, getEvolutionStage } from '../svg/characters';
+import { STEAM_COLORS, SPARK_COLORS, CONFETTI_COLORS, getBranchColor } from '../constants/colors';
+export { getBranchColor } from '../constants/colors';
 
 interface AgentCharacterProps {
   agent: AgentState;
   x: number;
   y: number;
   isNew?: boolean;
-}
-
-const ROLE_COLORS: Record<string, string> = {
-  lead: '#FFD700',
-  researcher: '#4169E1',
-  implementer: '#DC3545',
-  tester: '#28A745',
-  planner: '#F8F9FA',
-};
-
-const ANIMAL_COMPONENTS: Record<string, React.FC<{ stage: number }>> = {
-  lead: Beaver,
-  researcher: Owl,
-  implementer: Fox,
-  tester: Bear,
-  planner: Rabbit,
-};
-
-/** Deterministic color for a branch name — stable across re-renders.
- *  main/master always get green; others hash into the remaining palette. */
-const BRANCH_PALETTE = [
-  '#4CAF50', // green — reserved for main/master
-  '#42A5F5', // blue — feature branches
-  '#FF7043', // orange — fix/hotfix
-  '#AB47BC', // purple — release
-  '#26C6DA', // cyan — dev/staging
-  '#FFCA28', // amber — experiment
-];
-
-export function getBranchColor(branch: string): string {
-  const lower = branch.toLowerCase();
-  if (lower === 'main' || lower === 'master') return BRANCH_PALETTE[0];
-  let hash = 0;
-  for (let i = 0; i < branch.length; i++) {
-    hash = ((hash << 5) - hash + branch.charCodeAt(i)) | 0;
-  }
-  // Skip index 0 (reserved for main/master)
-  return BRANCH_PALETTE[1 + (Math.abs(hash) % (BRANCH_PALETTE.length - 1))];
-}
-
-const STEAM_COLORS = ['#aaa', '#ccc', '#999', '#bbb'];
-const SPARK_COLORS = ['#FFD700', '#FF6347', '#4169E1', '#28A745', '#FF69B4'];
-const CONFETTI_COLORS = ['#FFD700', '#DC3545', '#4169E1', '#28A745', '#FF69B4', '#FF8C00'];
-
-function getEvolutionStage(tasksCompleted: number): number {
-  if (tasksCompleted >= 6) return 3;
-  if (tasksCompleted >= 3) return 2;
-  return 1;
 }
 
 /** Steam puff particles that rise and fade when agent is working */
@@ -159,10 +109,8 @@ function CelebrationParticles({ active }: { active: boolean }) {
 }
 
 export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
-  const color = agent.isSubagent ? '#94a3b8' : (ROLE_COLORS[agent.role] || '#FFD700');
+  const { AnimalComponent: AnimalSvg, accentColor: color } = resolveCharacter(agent);
   const stage = agent.isSubagent ? 1 : getEvolutionStage(agent.tasksCompleted);
-  // Subagents use Owl (quick scouts), main agents use their role's animal
-  const AnimalSvg = agent.isSubagent ? Owl : (ANIMAL_COMPONENTS[agent.role] || Beaver);
   const isWorking = agent.status === 'working';
 
   // Track task completion for spark/celebration effect

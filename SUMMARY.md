@@ -23,15 +23,21 @@ Real-time visualization for Claude Code sessions and agent teams.
 - Guard mechanisms preventing stale subagent re-registration
 
 ### Visual Features
-- 5 SVG pixel-art animal characters (Beaver, Owl, Fox, Bear, Rabbit)
+- 5 SVG pixel-art animal characters for team roles (Beaver, Owl, Fox, Bear, Rabbit)
+- 4 subagent-specific animals (Squirrel=Explore, Chipmunk=Plan, Woodpecker=Bash, Mouse=general)
+- Extensible theme system with swappable palettes, backgrounds, and environments
+- Character registry centralizing animal/color resolution for roles and subagent types
+- Consolidated color constants (roles, branches, effects) in shared module
 - 3-stage evolution system (tasks completed = visual upgrades)
 - Animated workstations with gears, pipes, conveyor belts
 - Steam puffs and spark bursts when working
 - Action bubbles showing what each agent is doing
 - Waiting-for-input alert with pulsing highlight
+- Browser notifications for agent input alerts (when tab is hidden)
 - Subagent tether lines with energy pulse animations
 - Git branch badges with push status (ahead/behind/dirty indicators)
 - Branch lanes in ground area with tether lines to agents
+- Branch grouping zones with colored backgrounds for agents sharing a branch
 
 ### UI Components
 - Responsive sidebar (collapsible on mobile)
@@ -40,12 +46,13 @@ Real-time visualization for Claude Code sessions and agent teams.
 - Task board with status tracking
 - Message log
 - Connection status indicator
+- Browser notification toggle (persisted in localStorage)
 
 ---
 
 ## Testing & Quality
 
-- **351 passing tests** (parser: 86, state: 121, hooks: 126, server: 9, client: 9)
+- **382 passing tests** (parser: 86, state: 121, hooks: 126, server: 9, client: 40)
 - Type-checked with TypeScript strict mode
 - All packages compile cleanly
 

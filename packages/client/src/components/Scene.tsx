@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { TeamState, AgentState } from '@agent-viewer/shared';
-import { AgentCharacter, getBranchColor } from './AgentCharacter';
+import { AgentCharacter } from './AgentCharacter';
+import { getBranchColor } from '../constants/colors';
 import { Machine } from './Machine';
 
 interface SceneProps {
@@ -477,6 +478,46 @@ function computeBranchLanes(agents: AgentState[]): Map<string, { y: number; colo
   return lanes;
 }
 
+/** Compute bounding-box zones for agents grouped by branch.
+ *  Returns a colored rect encompassing all agents on each branch (with padding).
+ *  Only meaningful when 2+ branches exist. */
+function computeBranchZones(
+  agents: AgentState[],
+  positions: Map<string, { x: number; y: number }>,
+): Array<{ branch: string; x: number; y: number; width: number; height: number; color: string }> {
+  const branchAgents = new Map<string, Array<{ x: number; y: number }>>();
+  for (const agent of agents) {
+    if (!agent.gitBranch || agent.isSubagent) continue;
+    const pos = positions.get(agent.id);
+    if (!pos) continue;
+    if (!branchAgents.has(agent.gitBranch)) branchAgents.set(agent.gitBranch, []);
+    branchAgents.get(agent.gitBranch)!.push(pos);
+  }
+  // Only draw zones when multiple branches exist
+  if (branchAgents.size < 2) return [];
+
+  const pad = 50;
+  const zones: Array<{ branch: string; x: number; y: number; width: number; height: number; color: string }> = [];
+  for (const [branch, agentPositions] of branchAgents) {
+    if (agentPositions.length === 0) continue;
+    const xs = agentPositions.map((p) => p.x);
+    const ys = agentPositions.map((p) => p.y);
+    const minX = Math.max(0, Math.min(...xs) - pad);
+    const minY = Math.max(0, Math.min(...ys) - pad);
+    const maxX = Math.min(900, Math.max(...xs) + pad);
+    const maxY = Math.min(480, Math.max(...ys) + pad);
+    zones.push({
+      branch,
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      color: getBranchColor(branch),
+    });
+  }
+  return zones;
+}
+
 export function Scene({ state, className }: SceneProps) {
   const mainAgents = useMemo(() => state.agents.filter((a) => !a.isSubagent), [state.agents]);
   const subagents = useMemo(() => state.agents.filter((a) => a.isSubagent), [state.agents]);
@@ -489,6 +530,12 @@ export function Scene({ state, className }: SceneProps) {
 
   // Compute branch lanes for the ground area
   const branchLanes = useMemo(() => computeBranchLanes(state.agents), [state.agents]);
+
+  // Compute branch grouping zones (background enclosures)
+  const branchZones = useMemo(
+    () => computeBranchZones(state.agents, allPositions),
+    [state.agents, allPositions],
+  );
 
   if (!state.name && state.agents.length === 0) {
     return (
@@ -522,6 +569,33 @@ export function Scene({ state, className }: SceneProps) {
         {/* Ground */}
         <rect x="0" y="480" width="900" height="120" fill="#2d5a27" rx="0" />
         <rect x="0" y="480" width="900" height="4" fill="#4a6741" />
+
+        {/* Branch grouping zones — subtle background enclosures behind agents sharing a branch */}
+        {branchZones.map((zone) => (
+          <g key={`zone-${zone.branch}`}>
+            <rect
+              x={zone.x}
+              y={zone.y}
+              width={zone.width}
+              height={zone.height}
+              rx="12"
+              fill={zone.color}
+              opacity="0.06"
+            />
+            <rect
+              x={zone.x}
+              y={zone.y}
+              width={zone.width}
+              height={zone.height}
+              rx="12"
+              fill="none"
+              stroke={zone.color}
+              strokeWidth="1"
+              strokeDasharray="4 4"
+              opacity="0.15"
+            />
+          </g>
+        ))}
 
         {/* Branch lanes in ground area — colored strips per unique branch */}
         {branchLanes.size > 0 && Array.from(branchLanes.entries()).map(([branch, lane]) => (

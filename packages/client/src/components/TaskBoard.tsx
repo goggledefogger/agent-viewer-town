@@ -1,4 +1,5 @@
 import type { TaskState, AgentState } from '@agent-viewer/shared';
+import { ROLE_COLORS } from '../constants/colors';
 
 interface TaskBoardProps {
   tasks: TaskState[];
@@ -23,14 +24,6 @@ const ROLE_ANIMALS: Record<string, string> = {
   implementer: '\u{1F98A}',
   tester: '\u{1F43B}',
   planner: '\u{1F407}',
-};
-
-const ROLE_COLORS: Record<string, string> = {
-  lead: '#FFD700',
-  researcher: '#4169E1',
-  implementer: '#DC3545',
-  tester: '#28A745',
-  planner: '#F8F9FA',
 };
 
 function AgentAvatar({ agent }: { agent: AgentState }) {

@@ -69,9 +69,20 @@ export function createHookHandler(stateManager: StateManager) {
       return;
     }
 
-    // Update session activity timestamp and mark hooks as actively providing data
+    // Resolve JSONL session UUID to team agent ID if this session belongs to a team member.
+    // For solo sessions, agentId === sessionId (no mapping exists).
+    const agentId = stateManager.resolveAgentId(sessionId);
+
+    // Update session activity timestamp and mark hooks as actively providing data.
+    // Session-level operations use sessionId; agent-level operations use agentId.
     stateManager.updateSessionActivity(sessionId);
-    stateManager.markHookActive(sessionId);
+    stateManager.markHookActive(agentId);
+
+    // If this agent belongs to a team, also update the team session activity
+    const resolvedAgent = stateManager.getAgentById(agentId);
+    if (resolvedAgent?.teamName) {
+      stateManager.updateSessionActivity(`team:${resolvedAgent.teamName}`);
+    }
 
     // Store cwd for later git status refreshes
     if (event.cwd && !sessionCwd.has(sessionId)) {
@@ -82,8 +93,9 @@ export function createHookHandler(stateManager: StateManager) {
     // This handles cases where context continuation changes the session ID, so the
     // JSONL watcher hasn't detected it yet but hooks are already providing events.
     // Skip for SubagentStart/SubagentStop — those have their own registration flow.
+    // Skip if agentId resolved to a team agent (already registered via team config).
     if (event.hook_event_name !== 'SubagentStart' && event.hook_event_name !== 'SubagentStop') {
-      const existingAgent = stateManager.getAgentById(sessionId);
+      const existingAgent = stateManager.getAgentById(agentId);
       if (!existingAgent) {
         const session = stateManager.getSessions().get(sessionId);
         if (session) {
@@ -125,47 +137,49 @@ export function createHookHandler(stateManager: StateManager) {
       }
     }
 
-    // Detect git branch/worktree/status from cwd on first event for this session
+    // Detect git branch/worktree/status from cwd on first event for this session.
+    // Use agentId for updateAgentGitInfo so team agents get their git info.
     if (event.cwd && !gitInfoDetected.has(sessionId)) {
       gitInfoDetected.add(sessionId);
       const cwd = event.cwd;
+      const gitAgentId = agentId;
       Promise.all([
         detectGitWorktree(cwd, execFileAsync),
         detectGitStatus(cwd, execFileAsync),
       ]).then(([gitInfo, gitStatus]) => {
         if (gitInfo.gitBranch || gitInfo.gitWorktree || gitStatus.hasUpstream) {
-          stateManager.updateAgentGitInfo(sessionId, gitInfo.gitBranch, gitInfo.gitWorktree, gitStatus);
+          stateManager.updateAgentGitInfo(gitAgentId, gitInfo.gitBranch, gitInfo.gitWorktree, gitStatus);
         }
       }).catch(() => { /* ignore */ });
     }
 
     switch (event.hook_event_name) {
       case 'PreToolUse':
-        handlePreToolUse(event as PreToolUseEvent, sessionId);
+        handlePreToolUse(event as PreToolUseEvent, sessionId, agentId);
         break;
       case 'PostToolUse':
-        handlePostToolUse(event as PostToolUseEvent, sessionId);
+        handlePostToolUse(event as PostToolUseEvent, sessionId, agentId);
         break;
       case 'PermissionRequest':
-        handlePermissionRequest(event as PermissionRequestEvent, sessionId);
+        handlePermissionRequest(event as PermissionRequestEvent, agentId);
         break;
       case 'SubagentStart':
-        handleSubagentStart(stateManager, event as SubagentStartEvent, sessionId, pendingTaskSpawns);
+        handleSubagentStart(stateManager, event as SubagentStartEvent, agentId, pendingTaskSpawns);
         break;
       case 'SubagentStop':
-        handleSubagentStop(stateManager, event as SubagentStopEvent, sessionId);
+        handleSubagentStop(stateManager, event as SubagentStopEvent, agentId);
         break;
       case 'PreCompact':
-        handlePreCompact(sessionId);
+        handlePreCompact(agentId);
         break;
       case 'Stop':
-        handleStop(sessionId);
+        handleStop(sessionId, agentId);
         break;
       case 'SessionStart':
         handleSessionStart(event as SessionStartEvent, sessionId);
         break;
       case 'SessionEnd':
-        handleSessionEnd(sessionId);
+        handleSessionEnd(agentId);
         break;
       case 'TeammateIdle':
         handleTeammateIdle(stateManager, event as TeammateIdleEvent, sessionId);
@@ -174,7 +188,7 @@ export function createHookHandler(stateManager: StateManager) {
         handleTaskCompleted(stateManager, event as TaskCompletedEvent, sessionId);
         break;
       case 'UserPromptSubmit':
-        handleUserPromptSubmit(event as UserPromptSubmitEvent, sessionId);
+        handleUserPromptSubmit(sessionId, agentId);
         break;
       default:
         console.log(`[hooks] Unhandled event: ${event.hook_event_name} session=${sessionId.slice(0, 8)}`);
@@ -182,7 +196,7 @@ export function createHookHandler(stateManager: StateManager) {
     }
   }
 
-  function handlePreToolUse(event: PreToolUseEvent, sessionId: string) {
+  function handlePreToolUse(event: PreToolUseEvent, sessionId: string, agentId: string) {
     const { action, context } = describeToolAction(event.tool_name, event.tool_input);
 
     // Agent is actively working — clear any stopped flag so JSONL watcher can update
@@ -207,13 +221,13 @@ export function createHookHandler(stateManager: StateManager) {
     }
 
     // Update agent activity — clear any waiting state, show working
-    stateManager.setAgentWaitingById(sessionId, false);
-    stateManager.updateAgentActivityById(sessionId, 'working', action, context);
+    stateManager.setAgentWaitingById(agentId, false);
+    stateManager.updateAgentActivityById(agentId, 'working', action, context);
   }
 
-  function handlePostToolUse(event: PostToolUseEvent, sessionId: string) {
+  function handlePostToolUse(event: PostToolUseEvent, sessionId: string, agentId: string) {
     // Tool finished — clear waiting state
-    stateManager.setAgentWaitingById(sessionId, false);
+    stateManager.setAgentWaitingById(agentId, false);
 
     // Refresh git status after git-related Bash commands
     if (event.tool_name === 'Bash' && event.tool_input) {
@@ -223,7 +237,7 @@ export function createHookHandler(stateManager: StateManager) {
         if (cwd) {
           clearGitStatusCache(cwd);
           detectGitStatus(cwd, execFileAsync).then((gitStatus) => {
-            stateManager.updateAgentGitInfo(sessionId, undefined, undefined, gitStatus);
+            stateManager.updateAgentGitInfo(agentId, undefined, undefined, gitStatus);
           }).catch(() => { /* ignore */ });
         }
       }
@@ -252,38 +266,40 @@ export function createHookHandler(stateManager: StateManager) {
     }
   }
 
-  function handlePermissionRequest(event: PermissionRequestEvent, sessionId: string) {
+  function handlePermissionRequest(event: PermissionRequestEvent, agentId: string) {
     const { action, context } = describeToolAction(event.tool_name, event.tool_input);
-    stateManager.setAgentWaitingById(sessionId, true, action, context);
+    stateManager.setAgentWaitingById(agentId, true, action, context);
   }
 
-  function handlePreCompact(sessionId: string) {
-    stateManager.setAgentWaitingById(sessionId, false);
-    stateManager.updateAgentActivityById(sessionId, 'working', 'Compacting conversation...');
-    console.log(`[hooks] PreCompact: ${sessionId.slice(0, 8)}`);
+  function handlePreCompact(agentId: string) {
+    stateManager.setAgentWaitingById(agentId, false);
+    stateManager.updateAgentActivityById(agentId, 'working', 'Compacting conversation...');
+    console.log(`[hooks] PreCompact: ${agentId.slice(0, 8)}`);
   }
 
-  function handleStop(sessionId: string) {
-    stateManager.setAgentWaitingById(sessionId, false);
-    stateManager.updateAgentActivityById(sessionId, 'idle');
+  function handleStop(sessionId: string, agentId: string) {
+    stateManager.setAgentWaitingById(agentId, false);
+    stateManager.updateAgentActivityById(agentId, 'idle');
+    // markSessionStopped uses the raw sessionId (JSONL-level flag)
     stateManager.markSessionStopped(sessionId);
-    console.log(`[hooks] Stop: ${sessionId.slice(0, 8)}`);
+    console.log(`[hooks] Stop: session=${sessionId.slice(0, 8)} agent=${agentId.slice(0, 12)}`);
   }
 
   function handleSessionStart(event: SessionStartEvent, sessionId: string) {
     console.log(`[hooks] SessionStart: ${sessionId.slice(0, 8)} source=${event.source} model=${event.model}`);
   }
 
-  function handleSessionEnd(sessionId: string) {
-    console.log(`[hooks] SessionEnd: ${sessionId.slice(0, 8)}`);
-    stateManager.updateAgentActivityById(sessionId, 'idle');
+  function handleSessionEnd(agentId: string) {
+    console.log(`[hooks] SessionEnd: ${agentId.slice(0, 12)}`);
+    stateManager.updateAgentActivityById(agentId, 'idle');
   }
 
-  function handleUserPromptSubmit(event: UserPromptSubmitEvent, sessionId: string) {
+  function handleUserPromptSubmit(sessionId: string, agentId: string) {
+    // clearSessionStopped uses the raw sessionId (JSONL-level flag)
     stateManager.clearSessionStopped(sessionId);
-    stateManager.setAgentWaitingById(sessionId, false);
-    stateManager.updateAgentActivityById(sessionId, 'working', 'Processing prompt...');
-    console.log(`[hooks] UserPromptSubmit: ${sessionId.slice(0, 8)}`);
+    stateManager.setAgentWaitingById(agentId, false);
+    stateManager.updateAgentActivityById(agentId, 'working', 'Processing prompt...');
+    console.log(`[hooks] UserPromptSubmit: session=${sessionId.slice(0, 8)} agent=${agentId.slice(0, 12)}`);
   }
 
   return { handleEvent };

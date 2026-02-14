@@ -73,6 +73,8 @@ export interface SessionInfo {
   isTeam: boolean;
   /** Team name if isTeam is true */
   teamName?: string;
+  /** Claude Code agent ID for team members (e.g., "researcher@visual-upgrade") */
+  agentId?: string;
   /** Timestamp of last JSONL activity */
   lastActivity: number;
 }
