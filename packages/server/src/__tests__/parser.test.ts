@@ -10,7 +10,6 @@ import {
   parseTranscriptLine,
   parseSessionMetadata,
   cleanProjectName,
-  readFirstLine,
   extractRecordType,
   detectGitWorktree,
 } from '../parser';
@@ -276,27 +275,6 @@ describe('parseSessionMetadata', () => {
     });
     const result = parseSessionMetadata(line);
     expect(result!.projectName).toBe('cool-app');
-  });
-});
-
-describe('readFirstLine', () => {
-  it('reads the first line of a JSONL file', async () => {
-    const filePath = join(TMP, 'test.jsonl');
-    await writeFile(filePath, '{"sessionId":"s1","type":"user"}\n{"sessionId":"s1","type":"assistant"}\n');
-    const line = await readFirstLine(filePath);
-    expect(line).toBe('{"sessionId":"s1","type":"user"}');
-  });
-
-  it('returns null for empty file', async () => {
-    const filePath = join(TMP, 'empty.jsonl');
-    await writeFile(filePath, '');
-    const line = await readFirstLine(filePath);
-    expect(line).toBeNull();
-  });
-
-  it('returns null for missing file', async () => {
-    const line = await readFirstLine(join(TMP, 'does-not-exist.jsonl'));
-    expect(line).toBeNull();
   });
 });
 
