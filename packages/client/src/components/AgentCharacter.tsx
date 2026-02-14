@@ -5,6 +5,10 @@ import { Owl } from '../svg/animals/Owl';
 import { Fox } from '../svg/animals/Fox';
 import { Bear } from '../svg/animals/Bear';
 import { Rabbit } from '../svg/animals/Rabbit';
+import { Squirrel } from '../svg/animals/Squirrel';
+import { Chipmunk } from '../svg/animals/Chipmunk';
+import { Woodpecker } from '../svg/animals/Woodpecker';
+import { Mouse } from '../svg/animals/Mouse';
 
 interface AgentCharacterProps {
   agent: AgentState;
@@ -27,6 +31,18 @@ const ANIMAL_COMPONENTS: Record<string, React.FC<{ stage: number }>> = {
   implementer: Fox,
   tester: Bear,
   planner: Rabbit,
+};
+
+const SUBAGENT_COLORS: Record<string, string> = {
+  Explore: '#26C6DA',
+  Plan: '#FFCA28',
+  Bash: '#FF7043',
+};
+
+const SUBAGENT_ANIMALS: Record<string, React.FC<{ stage: number }>> = {
+  Explore: Squirrel,
+  Plan: Chipmunk,
+  Bash: Woodpecker,
 };
 
 /** Deterministic color for a branch name — stable across re-renders.
@@ -159,10 +175,14 @@ function CelebrationParticles({ active }: { active: boolean }) {
 }
 
 export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
-  const color = agent.isSubagent ? '#94a3b8' : (ROLE_COLORS[agent.role] || '#FFD700');
+  const color = agent.isSubagent
+    ? (SUBAGENT_COLORS[agent.subagentType || ''] || '#94a3b8')
+    : (ROLE_COLORS[agent.role] || '#FFD700');
   const stage = agent.isSubagent ? 1 : getEvolutionStage(agent.tasksCompleted);
-  // Subagents use Owl (quick scouts), main agents use their role's animal
-  const AnimalSvg = agent.isSubagent ? Owl : (ANIMAL_COMPONENTS[agent.role] || Beaver);
+  // Subagents get type-specific animals; main agents use their role's animal
+  const AnimalSvg = agent.isSubagent
+    ? (SUBAGENT_ANIMALS[agent.subagentType || ''] || Mouse)
+    : (ANIMAL_COMPONENTS[agent.role] || Beaver);
   const isWorking = agent.status === 'working';
 
   // Track task completion for spark/celebration effect
