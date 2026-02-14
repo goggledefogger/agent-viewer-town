@@ -157,7 +157,7 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-server.listen(PORT, () => {
-  console.log(`[server] listening on http://localhost:${PORT}`);
-  console.log(`[server] WebSocket on ws://localhost:${PORT}/ws`);
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`[server] listening on http://127.0.0.1:${PORT}`);
+  console.log(`[server] WebSocket on ws://127.0.0.1:${PORT}/ws`);
 });
