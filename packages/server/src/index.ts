@@ -84,9 +84,10 @@ wss.on('connection', (ws: WebSocket) => {
   console.log('[ws] client connected');
   clientStates.set(ws, {});
 
-  // Send current state and sessions list on connect
+  // Send current state, sessions list, and grouped sessions on connect
   ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
   ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
+  ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(clientStates.get(ws)?.selectedSessionId) }));
 
   // Subscribe to state changes — send per-client filtered views
   const unsubscribe = stateManager.subscribe((msg) => {
@@ -95,14 +96,16 @@ wss.on('connection', (ws: WebSocket) => {
     const client = clientStates.get(ws);
     const clientSessionId = client?.selectedSessionId;
 
-    if (msg.type === 'full_state' || msg.type === 'sessions_list') {
+    if (msg.type === 'full_state' || msg.type === 'sessions_list' || msg.type === 'sessions_grouped') {
       // For full_state and sessions_list, always send the client-specific view
       ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
       ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
+      ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(clientStates.get(ws)?.selectedSessionId) }));
     } else if (msg.type === 'session_started' || msg.type === 'session_ended') {
       // Session lifecycle events go to all clients, plus updated list
       ws.send(JSON.stringify(msg));
       ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
+      ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(clientStates.get(ws)?.selectedSessionId) }));
       // If client has no explicit selection, a new auto-selected session may change their view
       if (!clientSessionId) {
         ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
@@ -137,6 +140,7 @@ wss.on('connection', (ws: WebSocket) => {
         // Send filtered state to only this client
         ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
         ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
+        ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(msg.sessionId) }));
       }
     } catch {
       // Ignore invalid messages
