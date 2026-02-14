@@ -3,6 +3,7 @@ import { Scene } from './components/Scene';
 import { Sidebar } from './components/Sidebar';
 import { SessionPicker } from './components/SessionPicker';
 import { useWebSocket } from './hooks/useWebSocket';
+import { useNotifications } from './hooks/useNotifications';
 import type { ConnectionStatus } from './hooks/useWebSocket';
 
 type MobileTab = 'scene' | 'tasks' | 'messages';
@@ -61,6 +62,7 @@ function LiveIndicator({ lastActivity }: { lastActivity?: number }) {
 
 export default function App() {
   const { team: state, sessions, connectionStatus, selectSession } = useWebSocket('ws://localhost:3001/ws');
+  const notifications = useNotifications(state.agents);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileTab, setMobileTab] = useState<MobileTab>('scene');
   const isMobile = useIsMobile();
@@ -136,6 +138,22 @@ export default function App() {
             <span className="header-stat-total">/{state.tasks.length}</span> done
           </span>
         </div>
+        {notifications.permission !== 'unsupported' && (
+          <button
+            className={`notification-toggle ${notifications.enabled ? 'active' : ''}`}
+            onClick={notifications.toggle}
+            title={
+              notifications.permission === 'denied'
+                ? 'Notifications blocked by browser'
+                : notifications.enabled
+                  ? 'Disable notifications'
+                  : 'Enable notifications for agent alerts'
+            }
+            disabled={notifications.permission === 'denied'}
+          >
+            {notifications.enabled ? '\uD83D\uDD14' : '\uD83D\uDD15'}
+          </button>
+        )}
         <button
           className="sidebar-toggle"
           onClick={() => setSidebarOpen((v) => !v)}
