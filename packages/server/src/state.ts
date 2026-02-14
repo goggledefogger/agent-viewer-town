@@ -1,4 +1,5 @@
 import type { TeamState, AgentState, TaskState, MessageState, SessionInfo, SessionListEntry, WSMessage } from '@agent-viewer/shared';
+import { GuardManager } from './guards';
 
 type Listener = (msg: WSMessage) => void;
 
@@ -24,34 +25,8 @@ export class StateManager {
   /** How long to debounce rapid activity updates (ms) */
   private activityDebounceMs = 200;
 
-  /**
-   * Sessions where a Stop hook has fired, preventing JSONL watcher from
-   * overriding the idle state. Cleared when UserPromptSubmit fires (new turn).
-   */
-  private stoppedSessions = new Set<string>();
-
-  /**
-   * Recently removed agent IDs with removal timestamp.
-   * Prevents the JSONL watcher from re-registering agents that were
-   * already removed (e.g., subagents after SubagentStop → 15s removal).
-   * Entries expire after 5 minutes.
-   */
-  private removedAgents = new Map<string, number>();
-
-  /**
-   * Sessions with recent hook activity, keyed by sessionId → last hook timestamp.
-   * When hooks are actively providing events for a session, the JSONL watcher
-   * should defer to hooks for activity/status updates to avoid stale overrides.
-   */
-  private hookActiveSessions = new Map<string, number>();
-
-  /**
-   * Maps JSONL session IDs to team agent IDs.
-   * Hook events use JSONL session UUIDs (e.g., "23576460-b068-...") but team agents
-   * are registered with config-based IDs (e.g., "researcher@visual-upgrade").
-   * This mapping lets hooks route activity updates to the correct team agent.
-   */
-  private sessionToTeamAgent = new Map<string, string>();
+  /** Guard mechanisms coordinating hooks and JSONL watcher */
+  private guards = new GuardManager();
 
   subscribe(listener: Listener) {
     this.listeners.add(listener);
@@ -146,7 +121,7 @@ export class StateManager {
   removeAgent(id: string) {
     this.allAgents.delete(id);
     this.state.agents = this.state.agents.filter((a) => a.id !== id);
-    this.removedAgents.set(id, Date.now());
+    this.guards.markRemoved(id);
     this.broadcast({ type: 'agent_removed', data: { id } });
   }
 
@@ -436,62 +411,47 @@ export class StateManager {
 
   /** Mark a session as stopped (Stop hook fired). Prevents JSONL watcher from overriding idle state. */
   markSessionStopped(sessionId: string) {
-    this.stoppedSessions.add(sessionId);
+    this.guards.markSessionStopped(sessionId);
   }
 
   /** Clear the stopped flag (new turn started via UserPromptSubmit). */
   clearSessionStopped(sessionId: string) {
-    this.stoppedSessions.delete(sessionId);
+    this.guards.clearSessionStopped(sessionId);
   }
 
   /** Check if a session has been stopped and shouldn't be overridden by JSONL. */
   isSessionStopped(sessionId: string): boolean {
-    return this.stoppedSessions.has(sessionId);
+    return this.guards.isSessionStopped(sessionId);
   }
 
   /** Check if an agent was recently removed (within 5 minutes). */
   wasRecentlyRemoved(id: string): boolean {
-    const removedAt = this.removedAgents.get(id);
-    if (!removedAt) return false;
-    if (Date.now() - removedAt > 300_000) {
-      this.removedAgents.delete(id);
-      return false;
-    }
-    return true;
+    return this.guards.wasRecentlyRemoved(id);
   }
 
   /** Allow explicit re-registration (e.g., SubagentStart hook for a new spawn with same ID). */
   clearRecentlyRemoved(id: string) {
-    this.removedAgents.delete(id);
+    this.guards.clearRecentlyRemoved(id);
   }
 
-  /** Register a mapping from a JSONL session ID to a team agent ID.
-   *  This allows hook events (which use session UUIDs) to route to the
-   *  correct team agent (which uses config-based IDs like "researcher@team"). */
+  /** Register a mapping from a JSONL session ID to a team agent ID. */
   registerSessionToAgentMapping(sessionId: string, teamAgentId: string) {
-    this.sessionToTeamAgent.set(sessionId, teamAgentId);
-    console.log(`[state] Session mapping: ${sessionId.slice(0, 8)} -> ${teamAgentId}`);
+    this.guards.registerSessionToAgentMapping(sessionId, teamAgentId);
   }
 
-  /** Resolve a JSONL session ID to the effective agent ID.
-   *  Returns the team agent ID if a mapping exists, otherwise the session ID itself. */
+  /** Resolve a JSONL session ID to the effective agent ID. */
   resolveAgentId(sessionId: string): string {
-    return this.sessionToTeamAgent.get(sessionId) || sessionId;
+    return this.guards.resolveAgentId(sessionId);
   }
 
   /** Record that a hook event was received for this session. */
   markHookActive(sessionId: string) {
-    this.hookActiveSessions.set(sessionId, Date.now());
+    this.guards.markHookActive(sessionId);
   }
 
-  /**
-   * Check if hooks have been actively providing events for this session recently.
-   * When true, JSONL watcher should defer activity/status updates to hooks.
-   */
+  /** Check if hooks have been actively providing events for this session recently. */
   isHookActive(sessionId: string, withinMs = 5000): boolean {
-    const lastHook = this.hookActiveSessions.get(sessionId);
-    if (!lastHook) return false;
-    return (Date.now() - lastHook) < withinMs;
+    return this.guards.isHookActive(sessionId, withinMs);
   }
 
   /** Get the full agent registry (for staleness checks across all agents). */
@@ -502,11 +462,7 @@ export class StateManager {
   removeSession(sessionId: string) {
     this.sessions.delete(sessionId);
     // Clean up any session-to-agent mappings for this session
-    for (const [sid, agentId] of this.sessionToTeamAgent) {
-      if (sid === sessionId || agentId === sessionId) {
-        this.sessionToTeamAgent.delete(sid);
-      }
-    }
+    this.guards.removeSessionMappings(sessionId);
     if (this.state.session?.sessionId === sessionId) {
       this.state.session = undefined;
     }
@@ -666,9 +622,7 @@ export class StateManager {
     this.state = { name: '', agents: [], tasks: [], messages: [] };
     this.sessions.clear();
     this.allAgents.clear();
-    this.removedAgents.clear();
-    this.hookActiveSessions.clear();
-    this.sessionToTeamAgent.clear();
+    this.guards.reset();
     this.broadcastFullState();
   }
 }

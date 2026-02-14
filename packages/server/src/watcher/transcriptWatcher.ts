@@ -1,220 +1,35 @@
 import chokidar from 'chokidar';
-import { join, basename, dirname } from 'path';
-import { homedir } from 'os';
-import { readdir, access, constants, stat as fsStat } from 'fs/promises';
+import { basename, dirname } from 'path';
+import { stat as fsStat } from 'fs/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { StateManager } from './state';
-
-const execFileAsync = promisify(execFile);
 import {
-  parseTeamConfig,
-  parseTaskFile,
-  teamMemberToAgent,
   parseTranscriptLine,
   parseSessionMetadata,
   readNewLines,
   cleanProjectName,
   detectGitWorktree,
-} from './parser';
+} from '../parser';
+import { isReadable } from './utils';
+import {
+  PROJECTS_DIR,
+  IDLE_THRESHOLD_S,
+  MAX_INITIAL_AGE_S,
+} from './types';
+import type { WatcherContext, TrackedSession } from './types';
 
-const CLAUDE_DIR = join(homedir(), '.claude');
-const TEAMS_DIR = join(CLAUDE_DIR, 'teams');
-const TASKS_DIR = join(CLAUDE_DIR, 'tasks');
-const PROJECTS_DIR = join(CLAUDE_DIR, 'projects');
+const execFileAsync = promisify(execFile);
 
-/** Seconds of inactivity before marking a session idle */
-const IDLE_THRESHOLD_S = 60;
-/** How often to check for stale sessions (ms) */
-const STALENESS_CHECK_INTERVAL_MS = 15_000;
+export function startTranscriptWatcher(ctx: WatcherContext) {
+  const {
+    stateManager,
+    fileOffsets,
+    transcriptDebouncer,
+    registeredSessions,
+    registeredSubagents,
+    trackedSessions,
+  } = ctx;
 
-function createDebouncer(delayMs: number) {
-  const timers = new Map<string, ReturnType<typeof setTimeout>>();
-
-  function debounce(key: string, fn: () => void) {
-    const existing = timers.get(key);
-    if (existing) clearTimeout(existing);
-    timers.set(
-      key,
-      setTimeout(() => {
-        timers.delete(key);
-        fn();
-      }, delayMs)
-    );
-  }
-
-  function clear() {
-    for (const timer of timers.values()) clearTimeout(timer);
-    timers.clear();
-  }
-
-  return { debounce, clear };
-}
-
-async function isReadable(filePath: string): Promise<boolean> {
-  try {
-    await access(filePath, constants.R_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Track which JSONL files map to which sessionId */
-interface TrackedSession {
-  sessionId: string;
-  filePath: string;
-  /** Whether this is a solo session (no teamName) */
-  isSolo: boolean;
-  /** Project directory slug from the file path */
-  dirSlug: string;
-  lastActivity: number;
-  /** True for internal subagents (acompact, etc.) that shouldn't be shown as characters */
-  isInternalSubagent?: boolean;
-}
-
-export function startWatcher(stateManager: StateManager) {
-  const fileOffsets = new Map<string, number>();
-  const debouncer = createDebouncer(150);
-  const transcriptDebouncer = createDebouncer(100);
-
-  /** Track which sessionIds have been registered to prevent race-condition double-registration */
-  const registeredSessions = new Set<string>();
-
-  /** Track which subagent IDs have been registered to prevent duplicate subagent detection */
-  const registeredSubagents = new Set<string>();
-
-  /** Map from JSONL file path to session tracking info */
-  const trackedSessions = new Map<string, TrackedSession>();
-
-  // ================================================================
-  // Team config watcher
-  // ================================================================
-  const teamWatcher = chokidar.watch(TEAMS_DIR, {
-    ignoreInitial: false,
-    persistent: true,
-    depth: 2,
-    awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
-  });
-
-  teamWatcher.on('ready', () => {
-    console.log('[watcher] Team watcher ready');
-  });
-  teamWatcher.on('add', (fp: string) => {
-    if (basename(fp) !== 'config.json') return;
-    debouncer.debounce(`team:${fp}`, () => handleTeamConfig(fp));
-  });
-  teamWatcher.on('change', (fp: string) => {
-    if (basename(fp) !== 'config.json') return;
-    debouncer.debounce(`team:${fp}`, () => handleTeamConfig(fp));
-  });
-  teamWatcher.on('unlink', (fp: string) => {
-    if (basename(fp) !== 'config.json') return;
-    const teamName = basename(dirname(fp));
-    console.log(`[watcher] Team config removed: ${fp} (team: ${teamName})`);
-    // Only reset team-related state, not solo sessions
-    stateManager.clearTeamAgents();
-    stateManager.removeSession(`team:${teamName}`);
-  });
-  teamWatcher.on('error', (err: unknown) => {
-    console.warn('[watcher] Team watcher error:', err instanceof Error ? err.message : err);
-  });
-
-  async function handleTeamConfig(filePath: string) {
-    if (!(await isReadable(filePath))) return;
-
-    const config = await parseTeamConfig(filePath);
-    if (!config) return;
-
-    const teamName = basename(dirname(filePath));
-    stateManager.setTeamName(teamName);
-    stateManager.setAgents(config.members.map(teamMemberToAgent));
-
-    // Create a session entry for the team so it appears in the session picker
-    // and per-client WebSocket filtering works correctly.
-    // Use team: prefix to prevent collision with JSONL session UUIDs.
-    const teamSessionId = `team:${teamName}`;
-    if (!stateManager.getSessions().has(teamSessionId)) {
-      stateManager.addSession({
-        sessionId: teamSessionId,
-        slug: teamName,
-        projectPath: '',
-        projectName: teamName,
-        isTeam: true,
-        teamName,
-        lastActivity: Date.now(),
-      });
-      console.log(`[watcher] Team session created: ${teamSessionId}`);
-    } else {
-      stateManager.updateSessionActivity(teamSessionId);
-    }
-
-    await scanTasks(teamName);
-  }
-
-  // ================================================================
-  // Task file watcher
-  // ================================================================
-  const taskWatcher = chokidar.watch(TASKS_DIR, {
-    ignoreInitial: false,
-    persistent: true,
-    depth: 1,
-    awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 100 },
-    ignored: (path: string, stats?: { isDirectory(): boolean }) => {
-      if (stats?.isDirectory()) return false;
-      return !path.endsWith('.json');
-    },
-  });
-
-  taskWatcher.on('ready', () => {
-    console.log('[watcher] Task watcher ready');
-  });
-  taskWatcher.on('add', (fp: string) => {
-    debouncer.debounce(`task:${fp}`, () => handleTaskFile(fp));
-  });
-  taskWatcher.on('change', (fp: string) => {
-    debouncer.debounce(`task:${fp}`, () => handleTaskFile(fp));
-  });
-  taskWatcher.on('unlink', (fp: string) => {
-    const taskId = basename(fp).replace('.json', '');
-    console.log(`[watcher] Task file removed: ${fp} (id: ${taskId})`);
-    stateManager.removeTask(taskId);
-    stateManager.reconcileAgentStatuses();
-  });
-  taskWatcher.on('error', (err: unknown) => {
-    console.warn('[watcher] Task watcher error:', err instanceof Error ? err.message : err);
-  });
-
-  async function handleTaskFile(filePath: string) {
-    if (basename(filePath) === 'config.json') return;
-    if (!(await isReadable(filePath))) return;
-
-    const task = await parseTaskFile(filePath);
-    if (!task) return;
-
-    stateManager.updateTask(task);
-    stateManager.reconcileAgentStatuses();
-  }
-
-  async function scanTasks(teamName: string) {
-    const taskDir = join(TASKS_DIR, teamName);
-    try {
-      const files = await readdir(taskDir);
-      for (const file of files) {
-        if (file.endsWith('.json') && file !== 'config.json') {
-          await handleTaskFile(join(taskDir, file));
-        }
-      }
-    } catch (err) {
-      if (isNodeError(err) && err.code !== 'ENOENT') {
-        console.warn(`[watcher] Error scanning tasks in ${taskDir}:`, err.message);
-      }
-    }
-  }
-
-  // ================================================================
-  // JSONL transcript watcher - now with session detection
-  // ================================================================
   const transcriptWatcher = chokidar.watch(PROJECTS_DIR, {
     ignoreInitial: false, // Detect existing sessions on startup
     persistent: true,
@@ -285,8 +100,6 @@ export function startWatcher(stateManager: StateManager) {
    * On initial scan, skip files older than 1 hour to avoid flooding with
    * historical sessions. On change events (isInitial=false), always detect.
    */
-  const MAX_INITIAL_AGE_S = 86400; // 24 hours
-
   async function detectSession(filePath: string, isInitial = false) {
     // On initial scan, skip very old files
     if (isInitial) {
@@ -777,128 +590,5 @@ export function startWatcher(stateManager: StateManager) {
     stateManager.removeSession(sessionId);
   }
 
-  // ================================================================
-  // Periodic staleness check — marks idle sessions, cleans up subagents
-  // ================================================================
-  const stalenessInterval = setInterval(() => {
-    const now = Date.now();
-
-    // --- Check JSONL-tracked sessions (solo sessions and subagents) ---
-    for (const [filePath, tracked] of trackedSessions) {
-      if (!tracked.isSolo) continue;
-
-      // Cleanup tracked sessions for agents removed by hooks (SubagentStop).
-      // If the agent is gone from registry and this isn't the current session,
-      // stop tracking it to prevent memory leaks from accumulating entries.
-      const trackedAgent = stateManager.getAgentById(tracked.sessionId);
-      if (!trackedAgent && tracked.sessionId !== stateManager.getState().session?.sessionId) {
-        trackedSessions.delete(filePath);
-        continue;
-      }
-
-      // Use the most recent activity from either JSONL file changes OR hook events.
-      // Hooks update session.lastActivity via stateManager.updateSessionActivity(),
-      // but that's a different timestamp than tracked.lastActivity (JSONL-based).
-      // We must check both so hook activity prevents false idle transitions.
-      const sessionActivity = stateManager.getSessions().get(tracked.sessionId)?.lastActivity ?? 0;
-      const mostRecentActivity = Math.max(tracked.lastActivity, sessionActivity);
-      const idleSeconds = (now - mostRecentActivity) / 1000;
-
-      // Internal subagents (acompact): just clean up tracking when done, no display
-      if (tracked.isInternalSubagent && idleSeconds >= IDLE_THRESHOLD_S) {
-        trackedSessions.delete(tracked.filePath);
-        continue;
-      }
-
-      // Mark as idle after inactivity (but don't remove the session)
-      if (idleSeconds >= IDLE_THRESHOLD_S) {
-        stateManager.setAgentWaitingById(tracked.sessionId, false);
-
-        const agent = stateManager.getAgentById(tracked.sessionId);
-        if (agent && agent.status === 'working') {
-          if (agent.isSubagent) {
-            stateManager.updateAgentActivityById(tracked.sessionId, 'done', 'Done');
-          } else {
-            stateManager.updateAgentActivityById(tracked.sessionId, 'idle');
-          }
-        }
-
-        // Remove subagents from display after 5 minutes of inactivity
-        if (agent?.isSubagent && idleSeconds >= 300) {
-          stateManager.removeAgent(tracked.sessionId);
-          trackedSessions.delete(tracked.filePath);
-          registeredSubagents.delete(tracked.sessionId);
-        }
-      }
-    }
-
-    // --- Check hook-tracked agents (team members without JSONL entries) ---
-    // Team agents created via hooks may not have trackedSessions entries.
-    // Use hook-updated session.lastActivity as the activity source.
-    const checkedIds = new Set([...trackedSessions.values()].map(t => t.sessionId));
-    for (const session of stateManager.getSessions().values()) {
-      // Skip sessions already covered by JSONL tracking above
-      if (checkedIds.has(session.sessionId)) continue;
-
-      const idleSeconds = (now - session.lastActivity) / 1000;
-      if (idleSeconds < IDLE_THRESHOLD_S) continue;
-
-      // Mark all working agents for this session as idle
-      const state = stateManager.getState();
-      for (const agent of state.agents) {
-        if (agent.status !== 'working') continue;
-
-        // Check if this agent belongs to this session (team member or the session agent itself)
-        if (agent.id === session.sessionId || agent.teamName === session.teamName) {
-          stateManager.setAgentWaitingById(agent.id, false);
-          stateManager.updateAgentActivityById(agent.id, 'idle');
-        }
-      }
-    }
-
-    // --- Catch-all: remove orphaned subagents from allAgents ---
-    // Subagents registered by hooks (SubagentStart) that were never properly
-    // cleaned up. This covers edge cases where SubagentStop never fires or
-    // the removal timer was lost (e.g., server restart).
-    for (const [agentId, agent] of stateManager.getAllAgents()) {
-      if (!agent.isSubagent) continue;
-      if (checkedIds.has(agentId)) continue; // Already handled above
-
-      // Check parent session activity
-      const parentSession = stateManager.getSessions().get(agent.parentAgentId || '');
-      const parentActivity = parentSession?.lastActivity ?? 0;
-      const hookLastActive = stateManager.isHookActive(agentId, 300_000) ? now : 0;
-      const mostRecent = Math.max(parentActivity, hookLastActive);
-      const orphanIdleS = mostRecent > 0 ? (now - mostRecent) / 1000 : Infinity;
-
-      // Remove orphaned subagents after 5 minutes of inactivity
-      if (orphanIdleS >= 300) {
-        console.log(`[watcher] Removing orphaned subagent: ${agentId.slice(0, 8)} (idle ${Math.round(orphanIdleS)}s)`);
-        stateManager.removeAgent(agentId);
-      }
-    }
-  }, STALENESS_CHECK_INTERVAL_MS);
-
-  console.log(`[watcher] Watching ${TEAMS_DIR}`);
-  console.log(`[watcher] Watching ${TASKS_DIR}`);
-  console.log(`[watcher] Watching transcripts in ${PROJECTS_DIR}`);
-
-  return {
-    close: () => {
-      clearInterval(stalenessInterval);
-      debouncer.clear();
-      transcriptDebouncer.clear();
-      teamWatcher.close();
-      taskWatcher.close();
-      transcriptWatcher.close();
-    },
-  };
-}
-
-interface NodeError extends Error {
-  code: string;
-}
-
-function isNodeError(err: unknown): err is NodeError {
-  return err instanceof Error && 'code' in err;
+  return transcriptWatcher;
 }
