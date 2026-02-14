@@ -18,6 +18,9 @@ Real-time visualization for Claude Code sessions and agent teams.
 - Session auto-detection (solo sessions and teams)
 - Team detection, agent management, and task tracking
 - Git branch/worktree detection with push/pull status indicators
+- Subagent type differentiation (Explore, Plan, Bash, etc.) in status line and action bubbles
+- Hooks auto-registration for sessions not yet detected by JSONL watcher
+- Guard mechanisms preventing stale subagent re-registration
 
 ### Visual Features
 - 5 SVG pixel-art animal characters (Beaver, Owl, Fox, Bear, Rabbit)
@@ -42,7 +45,7 @@ Real-time visualization for Claude Code sessions and agent teams.
 
 ## Testing & Quality
 
-- **312 passing tests** (parser: 89, state: 101, hooks: 113, server: 9)
+- **342 passing tests** (parser: 89, state: 120, hooks: 124, server: 9)
 - Type-checked with TypeScript strict mode
 - All packages compile cleanly
 
@@ -55,15 +58,22 @@ Two complementary systems:
 **Hooks (primary)** - Claude Code lifecycle hooks send HTTP POST events:
 - `PreToolUse`/`PostToolUse` - tool activity with rich action descriptions
 - `PermissionRequest` - definitive "needs input" signal
-- `SubagentStart`/`SubagentStop` - reliable subagent lifecycle
+- `SubagentStart`/`SubagentStop` - reliable subagent lifecycle with type tracking
 - `Stop` - agent finished, transition to idle
 - `PreCompact` - context compaction started
+- Auto-registration for sessions not yet detected by JSONL watcher
 
 **JSONL transcript parsing (fallback)** - file watcher reads transcripts:
 - Session discovery on startup
 - Initial state from transcript tail
 - Activity display from tool_call/thinking events
 - `turn_duration` detection for accurate idle state on restart
+- Subagent deduplication via `registeredSubagents` Set
+
+**Guard mechanisms** - prevent stale agent state:
+- `removedAgents` Map blocks JSONL re-registration after hook-driven removal
+- `hookActiveSessions` Map prioritizes hook updates over JSONL
+- `stoppedSessions` Set prevents trailing JSONL from overriding Stop events
 
 Key rule: No timeouts should change agent state. Only real events trigger transitions.
 
