@@ -136,34 +136,6 @@ export interface GroupedSessionsList {
   flatSessions: SessionListEntry[];
 }
 
-/** Types of inbox notifications */
-export type NotificationType = 'permission' | 'question' | 'plan_review' | 'task_completed' | 'error' | 'idle';
-
-/** A notification in the agent inbox */
-export interface InboxNotification {
-  id: string;
-  agentId: string;
-  agentName: string;
-  type: NotificationType;
-  message: string;
-  timestamp: number;
-  read: boolean;
-  /** Whether the condition that triggered this notification is still active */
-  resolved: boolean;
-}
-
-/** Grouped sessions for hierarchical navigation */
-export interface GroupedSessionsList {
-  projects: Array<{
-    projectName: string;
-    branches: Array<{
-      gitBranch: string;
-      sessions: SessionListEntry[];
-    }>;
-  }>;
-  flatSessions: SessionListEntry[];
-}
-
 // ============================================================================
 // INBOX / NOTIFICATION TYPES
 // ============================================================================
