@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import type { MessageState } from '@agent-viewer/shared';
+import type { MessageState, AgentState } from '@agent-viewer/shared';
 
 interface MessageLogProps {
   messages: MessageState[];
+  agents?: AgentState[];
+  onFocusAgent?: (agentId: string) => void;
 }
 
 function getMessageType(msg: MessageState): 'broadcast' | 'tool_call' | 'message' {
@@ -17,7 +19,19 @@ const MSG_TYPE_LABELS: Record<string, string> = {
   broadcast: 'ALL',
 };
 
-export function MessageLog({ messages }: MessageLogProps) {
+function AgentName({ name, agents, onFocusAgent }: { name: string; agents?: AgentState[]; onFocusAgent?: (agentId: string) => void }) {
+  const agent = agents?.find((a) => a.name === name);
+  if (!agent || !onFocusAgent) {
+    return <span>{name}</span>;
+  }
+  return (
+    <button className="agent-link" onClick={() => onFocusAgent(agent.id)}>
+      {name}
+    </button>
+  );
+}
+
+export function MessageLog({ messages, agents, onFocusAgent }: MessageLogProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -58,9 +72,13 @@ export function MessageLog({ messages }: MessageLogProps) {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ marginBottom: '2px' }}>
-                <span className="message-sender">{msg.from}</span>
+                <span className="message-sender">
+                  <AgentName name={msg.from} agents={agents} onFocusAgent={onFocusAgent} />
+                </span>
                 <span className="message-arrow"> {'\u2192'} </span>
-                <span className="message-recipient">{msg.to}</span>
+                <span className="message-recipient">
+                  <AgentName name={msg.to} agents={agents} onFocusAgent={onFocusAgent} />
+                </span>
                 <span className="message-time" style={{ marginLeft: '8px' }}>
                   {new Date(msg.timestamp).toLocaleTimeString()}
                 </span>
