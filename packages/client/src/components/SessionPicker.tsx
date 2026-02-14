@@ -20,11 +20,6 @@ export function SessionPicker({ sessions, onSelect }: SessionPickerProps) {
   const [, setTick] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Debug: log whenever sessions prop changes
-  useEffect(() => {
-    console.log(`[SessionPicker] received ${sessions.length} sessions`);
-  }, [sessions]);
-
   const active = sessions.find((s) => s.active);
 
   // Update relative timestamps every 5 seconds
