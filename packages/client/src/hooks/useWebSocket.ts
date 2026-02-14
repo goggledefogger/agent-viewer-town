@@ -102,7 +102,7 @@ export function useWebSocket(url: string): WebSocketState {
   return { team: state, sessions, connectionStatus, selectSession };
 }
 
-function applyMessage(state: TeamState, msg: WSMessage): TeamState {
+export function applyMessage(state: TeamState, msg: WSMessage): TeamState {
   switch (msg.type) {
     case 'full_state':
       return msg.data;
