@@ -100,6 +100,53 @@ export interface SessionListEntry {
   active: boolean;
 }
 
+/** Grouped sessions for hierarchical navigation */
+export interface GroupedSessionsList {
+  projects: Array<{
+    projectName: string;
+    branches: Array<{
+      gitBranch: string;
+      sessions: SessionListEntry[];
+    }>;
+  }>;
+  flatSessions: SessionListEntry[];
+}
+
+// ============================================================================
+// INBOX / NOTIFICATION TYPES
+// ============================================================================
+
+export type NotificationType =
+  | 'permission_request'
+  | 'ask_user_question'
+  | 'plan_approval'
+  | 'task_completed'
+  | 'agent_error'
+  | 'agent_idle'
+  | 'agent_stopped';
+
+export interface InboxNotification {
+  id: string;
+  type: NotificationType;
+  timestamp: number;
+  title: string;
+  body: string;
+  context?: string;
+  agentId: string;
+  agentName: string;
+  sessionId: string;
+  projectName: string;
+  gitBranch?: string;
+  read: boolean;
+  resolved: boolean;
+}
+
+export interface InboxState {
+  notifications: InboxNotification[];
+  unreadCount: number;
+  activeCount: number;
+}
+
 export type WSMessage =
   | { type: 'full_state'; data: TeamState }
   | { type: 'agent_update'; data: AgentState }
@@ -108,5 +155,6 @@ export type WSMessage =
   | { type: 'agent_added'; data: AgentState }
   | { type: 'agent_removed'; data: { id: string } }
   | { type: 'sessions_list'; data: SessionListEntry[] }
+  | { type: 'sessions_grouped'; data: GroupedSessionsList }
   | { type: 'session_started'; data: SessionInfo }
   | { type: 'session_ended'; data: { sessionId: string } };

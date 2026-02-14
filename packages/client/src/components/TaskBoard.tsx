@@ -4,6 +4,9 @@ import { ROLE_COLORS } from '../constants/colors';
 interface TaskBoardProps {
   tasks: TaskState[];
   agents: AgentState[];
+  onFocusAgent?: (agentId: string) => void;
+  onFocusTask?: (taskId: string) => void;
+  highlightTaskId?: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
