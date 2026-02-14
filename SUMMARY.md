@@ -100,6 +100,19 @@ Ask Claude to create a team and the viewer will show all agents, tasks, and mess
 
 ---
 
+## Server Architecture
+
+Hook event processing is split into focused modules:
+- `hooks/types.ts` — Event interfaces and shared types
+- `hooks/describeAction.ts` — Human-readable tool action formatting
+- `hooks/subagents.ts` — SubagentStart/Stop lifecycle + FIFO spawn matching
+- `hooks/teamTools.ts` — TeamCreate/Delete, Task/Message extraction
+- `hooks/index.ts` — Orchestrator with auto-registration and activity handlers
+
+Session membership is centralized in `state.ts` via `getAgentsForSession()` — the single source of truth for which agents belong to a session.
+
+---
+
 ## Tech Stack
 
 - **Monorepo**: NPM workspaces (shared, server, client)

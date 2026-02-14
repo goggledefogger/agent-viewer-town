@@ -75,9 +75,15 @@ Click an agent to see the full detail popover with push/pull status.
 agent-viewer-town/
 ├── packages/
 │   ├── shared/          # TypeScript types shared between server & client
-│   ├── server/          # Express + WebSocket + Chokidar file watcher + hooks handler
+│   ├── server/          # Express + WebSocket + Chokidar file watcher
+│   │   └── src/
+│   │       ├── hooks/   # Modular hook event handlers (5 files by domain)
+│   │       ├── state.ts # StateManager with centralized membership logic
+│   │       ├── watcher.ts # JSONL transcript watcher (fallback detection)
+│   │       └── parser.ts  # Transcript parsing + git detection
 │   └── client/          # Vite + React frontend with SVG animations
 ├── hooks/               # Claude Code hook script + installer
+├── docs/                # Engineering review, info hierarchy, analysis
 ```
 
 - **Server** (port 3001): Watches `~/.claude/`, processes hook events, broadcasts state via WebSocket
