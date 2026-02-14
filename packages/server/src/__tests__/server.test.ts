@@ -39,7 +39,7 @@ beforeAll(async () => {
   });
 
   await new Promise<void>((resolve) => {
-    server.listen(PORT, resolve);
+    server.listen(PORT, '127.0.0.1', resolve);
   });
 });
 
