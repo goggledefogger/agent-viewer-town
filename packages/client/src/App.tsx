@@ -111,8 +111,8 @@ export default function App() {
     setTimeout(() => setHighlightTaskId(null), 2200);
   }, [isMobile]);
 
-  // Single session: no navigation needed
-  const showNavigation = sessions.length > 1;
+  // Always show navigation breadcrumb when there are sessions
+  const showNavigation = sessions.length >= 1;
 
   return (
     <div className="app-wrapper">
@@ -161,13 +161,6 @@ export default function App() {
                 onClose={navigation.close}
               />
             </Breadcrumb>
-          ) : sessions.length === 1 ? (
-            <div className="session-picker-inline">
-              <span className="session-project-name">{sessions[0].projectName}</span>
-              {sessions[0].gitBranch && (
-                <span className="badge badge-branch">{sessions[0].gitBranch}</span>
-              )}
-            </div>
           ) : null}
         </div>
         <div className="header-stats">

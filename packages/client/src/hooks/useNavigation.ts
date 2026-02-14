@@ -104,6 +104,25 @@ export function useNavigation(
 
   const projects = grouped?.projects ?? [];
 
+  // Auto-zoom: if only 1 project, zoom to it; if 1 project + 1 branch, zoom to branch
+  useEffect(() => {
+    if (projects.length === 0) return;
+    setNavState((prev) => {
+      // Only auto-zoom from level 0 if user hasn't manually navigated
+      if (prev.zoomLevel !== 0) return prev;
+      if (projects.length === 1) {
+        const p = projects[0];
+        if (p.branches.length === 1) {
+          // Single project, single branch → zoom straight to branch level
+          return { ...prev, zoomLevel: 2 as ZoomLevel, projectKey: p.projectKey, branch: p.branches[0].branch };
+        }
+        // Single project, multiple branches → zoom to project
+        return { ...prev, zoomLevel: 1 as ZoomLevel, projectKey: p.projectKey };
+      }
+      return prev;
+    });
+  }, [projects]);
+
   // Find current project and branch
   const currentProject = useMemo(() => {
     if (navState.zoomLevel < 1 || !navState.projectKey) return undefined;
@@ -162,19 +181,23 @@ export function useNavigation(
   // Build breadcrumbs
   const breadcrumbs = useMemo((): BreadcrumbSegment[] => {
     const segments: BreadcrumbSegment[] = [];
+    const totalProjects = projects.length;
 
     if (navState.zoomLevel === 0) {
       segments.push({
-        label: 'All Projects',
+        label: totalProjects <= 1 ? (projects[0]?.projectName || 'Sessions') : `${totalProjects} Projects`,
         level: 0,
         isCurrent: true,
       });
     } else {
-      segments.push({
-        label: 'All',
-        level: 0,
-        isCurrent: false,
-      });
+      // Only show "All" breadcrumb if there are multiple projects to go back to
+      if (totalProjects > 1) {
+        segments.push({
+          label: 'All',
+          level: 0,
+          isCurrent: false,
+        });
+      }
     }
 
     if (navState.zoomLevel >= 1 && currentProject) {

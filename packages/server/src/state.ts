@@ -641,7 +641,8 @@ export class StateManager {
           const bWaiting = b.hasWaitingAgent ? 1 : 0;
           if (aWaiting !== bWaiting) return bWaiting - aWaiting;
 
-          return a.sessionId.localeCompare(b.sessionId);
+          // Most recently active first
+          return b.lastActivity - a.lastActivity;
         });
 
         branchGroups.push({
