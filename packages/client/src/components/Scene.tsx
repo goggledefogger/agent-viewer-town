@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { TeamState, AgentState } from '@agent-viewer/shared';
 import { AgentCharacter, getBranchColor } from './AgentCharacter';
 import { Machine } from './Machine';
@@ -476,17 +476,17 @@ function computeBranchLanes(agents: AgentState[]): Map<string, { y: number; colo
 }
 
 export function Scene({ state, className }: SceneProps) {
-  const mainAgents = state.agents.filter((a) => !a.isSubagent);
-  const subagents = state.agents.filter((a) => a.isSubagent);
+  const mainAgents = useMemo(() => state.agents.filter((a) => !a.isSubagent), [state.agents]);
+  const subagents = useMemo(() => state.agents.filter((a) => a.isSubagent), [state.agents]);
   // Solo mode: one main agent, possibly with subagents
   const isSoloMode = mainAgents.length <= 1;
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   // Precompute positions for all agents (solo + team modes)
-  const allPositions = computeAllPositions(state.agents);
+  const allPositions = useMemo(() => computeAllPositions(state.agents), [state.agents]);
 
   // Compute branch lanes for the ground area
-  const branchLanes = computeBranchLanes(state.agents);
+  const branchLanes = useMemo(() => computeBranchLanes(state.agents), [state.agents]);
 
   if (!state.name && state.agents.length === 0) {
     return (
