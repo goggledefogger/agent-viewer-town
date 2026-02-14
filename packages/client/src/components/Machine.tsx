@@ -1,18 +1,11 @@
 import type { AgentState, MessageState } from '@agent-viewer/shared';
+import { ROLE_COLORS } from '../constants/colors';
 
 interface MachineProps {
   agents: AgentState[];
   messages: MessageState[];
   positions: Map<string, { x: number; y: number }>;
 }
-
-const ROLE_COLORS: Record<string, string> = {
-  lead: '#FFD700',
-  researcher: '#4169E1',
-  implementer: '#DC3545',
-  tester: '#28A745',
-  planner: '#F8F9FA',
-};
 
 function GearSvg({ x, y, color, speed }: { x: number; y: number; color: string; speed: number }) {
   const toothCount = 8;

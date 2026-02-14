@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { TeamState, AgentState } from '@agent-viewer/shared';
-import { AgentCharacter, getBranchColor } from './AgentCharacter';
+import { AgentCharacter } from './AgentCharacter';
+import { getBranchColor } from '../constants/colors';
 import { Machine } from './Machine';
 
 interface SceneProps {
