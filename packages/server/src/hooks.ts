@@ -657,6 +657,8 @@ export function createHookHandler(stateManager: StateManager) {
         stateManager.updateAgentActivityById(agentId, 'idle');
       } else {
         stateManager.updateAgentActivityById(agentId, 'done', 'Done');
+        // Mark as stopped to prevent watcher resurrection from trailing logs
+        stateManager.markSessionStopped(agentId);
       }
     }
     console.log(`[hooks] SubagentStop: ${agentId} parent=${sessionId.slice(0, 8)}`);

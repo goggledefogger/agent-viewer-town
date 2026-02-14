@@ -313,6 +313,12 @@ export function startWatcher(stateManager: StateManager) {
       // Determine initial status from file mtime + tail scan
       let subagentStatus: 'working' | 'idle' = 'idle';
       let subMtime = Date.now();
+
+      // If stopped by hook, return immediately to prevent resurrection
+      if (stateManager.isSessionStopped(subagentId)) {
+        return;
+      }
+
       try {
         const stats = await fsStat(filePath);
         subMtime = stats.mtimeMs;
@@ -712,6 +718,15 @@ export function startWatcher(stateManager: StateManager) {
     for (const [, tracked] of trackedSessions) {
       if (!tracked.isSolo) continue;
 
+      const agent = stateManager.getAgentById(tracked.sessionId);
+
+      // Cleanup tracked sessions for agents removed by hooks (SubagentStop)
+      // If agent is missing from registry but we're still tracking it, remove tracking.
+      if (!agent && tracked.sessionId !== stateManager.getState().session?.sessionId) {
+        trackedSessions.delete(tracked.filePath);
+        continue;
+      }
+
       // Use the most recent activity from either JSONL file changes OR hook events.
       // Hooks update session.lastActivity via stateManager.updateSessionActivity(),
       // but that's a different timestamp than tracked.lastActivity (JSONL-based).
@@ -730,7 +745,6 @@ export function startWatcher(stateManager: StateManager) {
       if (idleSeconds >= IDLE_THRESHOLD_S) {
         stateManager.setAgentWaitingById(tracked.sessionId, false);
 
-        const agent = stateManager.getAgentById(tracked.sessionId);
         if (agent && agent.status === 'working') {
           if (agent.isSubagent) {
             stateManager.updateAgentActivityById(tracked.sessionId, 'done', 'Done');
