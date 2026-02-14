@@ -70,8 +70,8 @@ export function useNotifications(agents: AgentState[]): NotificationState {
       const wasWaiting = prevMap.get(agent.id) || false;
       const isWaiting = agent.waitingForInput === true && agent.status !== 'idle';
 
-      if (isWaiting && !wasWaiting) {
-        // Transition: not waiting -> waiting. Fire notification.
+      if (isWaiting && !wasWaiting && document.hidden) {
+        // Transition: not waiting -> waiting, and tab is not visible.
         const action = agent.currentAction || 'Waiting for approval';
         const notification = new Notification(`${agent.name} needs input`, {
           body: action,
