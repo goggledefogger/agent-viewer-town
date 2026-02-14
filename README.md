@@ -86,7 +86,7 @@ agent-viewer-town/
 ## Development
 
 ```bash
-# Run tests (342 tests)
+# Run tests (345 tests)
 npx vitest run --config packages/server/vitest.config.ts
 
 # Type check
