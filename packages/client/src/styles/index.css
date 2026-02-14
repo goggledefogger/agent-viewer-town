@@ -1132,7 +1132,7 @@ html, body, #root {
   padding: 8px;
   border-bottom: 1px solid var(--color-border);
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 6px;
   flex-shrink: 0;
 }
@@ -1175,6 +1175,30 @@ html, body, #root {
   color: var(--color-text);
 }
 
+.nav-filter-toggle {
+  padding: 4px 10px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-dim);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  white-space: nowrap;
+}
+
+.nav-filter-toggle:hover {
+  border-color: var(--color-blue);
+  color: var(--color-text);
+}
+
+.nav-filter-toggle.active {
+  background: rgba(65, 105, 225, 0.15);
+  border-color: var(--color-blue);
+  color: var(--color-blue);
+}
+
 /* Level content area (scrollable) */
 .nav-level-content {
   flex: 1;
@@ -1208,21 +1232,33 @@ html, body, #root {
   margin-bottom: 4px;
 }
 
-.nav-project-header {
+.nav-project-header,
+.nav-project-row {
+  width: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   padding: 8px 12px;
   background: var(--color-card-bg);
   border: 1px solid var(--color-border);
   border-radius: 4px;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--color-text);
+  text-align: left;
 }
 
-.nav-project-header:hover {
+.nav-project-header:hover,
+.nav-project-row:hover {
   background: rgba(65, 105, 225, 0.08);
   border-color: var(--color-blue);
+}
+
+.nav-project-row.focused {
+  border-color: var(--color-blue);
+  background: rgba(65, 105, 225, 0.12);
 }
 
 .nav-project-name {
@@ -1257,21 +1293,38 @@ html, body, #root {
   border-left: 2px solid var(--color-border);
 }
 
-.nav-branch-header {
+.nav-branch-header,
+.nav-branch-row {
+  width: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   padding: 6px 12px;
+  margin-left: 12px;
   background: var(--color-card-bg);
   border: 1px solid var(--color-border);
   border-radius: 4px;
   cursor: pointer;
   margin-bottom: 4px;
   transition: background 0.2s;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--color-text);
+  text-align: left;
 }
 
-.nav-branch-header:hover {
+.nav-branch-header:hover,
+.nav-branch-row:hover {
   background: rgba(65, 105, 225, 0.06);
+}
+
+.nav-branch-row.focused {
+  border-color: var(--color-blue);
+  background: rgba(65, 105, 225, 0.1);
+}
+
+.nav-branch-row.current {
+  border-left: 3px solid var(--color-green);
 }
 
 .nav-branch-header-detail {
