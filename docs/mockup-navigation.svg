@@ -1,0 +1,303 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+  <style>
+    text { font-family: 'Courier New', monospace; }
+  </style>
+
+  <!-- Background -->
+  <rect width="600" height="600" fill="#1a1a2e"/>
+
+  <text x="300" y="30" text-anchor="middle" fill="#FFD700" font-size="14" font-weight="bold">
+    HIERARCHICAL NAVIGATION + INBOX MOCKUP
+  </text>
+
+  <!-- ========== NAVIGATION TREE ========== -->
+  <text x="150" y="55" text-anchor="middle" fill="#94a3b8" font-size="10">
+    SIDEBAR: NAVIGATION TREE
+  </text>
+
+  <!-- Panel background -->
+  <rect x="10" y="65" width="280" height="260" rx="4" fill="#16213e" stroke="#334155" stroke-width="1"/>
+
+  <!-- Tree nodes -->
+  <!-- Project level (gold, no indent) -->
+  <g transform="translate(20, 85)">
+    <!-- Expanded arrow -->
+    <polygon points="1,2 7,2 4,6" fill="#e2e8f0"/>
+    <!-- Folder icon -->
+    <g transform="translate(12, 0)">
+      <rect x="0" y="2" width="4" height="2" fill="#FFD700"/>
+      <rect x="0" y="4" width="10" height="6" fill="#FFD700"/>
+    </g>
+    <text x="28" y="9" fill="#FFD700" font-size="10" font-weight="bold">agent-viewer-town</text>
+  </g>
+
+  <!-- Branch level: main (green, 1 indent, active) -->
+  <g transform="translate(20, 108)">
+    <!-- Active indicator: gold left bar -->
+    <rect x="-10" y="-4" width="280" height="18" rx="2" fill="rgba(255, 215, 0, 0.1)"/>
+    <rect x="-10" y="-4" width="2" height="18" rx="1" fill="#FFD700"/>
+    <!-- Indent guide -->
+    <rect x="8" y="-8" width="1" height="26" fill="#334155"/>
+    <!-- Expanded arrow -->
+    <g transform="translate(16, 0)">
+      <polygon points="1,2 7,2 4,6" fill="#e2e8f0"/>
+    </g>
+    <!-- Branch icon -->
+    <g transform="translate(28, -1)">
+      <rect x="2" y="0" width="1.5" height="8" fill="#4CAF50"/>
+      <rect x="3.5" y="2" width="3" height="1.5" fill="#4CAF50"/>
+      <rect x="6.5" y="0" width="1.5" height="3" fill="#4CAF50"/>
+      <circle cx="2.75" cy="9" r="1.2" fill="#4CAF50"/>
+      <circle cx="7.25" cy="0" r="1.2" fill="#4CAF50"/>
+    </g>
+    <text x="42" y="9" fill="#FFD700" font-size="9" font-weight="bold">main</text>
+    <!-- Agent count badge -->
+    <g transform="translate(70, -1)">
+      <rect x="0" y="0" width="12" height="11" rx="5.5" fill="rgba(40, 167, 69, 0.3)"/>
+      <text x="6" y="8" text-anchor="middle" fill="#28A745" font-size="7">2</text>
+    </g>
+  </g>
+
+  <!-- Session level: session-abc (2 indent, active dot) -->
+  <g transform="translate(20, 131)">
+    <!-- Indent guides -->
+    <rect x="8" y="-5" width="1" height="20" fill="#334155"/>
+    <rect x="24" y="-5" width="1" height="20" fill="#334155"/>
+    <!-- Session icon -->
+    <g transform="translate(32, -1)">
+      <rect x="0" y="0" width="8" height="7" fill="#334155" rx="1"/>
+      <rect x="1" y="1" width="6" height="5" fill="#16213e"/>
+      <rect x="2" y="3" width="1.5" height="1" fill="#28A745"/>
+      <rect x="3.5" y="3" width="2.5" height="1" fill="#e2e8f0"/>
+    </g>
+    <!-- Active dot -->
+    <circle cx="48" cy="5" r="2.5" fill="#28A745">
+      <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <text x="56" y="8" fill="#e2e8f0" font-size="8">solo session</text>
+    <text x="232" y="8" fill="#64748b" font-size="7">2m ago</text>
+  </g>
+
+  <!-- Session level: team session -->
+  <g transform="translate(20, 152)">
+    <rect x="8" y="-5" width="1" height="20" fill="#334155"/>
+    <rect x="24" y="-5" width="1" height="20" fill="#334155"/>
+    <g transform="translate(32, -1)">
+      <rect x="0" y="0" width="8" height="7" fill="#334155" rx="1"/>
+      <rect x="1" y="1" width="6" height="5" fill="#16213e"/>
+      <rect x="2" y="3" width="1.5" height="1" fill="#28A745"/>
+      <rect x="3.5" y="3" width="2.5" height="1" fill="#e2e8f0"/>
+    </g>
+    <circle cx="48" cy="5" r="2.5" fill="#6C757D"/>
+    <text x="56" y="8" fill="#94a3b8" font-size="8">team session</text>
+    <text x="232" y="8" fill="#64748b" font-size="7">1h ago</text>
+  </g>
+
+  <!-- Branch level: feature/navigation (collapsed) -->
+  <g transform="translate(20, 178)">
+    <rect x="8" y="-5" width="1" height="20" fill="#334155"/>
+    <!-- Collapsed arrow -->
+    <g transform="translate(16, 0)">
+      <polygon points="2,1 6,4 2,7" fill="#94a3b8"/>
+    </g>
+    <!-- Branch icon -->
+    <g transform="translate(28, -1)">
+      <rect x="2" y="0" width="1.5" height="8" fill="#42A5F5"/>
+      <rect x="3.5" y="2" width="3" height="1.5" fill="#42A5F5"/>
+      <rect x="6.5" y="0" width="1.5" height="3" fill="#42A5F5"/>
+      <circle cx="2.75" cy="9" r="1.2" fill="#42A5F5"/>
+      <circle cx="7.25" cy="0" r="1.2" fill="#42A5F5"/>
+    </g>
+    <text x="42" y="9" fill="#42A5F5" font-size="9">feature/navigation</text>
+    <g transform="translate(150, -1)">
+      <rect x="0" y="0" width="12" height="11" rx="5.5" fill="rgba(65, 105, 225, 0.3)"/>
+      <text x="6" y="8" text-anchor="middle" fill="#4169E1" font-size="7">5</text>
+    </g>
+  </g>
+
+  <!-- Branch level: fix/watcher-bug (collapsed) -->
+  <g transform="translate(20, 201)">
+    <rect x="8" y="-5" width="1" height="15" fill="#334155"/>
+    <g transform="translate(16, 0)">
+      <polygon points="2,1 6,4 2,7" fill="#94a3b8"/>
+    </g>
+    <g transform="translate(28, -1)">
+      <rect x="2" y="0" width="1.5" height="8" fill="#FF7043"/>
+      <rect x="3.5" y="2" width="3" height="1.5" fill="#FF7043"/>
+      <rect x="6.5" y="0" width="1.5" height="3" fill="#FF7043"/>
+      <circle cx="2.75" cy="9" r="1.2" fill="#FF7043"/>
+      <circle cx="7.25" cy="0" r="1.2" fill="#FF7043"/>
+    </g>
+    <text x="42" y="9" fill="#FF7043" font-size="9">fix/watcher-bug</text>
+    <g transform="translate(134, -1)">
+      <rect x="0" y="0" width="12" height="11" rx="5.5" fill="rgba(255, 112, 67, 0.3)"/>
+      <text x="6" y="8" text-anchor="middle" fill="#FF7043" font-size="7">1</text>
+    </g>
+  </g>
+
+  <!-- Separator -->
+  <line x1="20" y1="225" x2="280" y2="225" stroke="#334155" stroke-width="0.5"/>
+
+  <!-- Show inactive toggle -->
+  <g transform="translate(20, 240)">
+    <rect x="0" y="0" width="10" height="10" rx="2" fill="none" stroke="#94a3b8" stroke-width="1"/>
+    <text x="16" y="9" fill="#94a3b8" font-size="8">Show inactive branches</text>
+  </g>
+
+  <!-- Filter input -->
+  <g transform="translate(20, 260)">
+    <rect x="0" y="0" width="260" height="20" rx="3" fill="#0f3460" stroke="#334155" stroke-width="1"/>
+    <text x="8" y="13" fill="#64748b" font-size="8">Filter sessions...</text>
+  </g>
+
+  <!-- ========== BREADCRUMB BAR ========== -->
+  <text x="150" y="345" text-anchor="middle" fill="#94a3b8" font-size="10">
+    HEADER: BREADCRUMB NAVIGATION
+  </text>
+
+  <!-- Breadcrumb panel -->
+  <rect x="10" y="355" width="280" height="30" rx="4" fill="#16213e" stroke="#334155" stroke-width="1"/>
+
+  <g transform="translate(20, 375)">
+    <!-- Project -->
+    <text x="0" y="0" fill="#94a3b8" font-size="9" style="cursor: pointer;">agent-viewer-town</text>
+    <!-- Separator -->
+    <text x="108" y="0" fill="#334155" font-size="8">/</text>
+    <!-- Branch -->
+    <text x="116" y="0" fill="#4CAF50" font-size="9" style="cursor: pointer;">main</text>
+    <!-- Separator -->
+    <text x="140" y="0" fill="#334155" font-size="8">/</text>
+    <!-- Session (current, gold) -->
+    <text x="148" y="0" fill="#FFD700" font-size="9" font-weight="bold">solo session</text>
+  </g>
+
+  <!-- ========== INBOX / NOTIFICATIONS ========== -->
+  <text x="450" y="55" text-anchor="middle" fill="#94a3b8" font-size="10">
+    SIDEBAR: INBOX TAB
+  </text>
+
+  <!-- Panel background -->
+  <rect x="310" y="65" width="280" height="380" rx="4" fill="#16213e" stroke="#334155" stroke-width="1"/>
+
+  <!-- Tab bar -->
+  <g transform="translate(310, 65)">
+    <rect x="0" y="0" width="70" height="28" fill="transparent"/>
+    <text x="35" y="18" text-anchor="middle" fill="#94a3b8" font-size="9" font-weight="bold">SCENE</text>
+
+    <rect x="70" y="0" width="70" height="28" fill="transparent"/>
+    <text x="105" y="18" text-anchor="middle" fill="#94a3b8" font-size="9" font-weight="bold">TASKS</text>
+
+    <rect x="140" y="0" width="70" height="28" fill="transparent"/>
+    <text x="175" y="18" text-anchor="middle" fill="#94a3b8" font-size="9" font-weight="bold">MSGS</text>
+
+    <!-- Active inbox tab -->
+    <rect x="210" y="0" width="70" height="28" fill="rgba(255, 215, 0, 0.1)"/>
+    <rect x="210" y="26" width="70" height="2" fill="#FFD700"/>
+    <text x="240" y="18" text-anchor="middle" fill="#FFD700" font-size="9" font-weight="bold">INBOX</text>
+    <!-- Badge on tab -->
+    <circle cx="263" cy="10" r="6" fill="#DC3545"/>
+    <text x="263" y="13" text-anchor="middle" fill="white" font-size="7" font-weight="bold">3</text>
+  </g>
+
+  <!-- Inbox content -->
+  <line x1="310" y1="93" x2="590" y2="93" stroke="#334155" stroke-width="1"/>
+
+  <!-- Notification card 1: Urgent (permission needed) -->
+  <g transform="translate(320, 103)">
+    <rect x="0" y="0" width="260" height="50" rx="4" fill="rgba(65, 105, 225, 0.06)" stroke="#334155" stroke-width="1"/>
+    <!-- Left priority bar -->
+    <rect x="0" y="0" width="3" height="50" rx="1" fill="#DC3545"/>
+    <!-- Unread dot -->
+    <circle cx="254" cy="8" r="3" fill="#4169E1"/>
+    <!-- Icon -->
+    <g transform="translate(12, 8)">
+      <rect x="4" y="1" width="2" height="5" fill="#DC3545"/>
+      <rect x="4" y="7" width="2" height="2" fill="#DC3545"/>
+    </g>
+    <!-- Title -->
+    <text x="28" y="17" fill="#e2e8f0" font-size="9" font-weight="bold">Permission needed</text>
+    <text x="240" y="17" fill="#64748b" font-size="7" text-anchor="end">1m</text>
+    <!-- Description -->
+    <text x="28" y="30" fill="#94a3b8" font-size="8">fox-impl needs approval for Bash</text>
+    <!-- Meta -->
+    <text x="28" y="42" fill="#64748b" font-size="7">Agent: fox-impl  Task: #3</text>
+  </g>
+
+  <!-- Notification card 2: Success (task completed) -->
+  <g transform="translate(320, 160)">
+    <rect x="0" y="0" width="260" height="50" rx="4" fill="rgba(65, 105, 225, 0.06)" stroke="#334155" stroke-width="1"/>
+    <rect x="0" y="0" width="3" height="50" rx="1" fill="#28A745"/>
+    <circle cx="254" cy="8" r="3" fill="#4169E1"/>
+    <!-- Icon -->
+    <g transform="translate(12, 8)">
+      <path d="M2,5 L4,7 L8,3" stroke="#28A745" stroke-width="2" fill="none" stroke-linecap="square"/>
+    </g>
+    <text x="28" y="17" fill="#e2e8f0" font-size="9" font-weight="bold">Task completed</text>
+    <text x="240" y="17" fill="#64748b" font-size="7" text-anchor="end">5m</text>
+    <text x="28" y="30" fill="#94a3b8" font-size="8">researcher completed #2: "Design data model"</text>
+    <text x="28" y="42" fill="#64748b" font-size="7">Agent: owl-researcher</text>
+  </g>
+
+  <!-- Notification card 3: Warning (agent idle) -->
+  <g transform="translate(320, 217)">
+    <rect x="0" y="0" width="260" height="50" rx="4" fill="rgba(65, 105, 225, 0.06)" stroke="#334155" stroke-width="1"/>
+    <rect x="0" y="0" width="3" height="50" rx="1" fill="#FFCA28"/>
+    <circle cx="254" cy="8" r="3" fill="#4169E1"/>
+    <!-- Icon -->
+    <g transform="translate(12, 7)">
+      <polygon points="5,1 9,9 1,9" fill="none" stroke="#FFCA28" stroke-width="1"/>
+      <rect x="4" y="4" width="2" height="3" fill="#FFCA28"/>
+      <rect x="4" y="8" width="2" height="1" fill="#FFCA28"/>
+    </g>
+    <text x="28" y="17" fill="#e2e8f0" font-size="9" font-weight="bold">Agent idle</text>
+    <text x="240" y="17" fill="#64748b" font-size="7" text-anchor="end">12m</text>
+    <text x="28" y="30" fill="#94a3b8" font-size="8">tester has been idle for 5 minutes</text>
+    <text x="28" y="42" fill="#64748b" font-size="7">Agent: bear-tester  Branch: main</text>
+  </g>
+
+  <!-- Read notification card (no blue dot, dimmer) -->
+  <g transform="translate(320, 274)">
+    <rect x="0" y="0" width="260" height="50" rx="4" fill="transparent" stroke="#334155" stroke-width="1"/>
+    <rect x="0" y="0" width="3" height="50" rx="1" fill="#4169E1"/>
+    <!-- No unread dot -->
+    <g transform="translate(12, 8)">
+      <rect x="3" y="2" width="4" height="6" rx="1" fill="none" stroke="#4169E1" stroke-width="1"/>
+      <rect x="4" y="4" width="2" height="3" fill="#4169E1"/>
+      <rect x="4" y="2" width="2" height="1" fill="#4169E1"/>
+    </g>
+    <text x="28" y="17" fill="#94a3b8" font-size="9">New message from team-lead</text>
+    <text x="240" y="17" fill="#64748b" font-size="7" text-anchor="end">1h</text>
+    <text x="28" y="30" fill="#64748b" font-size="8">"Please review the navigation spec"</text>
+    <text x="28" y="42" fill="#64748b" font-size="7">Session: team session</text>
+  </g>
+
+  <!-- ========== ZOOM CONTROLS OVERLAY ========== -->
+  <text x="450" y="460" text-anchor="middle" fill="#94a3b8" font-size="10">
+    ZOOM CONTROLS (scene overlay)
+  </text>
+
+  <!-- Mock scene corner with zoom buttons -->
+  <rect x="380" y="470" width="120" height="120" rx="4" fill="#0f3460" stroke="#334155" stroke-width="1"/>
+  <text x="440" y="500" text-anchor="middle" fill="#64748b" font-size="8">...scene content...</text>
+
+  <!-- Zoom button group (bottom right of scene) -->
+  <g transform="translate(462, 504)">
+    <!-- Zoom in -->
+    <g>
+      <rect x="0" y="0" width="28" height="28" rx="4" fill="#16213e" stroke="#334155" stroke-width="1"/>
+      <rect x="12" y="6" width="2" height="14" fill="#94a3b8" rx="0.5"/>
+      <rect x="6" y="12" width="14" height="2" fill="#94a3b8" rx="0.5"/>
+    </g>
+    <!-- Zoom out -->
+    <g transform="translate(0, 30)">
+      <rect x="0" y="0" width="28" height="28" rx="4" fill="#16213e" stroke="#334155" stroke-width="1"/>
+      <rect x="6" y="12" width="14" height="2" fill="#94a3b8" rx="0.5"/>
+    </g>
+    <!-- Fit -->
+    <g transform="translate(0, 60)">
+      <rect x="0" y="0" width="28" height="28" rx="4" fill="#16213e" stroke="#334155" stroke-width="1"/>
+      <rect x="6" y="6" width="14" height="14" rx="1" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+      <rect x="10" y="10" width="6" height="6" fill="#94a3b8" opacity="0.4"/>
+    </g>
+  </g>
+</svg>

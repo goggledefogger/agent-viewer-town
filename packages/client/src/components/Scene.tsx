@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react';
-import type { TeamState, AgentState } from '@agent-viewer/shared';
+import type { TeamState, AgentState, TaskState } from '@agent-viewer/shared';
 import { AgentCharacter } from './AgentCharacter';
 import { getBranchColor } from '../constants/colors';
 import { Machine } from './Machine';
+import { TaskNode } from './TaskNode';
+import { TaskDependencyLine } from './TaskDependencyLine';
 
 interface SceneProps {
   state: TeamState;
@@ -537,6 +539,27 @@ export function Scene({ state, className }: SceneProps) {
     [state.agents, allPositions],
   );
 
+  // Group tasks by agent and compute shared-task counts
+  const { tasksByAgent, sharedTaskCounts } = useMemo(() => {
+    const map = new Map<string, TaskState[]>();
+    const taskAgentCount = new Map<string, number>();
+    if (!state.tasks || state.tasks.length === 0) return { tasksByAgent: map, sharedTaskCounts: taskAgentCount };
+    for (const agent of state.agents) {
+      if (agent.isSubagent) continue;
+      const agentTasks = state.tasks.filter(
+        (t) => t.owner === agent.name || (agent.currentTaskId && t.id === agent.currentTaskId),
+      );
+      if (agentTasks.length > 0) map.set(agent.id, agentTasks);
+    }
+    // Count how many agents share each task
+    for (const tasks of map.values()) {
+      for (const task of tasks) {
+        taskAgentCount.set(task.id, (taskAgentCount.get(task.id) || 0) + 1);
+      }
+    }
+    return { tasksByAgent: map, sharedTaskCounts: taskAgentCount };
+  }, [state.agents, state.tasks]);
+
   if (!state.name && state.agents.length === 0) {
     return (
       <div className={`scene-container no-team${className ? ` ${className}` : ''}`}>
@@ -738,6 +761,34 @@ export function Scene({ state, className }: SceneProps) {
             </g>
           );
         })}
+
+        {/* Task clipboards attached to agents */}
+        {state.agents.map((agent) => {
+          if (agent.isSubagent) return null;
+          const agentTasks = tasksByAgent.get(agent.id);
+          if (!agentTasks || agentTasks.length === 0) return null;
+          const pos = allPositions.get(agent.id) || { x: 450, y: 300 };
+          return (
+            <TaskNode
+              key={`tasks-${agent.id}`}
+              tasks={agentTasks}
+              agentX={pos.x}
+              agentY={pos.y}
+              sharedCounts={sharedTaskCounts}
+              onTaskClick={(task) => setSelectedAgentId(agent.id)}
+            />
+          );
+        })}
+
+        {/* Dependency lines between task cards */}
+        {state.tasks && state.tasks.length > 0 && (
+          <TaskDependencyLine
+            tasks={state.tasks}
+            tasksByAgent={tasksByAgent}
+            positions={allPositions}
+            agents={state.agents}
+          />
+        )}
 
         {/* Agent detail popover (click to expand) */}
         {selectedAgentId && (() => {
