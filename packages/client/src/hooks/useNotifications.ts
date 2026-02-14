@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { AgentState } from '@agent-viewer/shared';
 
 export interface NotificationState {
   enabled: boolean;
   permission: NotificationPermission | 'unsupported';
   toggle: () => void;
+  /** Agents currently waiting for user input */
+  waitingAgents: AgentState[];
 }
 
 const STORAGE_KEY = 'agent-viewer-notifications-enabled';
+const ORIGINAL_TITLE = 'Agent Viewer Town';
 
 function getStoredPreference(): boolean {
   try {
@@ -25,6 +28,38 @@ function setStoredPreference(enabled: boolean) {
   }
 }
 
+/**
+ * Generate a short notification chime using the Web Audio API.
+ * Two quick tones: C5 (523 Hz) then E5 (659 Hz), each 80ms.
+ */
+function playChime() {
+  try {
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+
+    function tone(freq: number, start: number, duration: number) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.15, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + duration);
+    }
+
+    tone(523, now, 0.08);       // C5
+    tone(659, now + 0.1, 0.08); // E5
+
+    // Clean up context after sounds finish
+    setTimeout(() => ctx.close(), 500);
+  } catch {
+    // Audio not available
+  }
+}
+
 export function useNotifications(agents: AgentState[]): NotificationState {
   const supported = typeof window !== 'undefined' && 'Notification' in window;
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
@@ -34,6 +69,8 @@ export function useNotifications(agents: AgentState[]): NotificationState {
 
   // Track previous waitingForInput state per agent ID to detect transitions
   const prevWaitingRef = useRef<Map<string, boolean>>(new Map());
+  // Tab title flash interval ref
+  const titleIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const toggle = useCallback(() => {
     if (!supported) return;
@@ -60,6 +97,12 @@ export function useNotifications(agents: AgentState[]): NotificationState {
     }
   }, [enabled, supported]);
 
+  // Compute currently waiting agents
+  const waitingAgents = useMemo(
+    () => agents.filter((a) => a.waitingForInput === true && a.status !== 'idle'),
+    [agents]
+  );
+
   // Detect waitingForInput transitions and fire notifications
   useEffect(() => {
     if (!enabled || !supported || Notification.permission !== 'granted') return;
@@ -70,8 +113,8 @@ export function useNotifications(agents: AgentState[]): NotificationState {
       const wasWaiting = prevMap.get(agent.id) || false;
       const isWaiting = agent.waitingForInput === true && agent.status !== 'idle';
 
-      if (isWaiting && !wasWaiting && document.hidden) {
-        // Transition: not waiting -> waiting, and tab is not visible.
+      if (isWaiting && !wasWaiting) {
+        // Fire browser notification regardless of tab visibility
         const action = agent.currentAction || 'Waiting for approval';
         const notification = new Notification(`${agent.name} needs input`, {
           body: action,
@@ -83,6 +126,9 @@ export function useNotifications(agents: AgentState[]): NotificationState {
           window.focus();
           notification.close();
         };
+
+        // Play audio chime
+        playChime();
       }
     }
 
@@ -94,5 +140,36 @@ export function useNotifications(agents: AgentState[]): NotificationState {
     prevWaitingRef.current = newMap;
   }, [agents, enabled, supported]);
 
-  return { enabled, permission, toggle };
+  // Flashing tab title when agents are waiting
+  useEffect(() => {
+    if (waitingAgents.length > 0) {
+      let flash = true;
+      // Clear any existing interval
+      if (titleIntervalRef.current) clearInterval(titleIntervalRef.current);
+
+      titleIntervalRef.current = setInterval(() => {
+        document.title = flash
+          ? `[${waitingAgents.length}] Input needed - ${ORIGINAL_TITLE}`
+          : ORIGINAL_TITLE;
+        flash = !flash;
+      }, 1500);
+    } else {
+      // Restore original title
+      if (titleIntervalRef.current) {
+        clearInterval(titleIntervalRef.current);
+        titleIntervalRef.current = null;
+      }
+      document.title = ORIGINAL_TITLE;
+    }
+
+    return () => {
+      if (titleIntervalRef.current) {
+        clearInterval(titleIntervalRef.current);
+        titleIntervalRef.current = null;
+      }
+      document.title = ORIGINAL_TITLE;
+    };
+  }, [waitingAgents.length]);
+
+  return { enabled, permission, toggle, waitingAgents };
 }

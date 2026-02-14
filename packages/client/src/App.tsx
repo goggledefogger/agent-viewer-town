@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Scene } from './components/Scene';
 import { Sidebar } from './components/Sidebar';
+import { AlertBar } from './components/AlertBar';
 import { Breadcrumb } from './components/Breadcrumb';
 import { NavigationTree } from './components/NavigationTree';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -115,6 +116,10 @@ export default function App() {
 
   return (
     <div className="app-wrapper">
+      <AlertBar
+        waitingAgents={notifications.waitingAgents}
+        onFocusAgent={handleFocusAgent}
+      />
       <header className="app-header">
         <div className="header-left">
           <ConnectionDot status={connectionStatus} />
@@ -202,6 +207,14 @@ export default function App() {
             <span className="header-stat-value">{tasksByStatus.completed}</span>
             <span className="header-stat-total">/{state.tasks.length}</span> done
           </span>
+          {notifications.waitingAgents.length > 0 && (
+            <>
+              <span className="header-stat-divider" />
+              <span className="header-waiting-badge">
+                {notifications.waitingAgents.length} waiting
+              </span>
+            </>
+          )}
         </div>
         {notifications.permission !== 'unsupported' && (
           <button

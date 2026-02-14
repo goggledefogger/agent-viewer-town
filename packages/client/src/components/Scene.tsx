@@ -675,10 +675,14 @@ export function Scene({ state, className, focusAgentId, onFocusTask }: SceneProp
           const my = (parentPos.y + subPos.y) / 2 - 20;
           const d = `M ${parentPos.x} ${parentPos.y} Q ${mx} ${my} ${subPos.x} ${subPos.y}`;
           const isActive = sub.status === 'working';
+          const isIdle = sub.status === 'idle';
           const color = isActive ? '#4169E1' : (sub.status === 'done' ? '#28A745' : '#334155');
 
           return (
-            <g key={`tether-${sub.id}`}>
+            <g key={`tether-${sub.id}`} style={{
+              opacity: isIdle ? 0.35 : 1,
+              transition: 'opacity 0.4s ease',
+            }}>
               {/* Pipe background */}
               <path d={d} fill="none" stroke="#334155" strokeWidth="4" strokeLinecap="round" opacity="0.4" />
               <path d={d} fill="none" stroke="#1e293b" strokeWidth="2" strokeLinecap="round" />
@@ -740,8 +744,11 @@ export function Scene({ state, className, focusAgentId, onFocusTask }: SceneProp
             ? `translate(${pos.x}, ${pos.y}) scale(0.8) translate(${-pos.x}, ${-pos.y})`
             : undefined;
 
+          // Dim idle subagents to reduce visual clutter
+          const isIdleDimmed = agent.status === 'idle' && agent.isSubagent;
+
           // Hover dimming: when hovering in a crowded scene, dim unrelated agents
-          let agentOpacity = 1;
+          let agentOpacity = isIdleDimmed ? 0.45 : 1;
           if (isCrowded && hoveredAgentId) {
             const isHovered = agent.id === hoveredAgentId;
             const isRelated = agent.parentAgentId === hoveredAgentId || agent.id === (state.agents.find(a => a.id === hoveredAgentId)?.parentAgentId);

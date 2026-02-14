@@ -166,7 +166,10 @@ export function InboxPanel({
           <path d="M8 18l16 12 16-12" fill="none" stroke="currentColor" strokeWidth="2" />
         </svg>
         <div style={{ color: 'var(--color-text-dim)', textAlign: 'center', fontSize: '13px' }}>
-          No notifications yet
+          No pending requests
+        </div>
+        <div style={{ color: 'var(--color-text-dim)', textAlign: 'center', fontSize: '10px' }}>
+          Permission requests and questions will appear here
         </div>
       </div>
     );

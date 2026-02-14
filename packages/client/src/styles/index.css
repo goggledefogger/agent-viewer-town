@@ -35,6 +35,122 @@ html, body, #root {
 }
 
 /* ========================================
+   ALERT BAR (waiting-for-input banner)
+   ======================================== */
+
+@keyframes alert-pulse {
+  0%, 100% {
+    background: linear-gradient(90deg, rgba(255, 215, 0, 0.15), rgba(255, 215, 0, 0.25));
+  }
+  50% {
+    background: linear-gradient(90deg, rgba(255, 215, 0, 0.25), rgba(255, 215, 0, 0.35));
+  }
+}
+
+@keyframes alert-pulse-critical {
+  0%, 100% {
+    background: linear-gradient(90deg, rgba(220, 53, 69, 0.15), rgba(255, 215, 0, 0.2));
+  }
+  50% {
+    background: linear-gradient(90deg, rgba(220, 53, 69, 0.3), rgba(255, 215, 0, 0.3));
+  }
+}
+
+.alert-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  animation: alert-pulse 2s ease-in-out infinite;
+  border-bottom: 1px solid rgba(255, 215, 0, 0.3);
+  font-size: 12px;
+  color: var(--color-gold);
+  flex-shrink: 0;
+  z-index: 11;
+}
+
+.alert-bar-critical {
+  animation-name: alert-pulse-critical;
+  border-bottom-color: rgba(220, 53, 69, 0.4);
+  color: var(--color-red);
+}
+
+.alert-bar-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.alert-bar-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+  font-size: 11px;
+}
+
+.alert-bar-agent {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: bold;
+  color: var(--color-gold);
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.alert-bar-agent:hover {
+  color: var(--color-text);
+  text-decoration: underline;
+}
+
+.alert-bar-critical .alert-bar-agent {
+  color: #ff6b6b;
+}
+
+.alert-bar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  background: var(--color-gold);
+  color: #1a1a2e;
+  font-size: 10px;
+  font-weight: bold;
+  flex-shrink: 0;
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+
+.alert-bar-critical .alert-bar-badge {
+  background: var(--color-red);
+  color: #fff;
+}
+
+/* Waiting badge in header stats */
+.header-waiting-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: rgba(255, 215, 0, 0.2);
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  color: var(--color-gold);
+  font-size: 10px;
+  font-weight: bold;
+  animation: live-pulse 1.5s ease-in-out infinite;
+  white-space: nowrap;
+}
+
+/* ========================================
    APP LAYOUT
    ======================================== */
 
