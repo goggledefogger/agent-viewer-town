@@ -406,6 +406,7 @@ export function parseSessionMetadata(line: string): SessionInfo | null {
   const cwd = typeof data.cwd === 'string' ? data.cwd : '';
   const gitBranch = typeof data.gitBranch === 'string' ? data.gitBranch : undefined;
   const teamName = typeof data.teamName === 'string' ? data.teamName : undefined;
+  const agentId = typeof data.agentId === 'string' ? data.agentId : undefined;
   const isTeam = !!teamName;
 
   // Derive project name from the cwd or slug
@@ -427,6 +428,7 @@ export function parseSessionMetadata(line: string): SessionInfo | null {
     gitBranch,
     isTeam,
     teamName,
+    agentId,
     lastActivity: 0, // Caller should set from file mtime
   };
 }

@@ -114,6 +114,7 @@ export function startWatcher(stateManager: StateManager) {
     console.log(`[watcher] Team config removed: ${fp} (team: ${teamName})`);
     // Only reset team-related state, not solo sessions
     stateManager.clearTeamAgents();
+    stateManager.removeSession(`team:${teamName}`);
   });
   teamWatcher.on('error', (err: unknown) => {
     console.warn('[watcher] Team watcher error:', err instanceof Error ? err.message : err);
@@ -128,6 +129,25 @@ export function startWatcher(stateManager: StateManager) {
     const teamName = basename(dirname(filePath));
     stateManager.setTeamName(teamName);
     stateManager.setAgents(config.members.map(teamMemberToAgent));
+
+    // Create a session entry for the team so it appears in the session picker
+    // and per-client WebSocket filtering works correctly.
+    // Use team: prefix to prevent collision with JSONL session UUIDs.
+    const teamSessionId = `team:${teamName}`;
+    if (!stateManager.getSessions().has(teamSessionId)) {
+      stateManager.addSession({
+        sessionId: teamSessionId,
+        slug: teamName,
+        projectPath: '',
+        projectName: teamName,
+        isTeam: true,
+        teamName,
+        lastActivity: Date.now(),
+      });
+      console.log(`[watcher] Team session created: ${teamSessionId}`);
+    } else {
+      stateManager.updateSessionActivity(teamSessionId);
+    }
 
     await scanTasks(teamName);
   }
@@ -562,6 +582,13 @@ export function startWatcher(stateManager: StateManager) {
 
       // Register the session (auto-selects if it's the first or most active)
       stateManager.addSession(meta);
+
+      // For team sessions, register session-to-agent mapping so hook events
+      // (which use JSONL session UUIDs) can route to the correct team agent
+      // (which uses config-based IDs like "researcher@team-name").
+      if (meta.isTeam && meta.agentId) {
+        stateManager.registerSessionToAgentMapping(meta.sessionId, meta.agentId);
+      }
     } else {
       // Session already known (e.g. from another JSONL file like a subagent transcript).
       // Update lastActivity if this file is more recent.
