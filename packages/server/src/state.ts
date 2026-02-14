@@ -490,34 +490,45 @@ export class StateManager {
     return this.sessions;
   }
 
+  /**
+   * Core filtering logic: which agents belong to a given session?
+   *
+   * Solo sessions: the session's own agent + its subagents.
+   * Team sessions: all agents except solo session agents.
+   *
+   * This is the SINGLE source of truth for membership — used by
+   * selectSession, getStateForSession, and agentBelongsToSession.
+   */
+  private getAgentsForSession(session: SessionInfo): AgentState[] {
+    if (!session.isTeam) {
+      const soloAgent = this.allAgents.get(session.sessionId);
+      const subagents = [...this.allAgents.values()].filter(
+        (a) => a.isSubagent && a.parentAgentId === session.sessionId
+      );
+      return soloAgent ? [soloAgent, ...subagents] : [...subagents];
+    } else {
+      const soloSessionIds = new Set(
+        [...this.sessions.values()]
+          .filter((s) => !s.isTeam)
+          .map((s) => s.sessionId)
+      );
+      return [...this.allAgents.values()].filter(
+        (a) => !soloSessionIds.has(a.id)
+      );
+    }
+  }
+
   /** Switch the active displayed session */
   selectSession(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
     this.state.session = session;
-    if (!session.isTeam) {
-      // For solo sessions, show the session's agent plus any subagents
-      this.state.name = session.projectName;
-      const soloAgent = this.allAgents.get(sessionId);
-      const subagents = [...this.allAgents.values()].filter(
-        (a) => a.isSubagent && a.parentAgentId === sessionId
-      );
-      this.state.agents = soloAgent ? [soloAgent, ...subagents] : [...subagents];
-      this.state.tasks = [];
-    } else {
-      // For team sessions, show all team agents from the registry
-      this.state.name = session.teamName || session.projectName;
-      // Rebuild agents from allAgents (exclude solo session agents)
-      const soloSessionIds = new Set(
-        [...this.sessions.values()]
-          .filter((s) => !s.isTeam)
-          .map((s) => s.sessionId)
-      );
-      this.state.agents = [...this.allAgents.values()].filter(
-        (a) => !soloSessionIds.has(a.id)
-      );
-    }
+    this.state.name = session.isTeam
+      ? (session.teamName || session.projectName)
+      : session.projectName;
+    this.state.agents = this.getAgentsForSession(session);
+    this.state.tasks = session.isTeam ? this.state.tasks : [];
     this.broadcastFullState();
     this.broadcastSessionsList();
   }
@@ -530,34 +541,15 @@ export class StateManager {
     const session = this.sessions.get(sessionId);
     if (!session) return this.state;
 
-    if (!session.isTeam) {
-      const soloAgent = this.allAgents.get(sessionId);
-      const subagents = [...this.allAgents.values()].filter(
-        (a) => a.isSubagent && a.parentAgentId === sessionId
-      );
-      return {
-        name: session.projectName,
-        agents: soloAgent ? [soloAgent, ...subagents] : [...subagents],
-        tasks: [],
-        messages: this.state.messages,
-        session,
-      };
-    } else {
-      const soloSessionIds = new Set(
-        [...this.sessions.values()]
-          .filter((s) => !s.isTeam)
-          .map((s) => s.sessionId)
-      );
-      return {
-        name: session.teamName || session.projectName,
-        agents: [...this.allAgents.values()].filter(
-          (a) => !soloSessionIds.has(a.id)
-        ),
-        tasks: this.state.tasks,
-        messages: this.state.messages,
-        session,
-      };
-    }
+    return {
+      name: session.isTeam
+        ? (session.teamName || session.projectName)
+        : session.projectName,
+      agents: this.getAgentsForSession(session),
+      tasks: session.isTeam ? this.state.tasks : [],
+      messages: this.state.messages,
+      session,
+    };
   }
 
   /**
@@ -568,18 +560,7 @@ export class StateManager {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
 
-    if (!session.isTeam) {
-      if (agentId === sessionId) return true;
-      const agent = this.allAgents.get(agentId);
-      return !!(agent?.isSubagent && agent.parentAgentId === sessionId);
-    } else {
-      const soloSessionIds = new Set(
-        [...this.sessions.values()]
-          .filter((s) => !s.isTeam)
-          .map((s) => s.sessionId)
-      );
-      return !soloSessionIds.has(agentId);
-    }
+    return this.getAgentsForSession(session).some((a) => a.id === agentId);
   }
 
   /** Get the default (most recently auto-selected) session ID */
