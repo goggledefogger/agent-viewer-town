@@ -62,9 +62,9 @@ Examples:
 - `Lead  |  3 tasks done`
 - `Researcher  |  0 tasks`
 - `Implementer  |  working on #7`
-- `Subagent of fox-1`
+- `Explore` (subagent type label)
 
-For subagents, show parentage instead of task count (their tasks aren't independently tracked).
+For subagents, show the `subagentType` (e.g., "Explore", "Plan", "Bash") instead of task count. This helps distinguish parallel subagents doing similar work.
 
 **What goes here vs. above**: The status line is *identity and progress* (slow-changing). The action bubble is *live activity* (fast-changing). They never overlap.
 
@@ -207,10 +207,10 @@ in *.ts
 
 **Below**:
 ```
-Subagent of fox-1
+Explore
 ```
 
-**On-click**: Full search pattern, parent agent info, spawned-at time.
+**On-click**: Full search pattern, subagent type, parent agent info, spawned-at time.
 
 ---
 

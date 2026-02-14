@@ -81,6 +81,9 @@ export function startWatcher(stateManager: StateManager) {
   /** Track which sessionIds have been registered to prevent race-condition double-registration */
   const registeredSessions = new Set<string>();
 
+  /** Track which subagent IDs have been registered to prevent duplicate subagent detection */
+  const registeredSubagents = new Set<string>();
+
   /** Map from JSONL file path to session tracking info */
   const trackedSessions = new Map<string, TrackedSession>();
 
@@ -240,6 +243,7 @@ export function startWatcher(stateManager: StateManager) {
     const tracked = trackedSessions.get(filePath);
     if (tracked) {
       trackedSessions.delete(filePath);
+      registeredSubagents.delete(tracked.sessionId);
       // Only remove the session if no other files reference the same sessionId
       const hasOtherFiles = [...trackedSessions.values()].some(
         (t) => t.sessionId === tracked.sessionId
@@ -360,8 +364,9 @@ export function startWatcher(stateManager: StateManager) {
         return;
       }
 
-      // Extract a meaningful name from the subagent's first user message (the prompt)
+      // Extract a meaningful name and subagent type from the JSONL content
       let subagentName = subagentId.slice(0, 12);
+      let subagentType: string | undefined;
       for (const line of linesToScan) {
         try {
           const d = JSON.parse(line);
@@ -379,8 +384,40 @@ export function startWatcher(stateManager: StateManager) {
               break;
             }
           }
+          // System messages may contain agent metadata with subagent_type
+          if (d.type === 'system' && d.subagent_type) {
+            subagentType = d.subagent_type;
+          }
         } catch { /* skip */ }
       }
+      // Fall back to inferring type from agent ID prefix pattern
+      if (!subagentType) {
+        if (subagentId.startsWith('agent-explore')) subagentType = 'Explore';
+        else if (subagentId.startsWith('agent-plan')) subagentType = 'Plan';
+        else if (subagentId.startsWith('agent-bash')) subagentType = 'Bash';
+      }
+
+      // Skip re-registration of recently removed subagents (prevents stale re-detection
+      // after SubagentStop hook → 15s removal → Chokidar delayed file detection)
+      if (stateManager.wasRecentlyRemoved(subagentId)) {
+        console.log(`[watcher] Skipping recently removed subagent: ${subagentId.slice(0, 8)}`);
+        return;
+      }
+
+      // Skip if already registered (prevents duplicate detection from multiple file events)
+      if (registeredSubagents.has(subagentId)) {
+        return;
+      }
+
+      // Skip if hooks already registered this subagent and it's done
+      // (SubagentStop already marked it as finished — don't resurrect it)
+      const existingSubagent = stateManager.getAgentById(subagentId);
+      if (existingSubagent?.status === 'done') {
+        console.log(`[watcher] Skipping done subagent: ${subagentId.slice(0, 8)}`);
+        return;
+      }
+
+      registeredSubagents.add(subagentId);
 
       // Register the subagent
       const subagent = {
@@ -391,6 +428,7 @@ export function startWatcher(stateManager: StateManager) {
         tasksCompleted: 0,
         isSubagent: true,
         parentAgentId: parentSessionId,
+        subagentType,
       };
       stateManager.registerAgent(subagent);
 
@@ -553,6 +591,13 @@ export function startWatcher(stateManager: StateManager) {
       ? stateManager.isSessionStopped(currentTracked.sessionId)
       : false;
 
+    // If hooks are actively providing events for this session, defer to them
+    // for activity/status updates. Hooks are more accurate and real-time than
+    // JSONL parsing. Still process messages and other non-status data.
+    const hookActive = currentTracked
+      ? stateManager.isHookActive(currentTracked.sessionId)
+      : false;
+
     // Only update last activity when there are actual new lines to process
     // (prevents empty file touches from making old sessions look active)
     let hadMeaningfulActivity = false;
@@ -568,9 +613,12 @@ export function startWatcher(stateManager: StateManager) {
         stateManager.addMessage(parsed.message);
       }
 
-      // Skip activity/status updates if the session was stopped by a hook.
-      // Trailing JSONL lines from before the Stop must not override idle state.
-      if (sessionStopped) continue;
+      // Skip activity/status updates if:
+      // 1. The session was stopped by a hook (trailing JSONL must not override idle)
+      // 2. Hooks are actively providing events (JSONL is delayed and would override
+      //    more accurate hook-set status, e.g., showing "Reading file" instead of
+      //    "Compacting conversation..." set by PreCompact hook)
+      if (sessionStopped || hookActive) continue;
 
       // Handle conversation compacting — show as a special agent action
       if (parsed.type === 'compact') {
@@ -709,8 +757,17 @@ export function startWatcher(stateManager: StateManager) {
     const now = Date.now();
 
     // --- Check JSONL-tracked sessions (solo sessions and subagents) ---
-    for (const [, tracked] of trackedSessions) {
+    for (const [filePath, tracked] of trackedSessions) {
       if (!tracked.isSolo) continue;
+
+      // Cleanup tracked sessions for agents removed by hooks (SubagentStop).
+      // If the agent is gone from registry and this isn't the current session,
+      // stop tracking it to prevent memory leaks from accumulating entries.
+      const trackedAgent = stateManager.getAgentById(tracked.sessionId);
+      if (!trackedAgent && tracked.sessionId !== stateManager.getState().session?.sessionId) {
+        trackedSessions.delete(filePath);
+        continue;
+      }
 
       // Use the most recent activity from either JSONL file changes OR hook events.
       // Hooks update session.lastActivity via stateManager.updateSessionActivity(),
@@ -743,6 +800,7 @@ export function startWatcher(stateManager: StateManager) {
         if (agent?.isSubagent && idleSeconds >= 300) {
           stateManager.removeAgent(tracked.sessionId);
           trackedSessions.delete(tracked.filePath);
+          registeredSubagents.delete(tracked.sessionId);
         }
       }
     }
@@ -768,6 +826,28 @@ export function startWatcher(stateManager: StateManager) {
           stateManager.setAgentWaitingById(agent.id, false);
           stateManager.updateAgentActivityById(agent.id, 'idle');
         }
+      }
+    }
+
+    // --- Catch-all: remove orphaned subagents from allAgents ---
+    // Subagents registered by hooks (SubagentStart) that were never properly
+    // cleaned up. This covers edge cases where SubagentStop never fires or
+    // the removal timer was lost (e.g., server restart).
+    for (const [agentId, agent] of stateManager.getAllAgents()) {
+      if (!agent.isSubagent) continue;
+      if (checkedIds.has(agentId)) continue; // Already handled above
+
+      // Check parent session activity
+      const parentSession = stateManager.getSessions().get(agent.parentAgentId || '');
+      const parentActivity = parentSession?.lastActivity ?? 0;
+      const hookLastActive = stateManager.isHookActive(agentId, 300_000) ? now : 0;
+      const mostRecent = Math.max(parentActivity, hookLastActive);
+      const orphanIdleS = mostRecent > 0 ? (now - mostRecent) / 1000 : Infinity;
+
+      // Remove orphaned subagents after 5 minutes of inactivity
+      if (orphanIdleS >= 300) {
+        console.log(`[watcher] Removing orphaned subagent: ${agentId.slice(0, 8)} (idle ${Math.round(orphanIdleS)}s)`);
+        stateManager.removeAgent(agentId);
       }
     }
   }, STALENESS_CHECK_INTERVAL_MS);

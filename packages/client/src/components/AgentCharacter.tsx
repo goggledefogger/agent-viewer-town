@@ -240,16 +240,18 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
         </g>
       )}
 
-      {/* Name label */}
+      {/* Name label — subagents get longer truncation since they have descriptive names */}
       <text x="0" y="38" textAnchor="middle" fill={color} fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold"
             opacity={agent.status === 'done' ? 0.6 : 1}>
-        {agent.name.length > 14 ? agent.name.slice(0, 13) + '\u2026' : agent.name}
+        {agent.isSubagent
+          ? (agent.name.length > 19 ? agent.name.slice(0, 18) + '\u2026' : agent.name)
+          : (agent.name.length > 14 ? agent.name.slice(0, 13) + '\u2026' : agent.name)}
       </text>
       {/* Status line: role | progress */}
       <text x="0" y="48" textAnchor="middle" fill="#64748b" fontSize="6.5" fontFamily="'Courier New', monospace"
             opacity={agent.status === 'done' ? 0.5 : 0.8}>
         {agent.isSubagent
-          ? `Subagent${agent.parentAgentId ? '' : ''}`
+          ? (agent.subagentType || 'Subagent')
           : `${agent.role.charAt(0).toUpperCase() + agent.role.slice(1)}${
               agent.currentTaskId
                 ? ` | #${agent.currentTaskId}`

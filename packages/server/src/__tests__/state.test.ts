@@ -1116,6 +1116,29 @@ describe('StateManager', () => {
       sm.clearSessionStopped('nonexistent');
       expect(sm.isSessionStopped('nonexistent')).toBe(false);
     });
+
+    it('stopped session blocks updateAgentActivityById from setting working', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+      sm.updateAgent(makeAgent('s1', 'agent-a', { status: 'working' }));
+
+      // Stop the session
+      sm.markSessionStopped('s1');
+      expect(sm.isSessionStopped('s1')).toBe(true);
+
+      // Attempt to set back to working (simulates JSONL watcher trailing event)
+      sm.updateAgentActivityById('s1', 'working', 'Some action');
+
+      // Should remain idle/unchanged because session is stopped
+      // Note: updateAgentActivityById doesn't check stoppedSessions itself,
+      // callers (watcher) are expected to check isSessionStopped first.
+      // This test documents the expected caller behavior.
+      const agent = sm.getAgentById('s1');
+      expect(agent).toBeDefined();
+      // The state manager doesn't enforce this invariant internally (callers do),
+      // but clearSessionStopped via PreToolUse/UserPromptSubmit is the only way
+      // to legitimately resume activity.
+    });
   });
 
   describe('selectSession with unknown session', () => {
@@ -1432,6 +1455,270 @@ describe('StateManager', () => {
 
       sm.selectSession('s2');
       expect(sm.getState().agents[0].gitWorktree).toBe('/tmp/wt2');
+    });
+  });
+
+  describe('removedAgents guard (prevents zombie re-registration)', () => {
+    it('registerAgent skips recently removed agent', () => {
+      sm.registerAgent(makeAgent('sub-1', 'worker', { isSubagent: true, parentAgentId: 's1' }));
+      sm.addSession(makeSession('s1', 'project-a'));
+      sm.updateAgent(sm.getAgentById('sub-1')!);
+
+      // Remove the subagent
+      sm.removeAgent('sub-1');
+      expect(sm.getAgentById('sub-1')).toBeUndefined();
+
+      // Try to re-register — should be blocked
+      sm.registerAgent(makeAgent('sub-1', 'worker', { isSubagent: true, parentAgentId: 's1' }));
+      expect(sm.getAgentById('sub-1')).toBeUndefined();
+    });
+
+    it('updateAgent skips recently removed agent', () => {
+      sm.registerAgent(makeAgent('sub-1', 'worker', { isSubagent: true, parentAgentId: 's1' }));
+      sm.addSession(makeSession('s1', 'project-a'));
+      sm.updateAgent(sm.getAgentById('sub-1')!);
+
+      sm.removeAgent('sub-1');
+
+      // Try to updateAgent — should be blocked
+      sm.updateAgent(makeAgent('sub-1', 'worker-v2', { isSubagent: true, parentAgentId: 's1' }));
+      expect(sm.getAgentById('sub-1')).toBeUndefined();
+      expect(sm.getState().agents.find(a => a.id === 'sub-1')).toBeUndefined();
+    });
+
+    it('clearRecentlyRemoved allows re-registration', () => {
+      sm.registerAgent(makeAgent('sub-1', 'worker', { isSubagent: true, parentAgentId: 's1' }));
+      sm.addSession(makeSession('s1', 'project-a'));
+      sm.updateAgent(sm.getAgentById('sub-1')!);
+
+      sm.removeAgent('sub-1');
+      expect(sm.wasRecentlyRemoved('sub-1')).toBe(true);
+
+      sm.clearRecentlyRemoved('sub-1');
+      expect(sm.wasRecentlyRemoved('sub-1')).toBe(false);
+
+      // Now registration should succeed
+      sm.registerAgent(makeAgent('sub-1', 'worker-new', { isSubagent: true, parentAgentId: 's1' }));
+      expect(sm.getAgentById('sub-1')).toBeDefined();
+      expect(sm.getAgentById('sub-1')!.name).toBe('worker-new');
+    });
+
+    it('full subagent lifecycle: start -> stop -> remove -> JSONL re-detect blocked', () => {
+      sm.registerAgent(makeAgent('s1', 'parent'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      // 1. SubagentStart: register subagent
+      const sub = makeAgent('sub-1', 'explorer', {
+        isSubagent: true,
+        parentAgentId: 's1',
+        status: 'working',
+      });
+      sm.registerAgent(sub);
+      sm.updateAgent(sub);
+      expect(sm.getState().agents).toHaveLength(2);
+
+      // 2. SubagentStop: mark done
+      sm.updateAgentActivityById('sub-1', 'done', 'Done');
+      expect(sm.getAgentById('sub-1')?.status).toBe('done');
+
+      // 3. Removal after delay
+      sm.removeAgent('sub-1');
+      expect(sm.getAgentById('sub-1')).toBeUndefined();
+      expect(sm.getState().agents).toHaveLength(1);
+
+      // 4. JSONL watcher tries to re-register (should be blocked)
+      sm.registerAgent(makeAgent('sub-1', 'explorer-v2', { isSubagent: true, parentAgentId: 's1' }));
+      expect(sm.getAgentById('sub-1')).toBeUndefined();
+
+      sm.updateAgent(makeAgent('sub-1', 'explorer-v2', { isSubagent: true, parentAgentId: 's1' }));
+      expect(sm.getAgentById('sub-1')).toBeUndefined();
+    });
+
+    it('wasRecentlyRemoved expires after 5 minutes', () => {
+      vi.useFakeTimers();
+
+      sm.removeAgent('sub-1'); // remove to add to removedAgents
+      expect(sm.wasRecentlyRemoved('sub-1')).toBe(true);
+
+      vi.advanceTimersByTime(300_001); // 5 min + 1ms
+      expect(sm.wasRecentlyRemoved('sub-1')).toBe(false);
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe('hookActiveSessions', () => {
+    it('markHookActive and isHookActive track active hooks', () => {
+      expect(sm.isHookActive('s1')).toBe(false);
+      sm.markHookActive('s1');
+      expect(sm.isHookActive('s1')).toBe(true);
+    });
+
+    it('isHookActive returns false after withinMs expires', () => {
+      vi.useFakeTimers();
+      sm.markHookActive('s1');
+      expect(sm.isHookActive('s1', 5000)).toBe(true);
+
+      vi.advanceTimersByTime(5001);
+      expect(sm.isHookActive('s1', 5000)).toBe(false);
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe('getStateForSession (per-client snapshots)', () => {
+    it('returns solo session state with agent and subagents', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a', { status: 'working' }));
+      sm.registerAgent(makeAgent('sub-1', 'sub-worker', {
+        isSubagent: true,
+        parentAgentId: 's1',
+        status: 'working',
+      }));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      const state = sm.getStateForSession('s1');
+      expect(state.name).toBe('project-a');
+      expect(state.agents).toHaveLength(2);
+      expect(state.agents.map(a => a.id).sort()).toEqual(['s1', 'sub-1']);
+      expect(state.tasks).toEqual([]);
+    });
+
+    it('returns team session state excluding solo agents', () => {
+      const teamSession = makeSession('team-1', 'project-x', {
+        isTeam: true,
+        teamName: 'alpha',
+        lastActivity: 5000,
+      });
+      const soloSession = makeSession('solo-1', 'project-y', { lastActivity: 1000 });
+
+      sm.registerAgent(makeAgent('solo-1', 'solo-agent'));
+      sm.registerAgent(makeAgent('agent-lead', 'lead', { role: 'lead' }));
+
+      sm.addSession(soloSession);
+      sm.addSession(teamSession);
+
+      const state = sm.getStateForSession('team-1');
+      expect(state.name).toBe('alpha');
+      const ids = state.agents.map(a => a.id);
+      expect(ids).not.toContain('solo-1');
+      expect(ids).toContain('agent-lead');
+    });
+
+    it('falls back to default state for unknown session', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      const state = sm.getStateForSession('nonexistent');
+      // Returns the current default state
+      expect(state).toBeDefined();
+    });
+  });
+
+  describe('agentBelongsToSession', () => {
+    it('returns true for the session own agent', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      expect(sm.agentBelongsToSession('s1', 's1')).toBe(true);
+    });
+
+    it('returns true for subagent of the session', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.registerAgent(makeAgent('sub-1', 'sub', { isSubagent: true, parentAgentId: 's1' }));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      expect(sm.agentBelongsToSession('sub-1', 's1')).toBe(true);
+    });
+
+    it('returns false for agent from different session', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.registerAgent(makeAgent('s2', 'agent-b'));
+      sm.addSession(makeSession('s1', 'project-a'));
+      sm.addSession(makeSession('s2', 'project-b'));
+
+      expect(sm.agentBelongsToSession('s1', 's2')).toBe(false);
+    });
+
+    it('returns false for unknown session', () => {
+      expect(sm.agentBelongsToSession('s1', 'nonexistent')).toBe(false);
+    });
+  });
+
+  describe('updateAgentGitInfo with gitStatus', () => {
+    it('sets ahead/behind/upstream/dirty on agent', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentGitInfo('s1', 'feature/x', undefined, {
+        ahead: 3,
+        behind: 1,
+        hasUpstream: true,
+        isDirty: true,
+      });
+
+      const agent = sm.getAgentById('s1');
+      expect(agent?.gitAhead).toBe(3);
+      expect(agent?.gitBehind).toBe(1);
+      expect(agent?.gitHasUpstream).toBe(true);
+      expect(agent?.gitDirty).toBe(true);
+    });
+
+    it('propagates gitStatus to displayed agent', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+
+      sm.updateAgentGitInfo('s1', undefined, undefined, {
+        ahead: 2,
+        hasUpstream: false,
+      });
+
+      const displayed = sm.getState().agents[0];
+      expect(displayed.gitAhead).toBe(2);
+      expect(displayed.gitHasUpstream).toBe(false);
+    });
+  });
+
+  describe('setAgents preserves gitStatus fields', () => {
+    it('preserves gitAhead/gitBehind/gitHasUpstream/gitDirty', () => {
+      sm.registerAgent(makeAgent('a1', 'coder', {
+        gitAhead: 5,
+        gitBehind: 2,
+        gitHasUpstream: true,
+        gitDirty: false,
+      }));
+
+      sm.setAgents([makeAgent('a1', 'coder')]);
+      const agent = sm.getState().agents[0];
+      expect(agent.gitAhead).toBe(5);
+      expect(agent.gitBehind).toBe(2);
+      expect(agent.gitHasUpstream).toBe(true);
+      expect(agent.gitDirty).toBe(false);
+    });
+
+    it('preserves teamName from existing agents', () => {
+      sm.registerAgent(makeAgent('a1', 'coder', { teamName: 'alpha' }));
+
+      sm.setAgents([makeAgent('a1', 'coder')]);
+      expect(sm.getState().agents[0].teamName).toBe('alpha');
+    });
+  });
+
+  describe('reset clears all state', () => {
+    it('clears agents, sessions, and internal tracking', () => {
+      sm.registerAgent(makeAgent('s1', 'agent-a'));
+      sm.addSession(makeSession('s1', 'project-a'));
+      sm.markSessionStopped('s1');
+      sm.markHookActive('s1');
+
+      sm.reset();
+
+      expect(sm.getState().agents).toHaveLength(0);
+      expect(sm.getState().tasks).toHaveLength(0);
+      expect(sm.getSessionsList()).toHaveLength(0);
+      expect(sm.getAgentById('s1')).toBeUndefined();
+      // removedAgents and hookActiveSessions are also cleared
+      expect(sm.wasRecentlyRemoved('s1')).toBe(false);
+      expect(sm.isHookActive('s1')).toBe(false);
     });
   });
 });

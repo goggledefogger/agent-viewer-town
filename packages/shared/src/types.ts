@@ -17,6 +17,8 @@ export interface AgentState {
   isSubagent?: boolean;
   /** The parent session/agent ID that spawned this subagent */
   parentAgentId?: string;
+  /** The subagent type (e.g., "Explore", "Plan", "Bash") */
+  subagentType?: string;
   /** Team name if this agent is a team member (not a subagent) */
   teamName?: string;
   /** Current git branch the agent is working on */

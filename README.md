@@ -7,6 +7,7 @@ A real-time animated visualization for Claude Code sessions and agent teams. Wat
 - **Pixel-art SVG characters** - Each agent role is a different animal (Beaver, Owl, Fox, Bear, Rabbit)
 - **Live activity tracking** - See what each agent is doing in real-time (editing files, running commands, searching, etc.)
 - **Claude Code hooks integration** - First-class lifecycle events for instant, accurate state detection
+- **Subagent differentiation** - Subagent type labels (Explore, Plan, Bash, etc.) for distinguishing parallel subagents
 - **Session auto-detection** - Works with solo sessions and multi-agent teams
 - **Git branch visibility** - Branch badges with push/pull status indicators per agent
 - **Multi-tab support** - Each browser tab can watch a different session independently
@@ -37,13 +38,19 @@ The viewer will automatically detect active Claude Code sessions from `~/.claude
 **1. Hooks (primary)** - Claude Code lifecycle hooks send HTTP events to the viewer server for instant, accurate state detection:
 - `PreToolUse`/`PostToolUse` - Real-time tool activity with rich descriptions
 - `PermissionRequest` - Definitive "needs your input" signal
-- `SubagentStart`/`SubagentStop` - Reliable subagent lifecycle
+- `SubagentStart`/`SubagentStop` - Reliable subagent lifecycle with type tracking
 - `Stop` - Agent finished responding
 - `PreCompact` - Context compaction in progress
+- Auto-registration: hooks create agents on-the-fly if the JSONL watcher hasn't detected them yet
 
 Install hooks with `npm run hooks:install` (adds to `~/.claude/settings.json`).
 
 **2. JSONL transcript parsing (fallback)** - Scans `~/.claude/projects/` for session transcripts. Provides session discovery and initial state on startup, and serves as a portable fallback for non-hook environments.
+
+**Guard mechanisms** prevent stale agents:
+- Removed-agent tracking blocks JSONL from re-registering subagents after hooks removed them
+- Hook-active sessions are prioritized over JSONL updates
+- Subagent deduplication prevents double-detection from concurrent sources
 
 ### What Gets Watched
 
@@ -79,7 +86,7 @@ agent-viewer-town/
 ## Development
 
 ```bash
-# Run tests (312 tests)
+# Run tests (342 tests)
 npx vitest run --config packages/server/vitest.config.ts
 
 # Type check

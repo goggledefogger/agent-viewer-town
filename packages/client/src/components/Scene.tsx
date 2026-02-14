@@ -206,8 +206,10 @@ function ActionBubble({ agent, x, y }: { agent: AgentState; x: number; y: number
   if (!text && !isWorking && !agent.isSubagent) return null;
   // Skip bubble entirely for done agents with no specific action
   if (isDone && !agent.currentAction) return null;
-  // For idle subagents with no action, show their name as context
-  const displayText = text || (agent.isSubagent ? agent.name : '');
+  // For idle subagents with no action, show type-prefixed name as context
+  const displayText = text || (agent.isSubagent
+    ? (agent.subagentType ? `[${agent.subagentType}] ${agent.name}` : agent.name)
+    : '');
 
   if (isWorking && !displayText) {
     // Typing dots when working but no specific action
@@ -297,7 +299,7 @@ function AgentDetail({ agent, x, y, onClose, tasks }: { agent: AgentState; x: nu
   const name = agent.name;
   const action = agent.currentAction || (agent.status === 'done' ? 'Done' : agent.status === 'working' ? 'Working...' : 'Idle');
   const role = agent.isSubagent
-    ? `Subagent${agent.parentAgentId ? '' : ''}`
+    ? (agent.subagentType ? `${agent.subagentType} subagent` : 'Subagent')
     : agent.role.charAt(0).toUpperCase() + agent.role.slice(1);
   const statusColor = agent.status === 'working' ? '#4169E1' : agent.status === 'done' ? '#28A745' : '#94a3b8';
   const statusLabel = agent.waitingForInput ? 'waiting' : agent.status;

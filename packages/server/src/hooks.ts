@@ -272,12 +272,60 @@ export function createHookHandler(stateManager: StateManager) {
       return;
     }
 
-    // Update session activity timestamp
+    // Update session activity timestamp and mark hooks as actively providing data
     stateManager.updateSessionActivity(sessionId);
+    stateManager.markHookActive(sessionId);
 
     // Store cwd for later git status refreshes
     if (event.cwd && !sessionCwd.has(sessionId)) {
       sessionCwd.set(sessionId, event.cwd);
+    }
+
+    // Auto-register agent if hooks fire for a session with no agent in the registry.
+    // This handles cases where context continuation changes the session ID, so the
+    // JSONL watcher hasn't detected it yet but hooks are already providing events.
+    // Skip for SubagentStart/SubagentStop — those have their own registration flow.
+    if (event.hook_event_name !== 'SubagentStart' && event.hook_event_name !== 'SubagentStop') {
+      const existingAgent = stateManager.getAgentById(sessionId);
+      if (!existingAgent) {
+        const session = stateManager.getSessions().get(sessionId);
+        if (session) {
+          // Session exists but agent is missing — create from session metadata
+          const agentName = session.slug || session.projectName || sessionId.slice(0, 8);
+          const agent = {
+            id: sessionId,
+            name: agentName,
+            role: 'implementer' as const,
+            status: 'working' as const,
+            tasksCompleted: 0,
+          };
+          stateManager.registerAgent(agent);
+          stateManager.updateAgent(agent);
+          console.log(`[hooks] Auto-registered agent for existing session: ${sessionId.slice(0, 8)} name="${agentName}"`);
+        } else if (event.cwd) {
+          // Session unknown — create both session and agent from cwd
+          const projectPath = event.cwd;
+          const projectName = projectPath.split('/').pop() || 'unknown';
+          const newSession = {
+            sessionId,
+            slug: projectName,
+            projectPath,
+            projectName,
+            isTeam: false,
+            lastActivity: Date.now(),
+          };
+          const agent = {
+            id: sessionId,
+            name: projectName,
+            role: 'implementer' as const,
+            status: 'working' as const,
+            tasksCompleted: 0,
+          };
+          stateManager.registerAgent(agent);
+          stateManager.addSession(newSession);
+          console.log(`[hooks] Auto-registered session+agent from cwd: ${sessionId.slice(0, 8)} project="${projectName}"`);
+        }
+      }
     }
 
     // Detect git branch/worktree/status from cwd on first event for this session
@@ -606,6 +654,7 @@ export function createHookHandler(stateManager: StateManager) {
     let name = event.agent_type || 'subagent';
     let role: 'implementer' | 'researcher' | 'planner' = 'implementer';
     let teamName: string | undefined;
+    let subagentType: string | undefined = event.agent_type || undefined;
 
     // Find the oldest pending spawn from this session (FIFO order) and consume it.
     // This correctly handles simultaneous subagent spawns: each SubagentStart
@@ -623,9 +672,15 @@ export function createHookHandler(stateManager: StateManager) {
       name = bestMatch.description || bestMatch.prompt || name;
       role = inferRole(bestMatch.subagentType, name) as typeof role;
       teamName = bestMatch.teamName;
+      subagentType = bestMatch.subagentType || subagentType;
       // Consume this spawn entry so the next SubagentStart gets a different one
       pendingTaskSpawns.delete(bestKey);
     }
+
+    // Clear any recently-removed flag so legitimate re-spawns can register.
+    // This handles the case where a subagent with the same ID is spawned again
+    // after a previous one was stopped and removed.
+    stateManager.clearRecentlyRemoved(agentId);
 
     // If the spawn had a team_name, this is a team member — not a subagent.
     // Team members are top-level agents that participate in the team workflow.
@@ -641,6 +696,7 @@ export function createHookHandler(stateManager: StateManager) {
       isSubagent: !isTeamMember,
       parentAgentId: isTeamMember ? undefined : sessionId,
       teamName,
+      subagentType: isTeamMember ? undefined : subagentType,
     };
     stateManager.registerAgent(agent);
     stateManager.updateAgent(agent);
@@ -657,6 +713,9 @@ export function createHookHandler(stateManager: StateManager) {
         stateManager.updateAgentActivityById(agentId, 'idle');
       } else {
         stateManager.updateAgentActivityById(agentId, 'done', 'Done');
+        // Mark as stopped to prevent watcher resurrection from trailing logs
+        // during the 15s done→removal window (defense-in-depth with removedAgents)
+        stateManager.markSessionStopped(agentId);
       }
     }
     console.log(`[hooks] SubagentStop: ${agentId} parent=${sessionId.slice(0, 8)}`);
