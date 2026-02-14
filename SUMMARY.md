@@ -45,7 +45,7 @@ Real-time visualization for Claude Code sessions and agent teams.
 
 ## Testing & Quality
 
-- **351 passing tests** (parser: 86, state: 121, hooks: 126, server: 9, client: 9)
+- **382 passing tests** (parser: 86, state: 121, hooks: 126, server: 9, client: 40)
 - Type-checked with TypeScript strict mode
 - All packages compile cleanly
 
