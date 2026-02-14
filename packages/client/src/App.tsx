@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Scene } from './components/Scene';
 import { Sidebar } from './components/Sidebar';
-import { SessionPicker } from './components/SessionPicker';
+import { Breadcrumb } from './components/Breadcrumb';
+import { NavigationTree } from './components/NavigationTree';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useNotifications } from './hooks/useNotifications';
+import { useNavigation } from './hooks/useNavigation';
+import { useInbox } from './hooks/useInbox';
 import type { ConnectionStatus } from './hooks/useWebSocket';
 
-type MobileTab = 'scene' | 'tasks' | 'messages';
+type MobileTab = 'scene' | 'inbox' | 'tasks' | 'messages';
 
 function useIsMobile(breakpoint = 480) {
   const [isMobile, setIsMobile] = useState(
@@ -61,8 +64,10 @@ function LiveIndicator({ lastActivity }: { lastActivity?: number }) {
 }
 
 export default function App() {
-  const { team: state, sessions, connectionStatus, selectSession } = useWebSocket('ws://localhost:3001/ws');
+  const { team: state, sessions, groupedSessions, connectionStatus, selectSession } = useWebSocket('ws://localhost:3001/ws');
   const notifications = useNotifications(state.agents);
+  const navigation = useNavigation(groupedSessions);
+  const inbox = useInbox(state.agents);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileTab, setMobileTab] = useState<MobileTab>('scene');
   const isMobile = useIsMobile();
@@ -76,8 +81,37 @@ export default function App() {
     completed: state.tasks.filter((t) => t.status === 'completed').length,
   };
 
+  // Cross-component navigation state
+  const [focusAgentId, setFocusAgentId] = useState<string | null>(null);
+  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
+
   // On mobile, determine which sidebar tab to force based on the mobile tab
-  const mobileSidebarTab = mobileTab === 'messages' ? 'messages' : 'tasks';
+  const mobileSidebarTab = mobileTab === 'messages' ? 'messages' as const
+    : mobileTab === 'inbox' ? 'inbox' as const
+    : 'tasks' as const;
+
+  // Handle session selection from navigation
+  const handleSelectSession = (sessionId: string) => {
+    selectSession(sessionId);
+    navigation.close();
+  };
+
+  // Navigate to an agent in the Scene (from sidebar clicks)
+  const handleFocusAgent = useCallback((agentId: string) => {
+    setFocusAgentId(agentId);
+    if (isMobile) setMobileTab('scene');
+    setTimeout(() => setFocusAgentId(null), 100);
+  }, [isMobile]);
+
+  // Navigate to a task in the TaskBoard (from Scene or within TaskBoard)
+  const handleFocusTask = useCallback((taskId: string) => {
+    setHighlightTaskId(taskId);
+    if (isMobile) setMobileTab('tasks');
+    setTimeout(() => setHighlightTaskId(null), 2200);
+  }, [isMobile]);
+
+  // Single session: no navigation needed
+  const showNavigation = sessions.length > 1;
 
   return (
     <div className="app-wrapper">
@@ -98,7 +132,38 @@ export default function App() {
               )}
             </>
           )}
-          <SessionPicker sessions={sessions} onSelect={selectSession} />
+          {showNavigation ? (
+            <Breadcrumb
+              segments={navigation.breadcrumbs}
+              onNavigate={navigation.zoomTo}
+              onToggleDropdown={navigation.toggleOpen}
+              waitingCount={navigation.waitingCount}
+              isOpen={navigation.isOpen}
+            >
+              <NavigationTree
+                zoomLevel={navigation.zoomLevel}
+                visibleProjects={navigation.visibleProjects}
+                currentProject={navigation.currentProject}
+                currentBranch={navigation.currentBranch}
+                searchFilter={navigation.searchFilter}
+                hideIdle={navigation.hideIdle}
+                isOpen={navigation.isOpen}
+                activeSessionId={session?.sessionId}
+                onSelectSession={handleSelectSession}
+                onZoomTo={navigation.zoomTo}
+                onSearchChange={navigation.setSearchFilter}
+                onToggleHideIdle={navigation.toggleHideIdle}
+                onClose={navigation.close}
+              />
+            </Breadcrumb>
+          ) : sessions.length === 1 ? (
+            <div className="session-picker-inline">
+              <span className="session-project-name">{sessions[0].projectName}</span>
+              {sessions[0].gitBranch && (
+                <span className="badge badge-branch">{sessions[0].gitBranch}</span>
+              )}
+            </div>
+          ) : null}
         </div>
         <div className="header-stats">
           {(() => {
@@ -170,6 +235,15 @@ export default function App() {
           Scene
         </button>
         <button
+          className={`mobile-tab ${mobileTab === 'inbox' ? 'active' : ''}`}
+          onClick={() => setMobileTab('inbox')}
+        >
+          Inbox
+          {inbox.unreadCount > 0 && (
+            <span className="inbox-badge">{inbox.unreadCount}</span>
+          )}
+        </button>
+        <button
           className={`mobile-tab ${mobileTab === 'tasks' ? 'active' : ''}`}
           onClick={() => setMobileTab('tasks')}
         >
@@ -186,12 +260,22 @@ export default function App() {
         <Scene
           state={state}
           className={isMobile && mobileTab !== 'scene' ? 'mobile-hidden' : undefined}
+          focusAgentId={focusAgentId}
+          onFocusTask={handleFocusTask}
         />
         <Sidebar
           state={state}
           open={sidebarOpen}
           className={isMobile && mobileTab === 'scene' ? 'mobile-hidden' : undefined}
           forceTab={isMobile ? mobileSidebarTab : undefined}
+          onFocusAgent={handleFocusAgent}
+          onFocusTask={handleFocusTask}
+          highlightTaskId={highlightTaskId}
+          activeNotifications={inbox.activeNotifications}
+          historyNotifications={inbox.historyNotifications}
+          unreadCount={inbox.unreadCount}
+          onMarkRead={inbox.markRead}
+          onMarkAllRead={inbox.markAllRead}
         />
       </div>
     </div>

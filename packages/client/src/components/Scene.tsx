@@ -1,14 +1,14 @@
-import { useState, useMemo } from 'react';
-import type { TeamState, AgentState, TaskState } from '@agent-viewer/shared';
+import { useState, useMemo, useEffect } from 'react';
+import type { TeamState, AgentState } from '@agent-viewer/shared';
 import { AgentCharacter } from './AgentCharacter';
 import { getBranchColor } from '../constants/colors';
 import { Machine } from './Machine';
-import { TaskNode } from './TaskNode';
-import { TaskDependencyLine } from './TaskDependencyLine';
 
 interface SceneProps {
   state: TeamState;
   className?: string;
+  focusAgentId?: string | null;
+  onFocusTask?: (taskId: string) => void;
 }
 
 // Layout positions for agent workstations (team mode — classic roles)
@@ -520,12 +520,24 @@ function computeBranchZones(
   return zones;
 }
 
-export function Scene({ state, className }: SceneProps) {
+export function Scene({ state, className, focusAgentId, onFocusTask }: SceneProps) {
   const mainAgents = useMemo(() => state.agents.filter((a) => !a.isSubagent), [state.agents]);
   const subagents = useMemo(() => state.agents.filter((a) => a.isSubagent), [state.agents]);
   // Solo mode: one main agent, possibly with subagents
   const isSoloMode = mainAgents.length <= 1;
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
+
+  // When focusAgentId changes from outside (e.g. clicking agent link in sidebar),
+  // select that agent in the scene
+  useEffect(() => {
+    if (focusAgentId) {
+      setSelectedAgentId(focusAgentId);
+    }
+  }, [focusAgentId]);
+
+  // Crowded scene: dim non-hovered agents when 5+ agents present
+  const isCrowded = state.agents.length >= 5;
 
   // Precompute positions for all agents (solo + team modes)
   const allPositions = useMemo(() => computeAllPositions(state.agents), [state.agents]);
@@ -538,27 +550,6 @@ export function Scene({ state, className }: SceneProps) {
     () => computeBranchZones(state.agents, allPositions),
     [state.agents, allPositions],
   );
-
-  // Group tasks by agent and compute shared-task counts
-  const { tasksByAgent, sharedTaskCounts } = useMemo(() => {
-    const map = new Map<string, TaskState[]>();
-    const taskAgentCount = new Map<string, number>();
-    if (!state.tasks || state.tasks.length === 0) return { tasksByAgent: map, sharedTaskCounts: taskAgentCount };
-    for (const agent of state.agents) {
-      if (agent.isSubagent) continue;
-      const agentTasks = state.tasks.filter(
-        (t) => t.owner === agent.name || (agent.currentTaskId && t.id === agent.currentTaskId),
-      );
-      if (agentTasks.length > 0) map.set(agent.id, agentTasks);
-    }
-    // Count how many agents share each task
-    for (const tasks of map.values()) {
-      for (const task of tasks) {
-        taskAgentCount.set(task.id, (taskAgentCount.get(task.id) || 0) + 1);
-      }
-    }
-    return { tasksByAgent: map, sharedTaskCounts: taskAgentCount };
-  }, [state.agents, state.tasks]);
 
   if (!state.name && state.agents.length === 0) {
     return (
@@ -748,10 +739,21 @@ export function Scene({ state, className }: SceneProps) {
           const subScale = agent.isSubagent
             ? `translate(${pos.x}, ${pos.y}) scale(0.8) translate(${-pos.x}, ${-pos.y})`
             : undefined;
+
+          // Hover dimming: when hovering in a crowded scene, dim unrelated agents
+          let agentOpacity = 1;
+          if (isCrowded && hoveredAgentId) {
+            const isHovered = agent.id === hoveredAgentId;
+            const isRelated = agent.parentAgentId === hoveredAgentId || agent.id === (state.agents.find(a => a.id === hoveredAgentId)?.parentAgentId);
+            agentOpacity = isHovered || isRelated ? 1 : 0.3;
+          }
+
           return (
             <g key={agent.id} transform={subScale}
                onClick={(e) => { e.stopPropagation(); setSelectedAgentId(agent.id === selectedAgentId ? null : agent.id); }}
-               style={{ cursor: 'pointer' }}>
+               onMouseEnter={() => setHoveredAgentId(agent.id)}
+               onMouseLeave={() => setHoveredAgentId(null)}
+               style={{ cursor: 'pointer', opacity: agentOpacity, transition: 'opacity 0.2s ease' }}>
               <AgentCharacter
                 agent={agent}
                 x={pos.x}
@@ -761,34 +763,6 @@ export function Scene({ state, className }: SceneProps) {
             </g>
           );
         })}
-
-        {/* Task clipboards attached to agents */}
-        {state.agents.map((agent) => {
-          if (agent.isSubagent) return null;
-          const agentTasks = tasksByAgent.get(agent.id);
-          if (!agentTasks || agentTasks.length === 0) return null;
-          const pos = allPositions.get(agent.id) || { x: 450, y: 300 };
-          return (
-            <TaskNode
-              key={`tasks-${agent.id}`}
-              tasks={agentTasks}
-              agentX={pos.x}
-              agentY={pos.y}
-              sharedCounts={sharedTaskCounts}
-              onTaskClick={(task) => setSelectedAgentId(agent.id)}
-            />
-          );
-        })}
-
-        {/* Dependency lines between task cards */}
-        {state.tasks && state.tasks.length > 0 && (
-          <TaskDependencyLine
-            tasks={state.tasks}
-            tasksByAgent={tasksByAgent}
-            positions={allPositions}
-            agents={state.agents}
-          />
-        )}
 
         {/* Agent detail popover (click to expand) */}
         {selectedAgentId && (() => {

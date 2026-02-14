@@ -69,6 +69,8 @@ export interface SessionInfo {
   gitBranch?: string;
   /** Git worktree path if the session is running in a worktree */
   gitWorktree?: string;
+  /** Root git repo path when running in a worktree (groups worktrees with parent) */
+  mainRepoPath?: string;
   /** Whether this session is part of an agent team */
   isTeam: boolean;
   /** Team name if isTeam is true */
@@ -92,12 +94,62 @@ export interface TeamState {
 export interface SessionListEntry {
   sessionId: string;
   projectName: string;
+  /** Resolved project path (uses mainRepoPath for worktrees) */
+  projectPath: string;
+  /** Human-readable slug, e.g. "glistening-frost" */
+  slug: string;
   gitBranch?: string;
   isTeam: boolean;
   agentCount: number;
   lastActivity: number;
   /** Whether this is the currently displayed session */
   active: boolean;
+  /** Whether any agent in this session is waiting for input */
+  hasWaitingAgent: boolean;
+}
+
+/** A branch within a project, containing one or more sessions */
+export interface BranchGroup {
+  branch: string;
+  isDefault: boolean;
+  sessions: SessionListEntry[];
+  totalAgents: number;
+  lastActivity: number;
+  hasWaitingAgent: boolean;
+}
+
+/** A project containing branches, each with sessions */
+export interface ProjectGroup {
+  projectKey: string;
+  projectName: string;
+  projectPath: string;
+  branches: BranchGroup[];
+  totalSessions: number;
+  totalAgents: number;
+  lastActivity: number;
+  hasWaitingAgent: boolean;
+}
+
+/** Hierarchical session list grouped by project and branch */
+export interface GroupedSessionsList {
+  projects: ProjectGroup[];
+  flatSessions: SessionListEntry[];
+}
+
+/** Types of inbox notifications */
+export type NotificationType = 'permission' | 'question' | 'plan_review' | 'task_completed' | 'error' | 'idle';
+
+/** A notification in the agent inbox */
+export interface InboxNotification {
+  id: string;
+  agentId: string;
+  agentName: string;
+  type: NotificationType;
+  message: string;
+  timestamp: number;
+  read: boolean;
+  /** Whether the condition that triggered this notification is still active */
+  resolved: boolean;
 }
 
 /** Grouped sessions for hierarchical navigation */

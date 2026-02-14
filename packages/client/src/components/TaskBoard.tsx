@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { TaskState, AgentState } from '@agent-viewer/shared';
 import { ROLE_COLORS } from '../constants/colors';
 
@@ -39,7 +40,24 @@ function AgentAvatar({ agent }: { agent: AgentState }) {
   );
 }
 
-export function TaskBoard({ tasks, agents }: TaskBoardProps) {
+function TaskRef({ taskId, onFocusTask }: { taskId: string; onFocusTask?: (id: string) => void }) {
+  if (!onFocusTask) return <span>#{taskId}</span>;
+  return (
+    <button className="task-link" onClick={() => onFocusTask(taskId)}>
+      #{taskId}
+    </button>
+  );
+}
+
+export function TaskBoard({ tasks, agents, onFocusAgent, onFocusTask, highlightTaskId }: TaskBoardProps) {
+  const highlightRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!highlightTaskId) return;
+    const el = highlightRef.current;
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [highlightTaskId]);
+
   if (tasks.length === 0) {
     return (
       <div style={{ color: 'var(--color-text-dim)', textAlign: 'center', padding: '20px', fontSize: '13px' }}>
@@ -72,14 +90,17 @@ export function TaskBoard({ tasks, agents }: TaskBoardProps) {
         const owner = agents.find((a) => a.name === task.owner);
         const isTapped = task.owner ? busyAgents.has(task.owner) && task.status === 'in_progress' : false;
         const blocksOthers = blocksMap.get(task.id);
+        const isHighlighted = highlightTaskId === task.id;
 
         return (
           <div
             key={task.id}
-            className={`task-card ${task.status} ${isTapped ? 'tapped' : ''}`}
+            ref={isHighlighted ? highlightRef : undefined}
+            data-task-id={task.id}
+            className={`task-card ${task.status} ${isTapped ? 'tapped' : ''} ${isHighlighted ? 'highlighted' : ''}`}
           >
             <div className="task-id">
-              #{task.id} {STATUS_ICONS[task.status]}
+              <TaskRef taskId={task.id} onFocusTask={onFocusTask} /> {STATUS_ICONS[task.status]}
             </div>
             <div className="task-subject">{task.subject}</div>
             <div className="task-meta">
@@ -89,18 +110,34 @@ export function TaskBoard({ tasks, agents }: TaskBoardProps) {
               {owner && (
                 <span className="task-owner">
                   <AgentAvatar agent={owner} />
-                  <span>{owner.name}</span>
+                  {onFocusAgent ? (
+                    <button className="agent-link" onClick={() => onFocusAgent(owner.id)}>
+                      {owner.name}
+                    </button>
+                  ) : (
+                    <span>{owner.name}</span>
+                  )}
                 </span>
               )}
             </div>
             {task.blockedBy.length > 0 && (
               <div className="task-dependency blocked-by">
-                <span className="dep-icon">{'\u26D4'}</span> Blocked by: {task.blockedBy.map((id) => `#${id}`).join(', ')}
+                <span className="dep-icon">{'\u26D4'}</span> Blocked by: {task.blockedBy.map((id, i) => (
+                  <span key={id}>
+                    {i > 0 && ', '}
+                    <TaskRef taskId={id} onFocusTask={onFocusTask} />
+                  </span>
+                ))}
               </div>
             )}
             {blocksOthers && blocksOthers.length > 0 && (
               <div className="task-dependency blocks">
-                <span className="dep-icon">{'\u{1F6A7}'}</span> Blocks: {blocksOthers.map((id) => `#${id}`).join(', ')}
+                <span className="dep-icon">{'\u{1F6A7}'}</span> Blocks: {blocksOthers.map((id, i) => (
+                  <span key={id}>
+                    {i > 0 && ', '}
+                    <TaskRef taskId={id} onFocusTask={onFocusTask} />
+                  </span>
+                ))}
               </div>
             )}
           </div>
