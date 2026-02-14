@@ -2,6 +2,28 @@
 
 A real-time animated visualization for Claude Code sessions and agent teams. Watch your agents work in a pixel-art workshop, with live activity tracking via Claude Code hooks.
 
+## Demo
+
+### Team Mode — Multiple agents working together
+
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/81fa0dfc-f74f-4487-b940-2b94ad962680" width="720" autoplay loop muted playsinline>
+    <a href="https://github.com/user-attachments/assets/81fa0dfc-f74f-4487-b940-2b94ad962680">Watch Video</a>
+  </video>
+  <br>
+  <sub><a href="https://raw.githubusercontent.com/goggledefogger/agent-viewer-town/main/docs/media/demo-1-1080p.mp4">⬇ Download full quality (13 MB)</a></sub>
+</div>
+
+### Live Development — Solo session with subagents
+
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/4786d616-a1dd-47e7-ace4-aeafa88c8ada" width="720" autoplay loop muted playsinline>
+    <a href="https://github.com/user-attachments/assets/4786d616-a1dd-47e7-ace4-aeafa88c8ada">Watch Video</a>
+  </video>
+  <br>
+  <sub><a href="https://raw.githubusercontent.com/goggledefogger/agent-viewer-town/main/docs/media/demo-2-1080p.mp4">⬇ Download full quality (12 MB)</a></sub>
+</div>
+
 ## Features
 
 - **Pixel-art SVG characters** - Each agent role is a different animal (Beaver, Owl, Fox, Bear, Rabbit)
@@ -81,9 +103,10 @@ agent-viewer-town/
 │   ├── shared/          # TypeScript types shared between server & client
 │   ├── server/          # Express + WebSocket + Chokidar file watcher
 │   │   └── src/
-│   │       ├── hooks/   # Modular hook event handlers (5 files by domain)
-│   │       ├── state.ts # StateManager with centralized membership logic
-│   │       ├── watcher.ts # JSONL transcript watcher (fallback detection)
+│   │       ├── hooks/     # Modular hook event handlers (5 files by domain)
+│   │       ├── watcher/   # JSONL transcript watcher (7 files by domain)
+│   │       ├── state.ts   # StateManager with centralized membership logic
+│   │       ├── guards.ts  # GuardManager coordinating hooks ↔ watcher
 │   │       └── parser.ts  # Transcript parsing + git detection
 │   └── client/          # Vite + React frontend with SVG animations
 │       └── src/
