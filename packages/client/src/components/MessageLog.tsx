@@ -3,6 +3,8 @@ import type { MessageState } from '@agent-viewer/shared';
 
 interface MessageLogProps {
   messages: MessageState[];
+  agents?: import('@agent-viewer/shared').AgentState[];
+  onFocusAgent?: (agentId: string) => void;
 }
 
 function getMessageType(msg: MessageState): 'broadcast' | 'tool_call' | 'message' {

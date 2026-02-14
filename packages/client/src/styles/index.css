@@ -820,6 +820,222 @@ html, body, #root {
 }
 
 /* ========================================
+   INBOX / NOTIFICATIONS PANEL
+   ======================================== */
+
+.inbox-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.inbox-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.inbox-filters {
+  display: flex;
+  gap: 4px;
+}
+
+.inbox-filter-btn {
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-dim);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.inbox-filter-btn:hover {
+  color: var(--color-text);
+  border-color: var(--color-text-dim);
+}
+
+.inbox-filter-btn.active {
+  color: var(--color-gold);
+  border-color: var(--color-gold);
+  background: rgba(255, 215, 0, 0.1);
+}
+
+.inbox-mark-all-read {
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-dim);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+  white-space: nowrap;
+}
+
+.inbox-mark-all-read:hover {
+  color: var(--color-text);
+  border-color: var(--color-text-dim);
+}
+
+.inbox-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Notification card */
+.inbox-notification {
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.3s, transform 0.15s, opacity 0.3s;
+  animation: fadeInUp 0.2s ease-out;
+}
+
+.inbox-notification:hover {
+  background: rgba(15, 52, 96, 0.8);
+  transform: translateY(-1px);
+}
+
+.inbox-notification.unread {
+  background: rgba(15, 52, 96, 0.6);
+}
+
+.inbox-notification.resolved {
+  opacity: 0.55;
+}
+
+.inbox-notification.resolved:hover {
+  opacity: 0.8;
+}
+
+/* Priority-specific left border glow for critical items */
+.inbox-notification.critical.unread {
+  box-shadow: -2px 0 8px rgba(220, 53, 69, 0.3);
+}
+
+.inbox-notification.high.unread {
+  box-shadow: -2px 0 6px rgba(255, 140, 0, 0.2);
+}
+
+.inbox-notification-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.inbox-notification-type {
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.inbox-notification-time {
+  font-size: 9px;
+  color: var(--color-text-dim);
+  margin-left: auto;
+}
+
+.inbox-unread-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+.inbox-notification-title {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--color-text);
+  margin-bottom: 2px;
+}
+
+.inbox-notification-body {
+  font-size: 11px;
+  color: var(--color-text-dim);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.inbox-notification-context {
+  font-size: 10px;
+  color: var(--color-text-dim);
+  margin-top: 4px;
+  padding: 3px 6px;
+  background: rgba(26, 26, 46, 0.5);
+  border-radius: 3px;
+  font-style: italic;
+}
+
+/* Empty state */
+.inbox-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  color: var(--color-text-dim);
+  font-size: 12px;
+  gap: 8px;
+}
+
+.inbox-empty-icon {
+  opacity: 0.4;
+}
+
+/* Sidebar tab with badge */
+.sidebar-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-weight: bold;
+  margin-left: 4px;
+  line-height: 1;
+}
+
+.sidebar-tab-badge.critical {
+  background: var(--color-red);
+  color: #fff;
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+
+.sidebar-tab-badge.high {
+  background: #FF8C00;
+  color: #fff;
+}
+
+.sidebar-tab-badge.medium {
+  background: var(--color-blue);
+  color: #fff;
+}
+
+.sidebar-tab-badge.low {
+  background: var(--color-pending);
+  color: #fff;
+}
+
+/* ========================================
    MOBILE TABS (visible at <= 480px)
    ======================================== */
 
