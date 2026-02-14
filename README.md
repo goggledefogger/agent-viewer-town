@@ -4,16 +4,6 @@ A real-time animated visualization for Claude Code sessions and agent teams. Wat
 
 ## Demo
 
-### Team Mode — Multiple agents working together
-
-<div align="center">
-  <video src="https://github.com/user-attachments/assets/81fa0dfc-f74f-4487-b940-2b94ad962680" width="720" autoplay loop muted playsinline>
-    <a href="https://github.com/user-attachments/assets/81fa0dfc-f74f-4487-b940-2b94ad962680">Watch Video</a>
-  </video>
-  <br>
-  <sub><a href="https://raw.githubusercontent.com/goggledefogger/agent-viewer-town/main/docs/media/demo-1-1080p.mp4">⬇ Download full quality (13 MB)</a></sub>
-</div>
-
 ### Live Development — Solo session with subagents
 
 <div align="center">
@@ -22,6 +12,16 @@ A real-time animated visualization for Claude Code sessions and agent teams. Wat
   </video>
   <br>
   <sub><a href="https://raw.githubusercontent.com/goggledefogger/agent-viewer-town/main/docs/media/demo-2-1080p.mp4">⬇ Download full quality (12 MB)</a></sub>
+</div>
+
+### Team Mode — Multiple agents working together
+
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/81fa0dfc-f74f-4487-b940-2b94ad962680" width="720" autoplay loop muted playsinline>
+    <a href="https://github.com/user-attachments/assets/81fa0dfc-f74f-4487-b940-2b94ad962680">Watch Video</a>
+  </video>
+  <br>
+  <sub><a href="https://raw.githubusercontent.com/goggledefogger/agent-viewer-town/main/docs/media/demo-1-1080p.mp4">⬇ Download full quality (13 MB)</a></sub>
 </div>
 
 ## Features
