@@ -9,7 +9,7 @@ interface SceneProps {
 }
 
 // Layout positions for agent workstations (team mode — classic roles)
-const STATION_POSITIONS: Record<string, { x: number; y: number }> = {
+export const STATION_POSITIONS: Record<string, { x: number; y: number }> = {
   lead:        { x: 450, y: 200 },
   researcher:  { x: 200, y: 120 },
   implementer: { x: 450, y: 380 },
@@ -19,7 +19,7 @@ const STATION_POSITIONS: Record<string, { x: number; y: number }> = {
 
 // Grid layout for teams where agents share roles (e.g., all implementers)
 // Arranges agents in rows across the viewport
-function computeTeamPositions(agents: AgentState[]): Map<string, { x: number; y: number }> {
+export function computeTeamPositions(agents: AgentState[]): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
   const mainAgents = agents.filter((a) => !a.isSubagent);
   const subagents = agents.filter((a) => a.isSubagent);
@@ -86,10 +86,10 @@ function computeTeamPositions(agents: AgentState[]): Map<string, { x: number; y:
 }
 
 // Center position for solo agent
-const SOLO_POSITION = { x: 450, y: 300 };
+export const SOLO_POSITION = { x: 450, y: 300 };
 
 // Subagent positions fan out around the parent — increased vertical gaps to reduce overlap
-const SUBAGENT_OFFSETS = [
+export const SUBAGENT_OFFSETS = [
   { x: 280, y: -60 },
   { x: -280, y: -60 },
   { x: 280, y: 140 },
@@ -108,7 +108,7 @@ function getSubagentOffset(index: number, total: number): { x: number; y: number
 }
 
 /** Compute positions for all agents in any mode (solo or team) */
-function computeAllPositions(agents: AgentState[]): Map<string, { x: number; y: number }> {
+export function computeAllPositions(agents: AgentState[]): Map<string, { x: number; y: number }> {
   const mainAgents = agents.filter((a) => !a.isSubagent);
   const subagents = agents.filter((a) => a.isSubagent);
 
