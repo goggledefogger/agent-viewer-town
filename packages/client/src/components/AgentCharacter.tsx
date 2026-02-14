@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { AgentState } from '@agent-viewer/shared';
-import { Beaver, Owl, Fox, Bear, Rabbit } from '../svg/animals';
-import { ROLE_COLORS, STEAM_COLORS, SPARK_COLORS, CONFETTI_COLORS, getBranchColor } from '../constants/colors';
+import { resolveCharacter, getEvolutionStage } from '../svg/characters';
+import { STEAM_COLORS, SPARK_COLORS, CONFETTI_COLORS, getBranchColor } from '../constants/colors';
 export { getBranchColor } from '../constants/colors';
 
 interface AgentCharacterProps {
@@ -9,20 +9,6 @@ interface AgentCharacterProps {
   x: number;
   y: number;
   isNew?: boolean;
-}
-
-const ANIMAL_COMPONENTS: Record<string, React.FC<{ stage: number }>> = {
-  lead: Beaver,
-  researcher: Owl,
-  implementer: Fox,
-  tester: Bear,
-  planner: Rabbit,
-};
-
-function getEvolutionStage(tasksCompleted: number): number {
-  if (tasksCompleted >= 6) return 3;
-  if (tasksCompleted >= 3) return 2;
-  return 1;
 }
 
 /** Steam puff particles that rise and fade when agent is working */
@@ -123,10 +109,8 @@ function CelebrationParticles({ active }: { active: boolean }) {
 }
 
 export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
-  const color = agent.isSubagent ? '#94a3b8' : (ROLE_COLORS[agent.role] || '#FFD700');
+  const { AnimalComponent: AnimalSvg, accentColor: color } = resolveCharacter(agent);
   const stage = agent.isSubagent ? 1 : getEvolutionStage(agent.tasksCompleted);
-  // Subagents use Owl (quick scouts), main agents use their role's animal
-  const AnimalSvg = agent.isSubagent ? Owl : (ANIMAL_COMPONENTS[agent.role] || Beaver);
   const isWorking = agent.status === 'working';
 
   // Track task completion for spark/celebration effect
