@@ -449,37 +449,6 @@ export function extractRecordType(line: string): string | null {
 }
 
 /**
- * Read the first line of a file.
- */
-export async function readFirstLine(filePath: string): Promise<string | null> {
-  try {
-    const stats = await stat(filePath);
-    if (stats.size === 0) return null;
-
-    return new Promise((resolve) => {
-      let buffer = '';
-      const stream = createReadStream(filePath, { encoding: 'utf-8', start: 0 });
-      stream.on('data', (chunk: string) => {
-        buffer += chunk;
-        const newlineIdx = buffer.indexOf('\n');
-        if (newlineIdx !== -1) {
-          stream.destroy();
-          resolve(buffer.slice(0, newlineIdx));
-        }
-      });
-      stream.on('end', () => {
-        resolve(buffer.trim() || null);
-      });
-      stream.on('error', () => {
-        resolve(null);
-      });
-    });
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Detect if a directory is inside a git worktree.
  * Returns { gitBranch, gitWorktree } if it is, or null values if not.
  */
