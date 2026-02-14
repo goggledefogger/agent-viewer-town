@@ -585,8 +585,12 @@ describe('Hook Event Handlers', () => {
       // Still exists right after stop
       expect(sm.getAgentById('sub-2')).toBeDefined();
 
-      // After 2 minutes, should be removed
-      vi.advanceTimersByTime(120_000);
+      // Still exists just before the 15s removal delay
+      vi.advanceTimersByTime(14_999);
+      expect(sm.getAgentById('sub-2')).toBeDefined();
+
+      // Removed after the 15s delay
+      vi.advanceTimersByTime(2);
       expect(sm.getAgentById('sub-2')).toBeUndefined();
     });
 
@@ -601,6 +605,33 @@ describe('Hook Event Handlers', () => {
       });
 
       expect(sm.getAgentById('nonexistent-sub')).toBeUndefined();
+    });
+
+    it('transitions team member to idle (not done) and does not schedule removal', () => {
+      setupAgent('sess-1', 'lead');
+
+      // Register a team member (has teamName, not a subagent)
+      sm.registerAgent(makeAgent('team-member-1', 'coder', {
+        isSubagent: false,
+        teamName: 'my-team',
+        status: 'working',
+      }));
+      sm.updateAgent(sm.getAgentById('team-member-1')!);
+
+      handler.handleEvent({
+        session_id: 'sess-1',
+        hook_event_name: 'SubagentStop',
+        agent_id: 'team-member-1',
+      });
+
+      // Team members go idle, not done
+      const agent = sm.getAgentById('team-member-1');
+      expect(agent).toBeDefined();
+      expect(agent!.status).toBe('idle');
+
+      // Should NOT be removed even after extended time
+      vi.advanceTimersByTime(300_000);
+      expect(sm.getAgentById('team-member-1')).toBeDefined();
     });
   });
 
