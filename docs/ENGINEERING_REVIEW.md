@@ -10,7 +10,7 @@
 
 The most important architectural move was making hooks the primary source of truth for live activity while keeping JSONL parsing as discovery/fallback. This directly addressed prior race/heuristic brittleness and was the right call.
 
-The main risk now is **complexity concentration** in three files (`hooks.ts`, `watcher.ts`, `state.ts`). Behavior correctness depends on implicit ordering and side effects spread across handlers. The code works — 345 tests pass — but maintainability risk is rising.
+The main risk now is **complexity concentration** in three files (`hooks.ts`, `watcher.ts`, `state.ts`). Behavior correctness depends on implicit ordering and side effects spread across handlers. The code works — 351 tests pass — but maintainability risk is rising.
 
 ---
 
@@ -23,7 +23,7 @@ The main risk now is **complexity concentration** in three files (`hooks.ts`, `w
    FIFO pending-spawn matching for `Task` → `SubagentStart` is simple and correct under concurrency. Session dedup and tracked-file mapping protect against watcher race conditions. The `removedAgents` + `registeredSubagents` + done-status guards form a layered defense against zombie subagents.
 
 3. **Strong test investment while shipping quickly.**
-   345 tests covering hooks, parser, state, and server behavior. Edge cases around FIFO matching, compaction handling, subagent lifecycle, and per-client state are validated.
+   351 tests covering hooks, parser, state, server, and client behavior. Edge cases around FIFO matching, compaction handling, subagent lifecycle, per-client state, and WebSocket message handling are validated.
 
 4. **Session model trending in the right direction.**
    Per-client session selection, richer session metadata, and multi-tab support are foundational for reliability.
