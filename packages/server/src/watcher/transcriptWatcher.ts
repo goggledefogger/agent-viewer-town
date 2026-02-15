@@ -17,6 +17,7 @@ import {
   MAX_INITIAL_AGE_S,
 } from './types';
 import type { WatcherContext, TrackedSession } from './types';
+import { runStalenessCheck } from './stalenessChecker';
 
 const execFileAsync = promisify(execFile);
 
@@ -49,6 +50,9 @@ export function startTranscriptWatcher(ctx: WatcherContext) {
     await Promise.allSettled(pendingDetections);
     pendingDetections = [];
     console.log(`[watcher] Initial scan complete, broadcasting ${stateManager.getSessions().size} sessions`);
+    // Run staleness check immediately to clean up stale subagents and sessions
+    // before the first broadcast, rather than waiting for the 15s interval.
+    runStalenessCheck(ctx);
     stateManager.selectMostInterestingSession();
     stateManager.broadcastSessionsList();
   });

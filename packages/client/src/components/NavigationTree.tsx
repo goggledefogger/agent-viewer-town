@@ -142,10 +142,16 @@ export function NavigationTree({
               .slice(0, pIdx)
               .reduce((sum, p) => sum + 1 + p.branches.length, 0)}
             focusIndex={focusIndex}
-            onSelectProject={(key) => onZoomTo(1, key)}
+            onSelectProject={(key, mostRecentSessionId) => {
+              // Select the project's most recent session to update the scene,
+              // then zoom the dropdown to show branches
+              onSelectSession(mostRecentSessionId);
+              onZoomTo(1, key);
+            }}
             onSelectBranch={(key, branch, sessions) => {
+              // Always select the first (most active) session to update the scene
+              onSelectSession(sessions[0].sessionId);
               if (sessions.length === 1) {
-                onSelectSession(sessions[0].sessionId);
                 onClose();
               } else {
                 onZoomTo(2, key, branch);
@@ -312,7 +318,7 @@ interface ProjectRowProps {
   activeSessionId?: string;
   startIndex: number;
   focusIndex: number;
-  onSelectProject: (key: string) => void;
+  onSelectProject: (key: string, mostRecentSessionId: string) => void;
   onSelectBranch: (projectKey: string, branch: string, sessions: SessionListEntry[]) => void;
   onSelectSession: (sessionId: string) => void;
 }
@@ -334,7 +340,12 @@ function ProjectRow({
       <button
         className={`nav-project-row ${isProjectFocused ? 'focused' : ''}`}
         data-nav-row
-        onClick={() => onSelectProject(project.projectKey)}
+        onClick={() => {
+          // Find the most recent session across all branches for this project
+          const allSessions = project.branches.flatMap(b => b.sessions);
+          const best = allSessions[0]; // Already sorted: active > waiting > recent
+          if (best) onSelectProject(project.projectKey, best.sessionId);
+        }}
       >
         <span
           className="nav-expand-toggle"
