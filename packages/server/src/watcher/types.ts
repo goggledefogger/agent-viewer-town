@@ -17,6 +17,8 @@ export const PROJECTS_DIR = join(CLAUDE_DIR, 'projects');
 export const IDLE_THRESHOLD_S = 60;
 /** How often to check for stale sessions (ms) */
 export const STALENESS_CHECK_INTERVAL_MS = 15_000;
+/** Seconds of inactivity before removing a solo session entirely */
+export const SESSION_EXPIRY_S = 3600; // 1 hour
 /** On initial scan, skip files older than this (seconds) */
 export const MAX_INITIAL_AGE_S = 86400; // 24 hours
 

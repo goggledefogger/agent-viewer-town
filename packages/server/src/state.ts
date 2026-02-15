@@ -392,7 +392,10 @@ export class StateManager {
     this.sessions.set(session.sessionId, session);
     this.broadcast({ type: 'session_started', data: session });
 
-    // Auto-select: pick this session if none is active, or if it's fresher
+    // Auto-select: pick this session if none is active, or if it's fresher.
+    // This is a simple heuristic for incremental discovery — the final
+    // selectMostInterestingSession() call after all sessions load will
+    // re-evaluate using full scoring.
     const current = this.state.session;
     const shouldSelect = !current || session.lastActivity > (current.lastActivity || 0);
     if (shouldSelect) {
@@ -712,6 +715,62 @@ export class StateManager {
     }
     if (best) {
       this.selectSession(best.sessionId);
+    }
+  }
+
+  /**
+   * Score a session by "interestingness" for auto-selection on page load.
+   * Higher score = more interesting = should be displayed first.
+   *
+   * Priority: actively working > waiting for input > recently active > has agents > recency
+   */
+  private scoreSession(session: SessionInfo): number {
+    const agents = this.getAgentsForSession(session);
+    const now = Date.now();
+    const ageMs = now - session.lastActivity;
+    let score = 0;
+
+    // Actively working agents with very recent activity (< 30s)
+    const hasActiveWorking = agents.some(a => a.status === 'working' && !a.waitingForInput) && ageMs < 30_000;
+    if (hasActiveWorking) score += 1000;
+
+    // Agents waiting for user input — these need attention
+    if (agents.some(a => a.waitingForInput)) score += 500;
+
+    // Any working agent (even if activity isn't super recent)
+    if (agents.some(a => a.status === 'working')) score += 200;
+
+    // Active in last 5 minutes
+    if (ageMs < 300_000) score += 100;
+
+    // Has agents registered (session with visible characters)
+    if (agents.length > 0) score += 50;
+
+    // Recency bonus: up to 49 points for very recent activity (0 = just now, 49 = 49+ min ago)
+    score += Math.max(0, 49 - Math.floor(ageMs / 60_000));
+
+    return score;
+  }
+
+  /**
+   * Select the most "interesting" session for display on page load.
+   * Uses a scoring system that prioritizes active work and user attention needs
+   * over raw recency.
+   */
+  selectMostInterestingSession() {
+    let bestSession: SessionInfo | undefined;
+    let bestScore = -1;
+
+    for (const session of this.sessions.values()) {
+      const score = this.scoreSession(session);
+      if (score > bestScore) {
+        bestScore = score;
+        bestSession = session;
+      }
+    }
+
+    if (bestSession) {
+      this.selectSession(bestSession.sessionId);
     }
   }
 
