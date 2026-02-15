@@ -432,9 +432,9 @@ describe('getGroupedSessionsList', () => {
   // === Additional regression tests ===
 
   it('counts multiple agents per team session in totalAgents', () => {
-    sm.registerAgent(makeAgent('team-lead', 'lead', { role: 'lead' }));
-    sm.registerAgent(makeAgent('team-worker-1', 'worker-1', { role: 'implementer' }));
-    sm.registerAgent(makeAgent('team-worker-2', 'worker-2', { role: 'implementer' }));
+    sm.registerAgent(makeAgent('team-lead', 'lead', { role: 'lead', teamName: 'alpha' }));
+    sm.registerAgent(makeAgent('team-worker-1', 'worker-1', { role: 'implementer', teamName: 'alpha' }));
+    sm.registerAgent(makeAgent('team-worker-2', 'worker-2', { role: 'implementer', teamName: 'alpha' }));
 
     sm.addSession(makeSession('team-1', 'my-project', {
       lastActivity: 1000,
@@ -444,7 +444,7 @@ describe('getGroupedSessionsList', () => {
     }));
 
     const grouped = sm.getGroupedSessionsList();
-    // Team session should count all its agents
+    // Team session should count only agents with matching teamName
     expect(grouped.projects[0].totalAgents).toBe(3);
     expect(grouped.projects[0].branches[0].totalAgents).toBe(3);
   });

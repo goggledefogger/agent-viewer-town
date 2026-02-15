@@ -51,7 +51,10 @@ export function startTeamWatcher(ctx: WatcherContext) {
 
     const teamName = basename(dirname(filePath));
     stateManager.setTeamName(teamName);
-    stateManager.setAgents(config.members.map(teamMemberToAgent));
+    stateManager.setAgents(config.members.map(m => ({
+      ...teamMemberToAgent(m),
+      teamName,
+    })));
 
     // Create a session entry for the team so it appears in the session picker
     // and per-client WebSocket filtering works correctly.

@@ -77,6 +77,7 @@ export function runStalenessCheck(ctx: WatcherContext) {
   // Team agents created via hooks may not have trackedSessions entries.
   // Use hook-updated session.lastActivity as the activity source.
   const checkedIds = new Set([...trackedSessions.values()].map(t => t.sessionId));
+  const sessionsToExpire: string[] = [];
   for (const session of stateManager.getSessions().values()) {
     // Skip sessions already covered by JSONL tracking above
     if (checkedIds.has(session.sessionId)) continue;
@@ -84,16 +85,40 @@ export function runStalenessCheck(ctx: WatcherContext) {
     const idleSeconds = (now - session.lastActivity) / 1000;
     if (idleSeconds < IDLE_THRESHOLD_S) continue;
 
-    // Mark all working agents for this session as idle
-    const state = stateManager.getState();
-    for (const agent of state.agents) {
+    // Mark all working agents for this session as idle.
+    // Check allAgents (not just state.agents) so agents from non-active sessions are also caught.
+    for (const [agentId, agent] of stateManager.getAllAgents()) {
       if (agent.status !== 'working') continue;
 
       // Check if this agent belongs to this session (team member or the session agent itself)
-      if (agent.id === session.sessionId || agent.teamName === session.teamName) {
-        stateManager.setAgentWaitingById(agent.id, false);
-        stateManager.updateAgentActivityById(agent.id, 'idle');
+      if (agentId === session.sessionId || agent.teamName === session.teamName) {
+        stateManager.setAgentWaitingById(agentId, false);
+        stateManager.updateAgentActivityById(agentId, 'idle');
       }
+    }
+
+    // Expire team sessions after extended inactivity, same as solo sessions.
+    // This prevents old team configs from polluting the UI indefinitely.
+    if (session.isTeam && idleSeconds >= SESSION_EXPIRY_S) {
+      sessionsToExpire.push(session.sessionId);
+    }
+  }
+
+  // Remove expired team sessions (done outside the iterator to avoid mutation during iteration)
+  for (const sessionId of sessionsToExpire) {
+    console.log(`[watcher] Expiring stale team session: ${sessionId}`);
+    // Remove all agents belonging to this team
+    const teamName = stateManager.getSessions().get(sessionId)?.teamName;
+    if (teamName) {
+      for (const [agentId, agent] of stateManager.getAllAgents()) {
+        if (agent.teamName === teamName) {
+          stateManager.removeAgent(agentId);
+        }
+      }
+    }
+    stateManager.removeSession(sessionId);
+    if (!stateManager.getState().session) {
+      stateManager.selectMostInterestingSession();
     }
   }
 

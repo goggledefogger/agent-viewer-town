@@ -863,8 +863,8 @@ describe('StateManager', () => {
       const soloSession = makeSession('solo-1', 'project-y', { lastActivity: 1000 });
 
       sm.registerAgent(makeAgent('solo-1', 'solo-agent'));
-      sm.registerAgent(makeAgent('agent-lead', 'lead', { role: 'lead' }));
-      sm.registerAgent(makeAgent('agent-coder', 'coder', { role: 'implementer' }));
+      sm.registerAgent(makeAgent('agent-lead', 'lead', { role: 'lead', teamName: 'alpha' }));
+      sm.registerAgent(makeAgent('agent-coder', 'coder', { role: 'implementer', teamName: 'alpha' }));
 
       sm.addSession(soloSession);
       sm.addSession(teamSession);
@@ -874,7 +874,7 @@ describe('StateManager', () => {
 
       const state = sm.getState();
       expect(state.name).toBe('alpha');
-      // Solo session agent should be excluded
+      // Solo session agent should be excluded; only agents with matching teamName included
       const agentIds = state.agents.map((a) => a.id);
       expect(agentIds).not.toContain('solo-1');
       expect(agentIds).toContain('agent-lead');
@@ -1673,7 +1673,7 @@ describe('StateManager', () => {
       const soloSession = makeSession('solo-1', 'project-y', { lastActivity: 1000 });
 
       sm.registerAgent(makeAgent('solo-1', 'solo-agent'));
-      sm.registerAgent(makeAgent('agent-lead', 'lead', { role: 'lead' }));
+      sm.registerAgent(makeAgent('agent-lead', 'lead', { role: 'lead', teamName: 'alpha' }));
 
       sm.addSession(soloSession);
       sm.addSession(teamSession);

@@ -494,13 +494,14 @@ export class StateManager {
       );
       return soloAgent ? [soloAgent, ...subagents] : [...subagents];
     } else {
-      const soloSessionIds = new Set(
-        [...this.sessions.values()]
-          .filter((s) => !s.isTeam)
-          .map((s) => s.sessionId)
-      );
+      // Filter by teamName so each team session only shows its own members.
+      // Fallback to the agent ID suffix (@teamName) for agents that predate
+      // the teamName property being set.
+      const teamName = session.teamName;
+      if (!teamName) return [];
+      const suffix = `@${teamName}`;
       return [...this.allAgents.values()].filter(
-        (a) => !soloSessionIds.has(a.id)
+        (a) => a.teamName === teamName || (!a.teamName && a.id.endsWith(suffix))
       );
     }
   }
