@@ -655,7 +655,7 @@ export class StateManager {
         });
       }
 
-      // Sort branches: active branch first, then waiting, then alphabetical
+      // Sort branches: active branch first, then waiting, then most recent, then alphabetical
       // (default) branch sorts after named branches unless it's the active one
       branchGroups.sort((a, b) => {
         const aHasActive = a.sessions.some((s) => s.sessionId === effectiveActiveId);
@@ -666,6 +666,9 @@ export class StateManager {
 
         // (default) sorts last among non-active, non-waiting branches
         if (a.isDefault !== b.isDefault) return a.isDefault ? 1 : -1;
+
+        // Most recently active first
+        if (a.lastActivity !== b.lastActivity) return b.lastActivity - a.lastActivity;
 
         return a.branch.localeCompare(b.branch);
       });
@@ -682,13 +685,16 @@ export class StateManager {
       });
     }
 
-    // Sort projects: active first, then waiting, then alphabetical
+    // Sort projects: active first, then waiting, then most recent, then alphabetical
     projects.sort((a, b) => {
       const aHasActive = a.branches.some((br) => br.sessions.some((s) => s.sessionId === effectiveActiveId));
       const bHasActive = b.branches.some((br) => br.sessions.some((s) => s.sessionId === effectiveActiveId));
       if (aHasActive !== bHasActive) return aHasActive ? -1 : 1;
 
       if (a.hasWaitingAgent !== b.hasWaitingAgent) return a.hasWaitingAgent ? -1 : 1;
+
+      // Most recently active first (ensures current project sorts above stale ones)
+      if (a.lastActivity !== b.lastActivity) return b.lastActivity - a.lastActivity;
 
       return a.projectName.localeCompare(b.projectName);
     });

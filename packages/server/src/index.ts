@@ -80,14 +80,21 @@ function getClientSessionsList(ws: WebSocket) {
   return stateManager.getSessionsList(client?.selectedSessionId);
 }
 
+/** Get the effective active session ID for a client (their selection, or the server default) */
+function getClientActiveSessionId(ws: WebSocket): string | undefined {
+  return clientStates.get(ws)?.selectedSessionId || stateManager.getDefaultSessionId();
+}
+
 wss.on('connection', (ws: WebSocket) => {
   console.log('[ws] client connected');
   clientStates.set(ws, {});
 
   // Send current state, sessions list, and grouped sessions on connect
+  // Use the same resolved active session ID for both state and sort consistency
+  const activeId = getClientActiveSessionId(ws);
   ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
   ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
-  ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(clientStates.get(ws)?.selectedSessionId) }));
+  ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(activeId) }));
 
   // Subscribe to state changes — send per-client filtered views
   const unsubscribe = stateManager.subscribe((msg) => {
@@ -98,14 +105,16 @@ wss.on('connection', (ws: WebSocket) => {
 
     if (msg.type === 'full_state' || msg.type === 'sessions_list' || msg.type === 'sessions_grouped') {
       // For full_state and sessions_list, always send the client-specific view
+      const id = getClientActiveSessionId(ws);
       ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
       ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
-      ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(clientStates.get(ws)?.selectedSessionId) }));
+      ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(id) }));
     } else if (msg.type === 'session_started' || msg.type === 'session_ended') {
       // Session lifecycle events go to all clients, plus updated list
+      const id = getClientActiveSessionId(ws);
       ws.send(JSON.stringify(msg));
       ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
-      ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(clientStates.get(ws)?.selectedSessionId) }));
+      ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(id) }));
       // If client has no explicit selection, a new auto-selected session may change their view
       if (!clientSessionId) {
         ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
@@ -138,9 +147,10 @@ wss.on('connection', (ws: WebSocket) => {
           client.selectedSessionId = msg.sessionId;
         }
         // Send filtered state to only this client
+        const id = getClientActiveSessionId(ws);
         ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
         ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
-        ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(msg.sessionId) }));
+        ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(id) }));
       }
     } catch {
       // Ignore invalid messages

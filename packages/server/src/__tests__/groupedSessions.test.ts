@@ -593,6 +593,58 @@ describe('getGroupedSessionsList', () => {
     expect(grouped.projects[0].projectKey).toBe('/home/user/project');
   });
 
+  it('sorts projects by most recent activity before alphabetical', () => {
+    sm.registerAgent(makeAgent('s1', 'agent-a', { status: 'idle' }));
+    sm.registerAgent(makeAgent('s2', 'agent-b', { status: 'idle' }));
+    sm.registerAgent(makeAgent('s3', 'agent-c', { status: 'idle' }));
+
+    // s3 will be auto-selected (most recent), but among s1 and s2,
+    // s1 has more recent activity despite being alphabetically last
+    sm.addSession(makeSession('s1', 'zzz-project', { lastActivity: 2000, gitBranch: 'main' }));
+    sm.addSession(makeSession('s2', 'aaa-project', { lastActivity: 1000, gitBranch: 'main' }));
+    sm.addSession(makeSession('s3', 'mmm-project', { lastActivity: 3000, gitBranch: 'main' }));
+
+    const grouped = sm.getGroupedSessionsList();
+    // mmm-project first (active), then zzz-project (more recent), then aaa-project
+    expect(grouped.projects[0].projectName).toBe('mmm-project');
+    expect(grouped.projects[1].projectName).toBe('zzz-project');
+    expect(grouped.projects[2].projectName).toBe('aaa-project');
+  });
+
+  it('sorts branches by most recent activity before alphabetical', () => {
+    sm.registerAgent(makeAgent('s1', 'agent-a', { status: 'idle' }));
+    sm.registerAgent(makeAgent('s2', 'agent-b', { status: 'idle' }));
+    sm.registerAgent(makeAgent('s3', 'agent-c', { status: 'idle' }));
+
+    const repoPath = '/home/user/project';
+    // s3 auto-selected (most recent)
+    sm.addSession(makeSession('s1', 'project', {
+      lastActivity: 2000,
+      gitBranch: 'zzz-branch',
+      projectPath: repoPath,
+      mainRepoPath: repoPath,
+    }));
+    sm.addSession(makeSession('s2', 'project', {
+      lastActivity: 1000,
+      gitBranch: 'aaa-branch',
+      projectPath: repoPath,
+      mainRepoPath: repoPath,
+    }));
+    sm.addSession(makeSession('s3', 'project', {
+      lastActivity: 3000,
+      gitBranch: 'mmm-branch',
+      projectPath: repoPath,
+      mainRepoPath: repoPath,
+    }));
+
+    const grouped = sm.getGroupedSessionsList();
+    const branches = grouped.projects[0].branches.map(b => b.branch);
+    // mmm-branch first (active), then zzz-branch (more recent), then aaa-branch
+    expect(branches[0]).toBe('mmm-branch');
+    expect(branches[1]).toBe('zzz-branch');
+    expect(branches[2]).toBe('aaa-branch');
+  });
+
   it('team sessions without teamName fall back to projectName', () => {
     sm.registerAgent(makeAgent('team-lead', 'lead', { role: 'lead' }));
 
