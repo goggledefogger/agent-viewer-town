@@ -946,6 +946,87 @@ describe('StateManager', () => {
     });
   });
 
+  describe('selectMostInterestingSession', () => {
+    it('selects a working session over an idle session', () => {
+      const now = Date.now();
+      sm.registerAgent(makeAgent('idle-1', 'idle-agent', { status: 'idle' }));
+      sm.registerAgent(makeAgent('working-1', 'working-agent', { status: 'working' }));
+
+      sm.addSession(makeSession('idle-1', 'project-idle', { lastActivity: now }));
+      sm.addSession(makeSession('working-1', 'project-working', { lastActivity: now - 5000 }));
+
+      // Manually select the idle session
+      sm.selectSession('idle-1');
+      expect(sm.getState().session?.sessionId).toBe('idle-1');
+
+      // selectMostInterestingSession should prefer the working session
+      sm.selectMostInterestingSession();
+      expect(sm.getState().session?.sessionId).toBe('working-1');
+    });
+
+    it('selects a waiting-for-input session over a merely recent session', () => {
+      const now = Date.now();
+      sm.registerAgent(makeAgent('recent-1', 'recent-agent', { status: 'idle' }));
+      sm.registerAgent(makeAgent('waiting-1', 'waiting-agent', { status: 'working', waitingForInput: true }));
+
+      // Recent session has a higher lastActivity (more recent) but no waiting agent
+      sm.addSession(makeSession('recent-1', 'project-recent', { lastActivity: now }));
+      sm.addSession(makeSession('waiting-1', 'project-waiting', { lastActivity: now - 60000 }));
+
+      sm.selectSession('recent-1');
+      sm.selectMostInterestingSession();
+      expect(sm.getState().session?.sessionId).toBe('waiting-1');
+    });
+
+    it('selects a session with agents over an empty session', () => {
+      const now = Date.now();
+      // s-empty has no registered agent — just a session
+      // s-has-agent has a registered agent
+      sm.registerAgent(makeAgent('s-has-agent', 'agent-a', { status: 'idle' }));
+
+      sm.addSession(makeSession('s-empty', 'project-empty', { lastActivity: now }));
+      sm.addSession(makeSession('s-has-agent', 'project-with-agent', { lastActivity: now - 120000 }));
+
+      sm.selectSession('s-empty');
+      sm.selectMostInterestingSession();
+      expect(sm.getState().session?.sessionId).toBe('s-has-agent');
+    });
+
+    it('actively working agent (< 30s activity) scores highest', () => {
+      const now = Date.now();
+      // One session with actively working agent (very recent activity)
+      sm.registerAgent(makeAgent('active-1', 'active-agent', { status: 'working' }));
+      // Another with waiting agent but older activity
+      sm.registerAgent(makeAgent('waiting-1', 'waiting-agent', { status: 'working', waitingForInput: true }));
+
+      sm.addSession(makeSession('active-1', 'project-active', { lastActivity: now - 5000 }));
+      sm.addSession(makeSession('waiting-1', 'project-waiting', { lastActivity: now - 5000 }));
+
+      sm.selectMostInterestingSession();
+      // Active working (1000+200+100+50+recency) > waiting (500+200+100+50+recency)
+      expect(sm.getState().session?.sessionId).toBe('active-1');
+    });
+
+    it('does nothing when there are no sessions', () => {
+      sm.selectMostInterestingSession();
+      expect(sm.getState().session).toBeUndefined();
+    });
+
+    it('uses recency as tiebreaker when sessions have same features', () => {
+      const now = Date.now();
+      sm.registerAgent(makeAgent('s1', 'agent-a', { status: 'idle' }));
+      sm.registerAgent(makeAgent('s2', 'agent-b', { status: 'idle' }));
+
+      sm.addSession(makeSession('s1', 'project-a', { lastActivity: now - 60000 }));
+      sm.addSession(makeSession('s2', 'project-b', { lastActivity: now - 10000 }));
+
+      sm.selectSession('s1');
+      sm.selectMostInterestingSession();
+      // Both have agents (+50), active in last 5 min (+100), s2 has higher recency bonus
+      expect(sm.getState().session?.sessionId).toBe('s2');
+    });
+  });
+
   describe('clearTeamAgents', () => {
     it('removes team agents but keeps solo session agents', () => {
       const soloSession = makeSession('solo-1', 'project-a', { lastActivity: 1000 });

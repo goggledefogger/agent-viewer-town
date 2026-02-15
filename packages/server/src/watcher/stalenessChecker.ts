@@ -1,4 +1,4 @@
-import { IDLE_THRESHOLD_S, STALENESS_CHECK_INTERVAL_MS } from './types';
+import { IDLE_THRESHOLD_S, STALENESS_CHECK_INTERVAL_MS, SESSION_EXPIRY_S } from './types';
 import type { WatcherContext } from './types';
 
 /**
@@ -38,7 +38,7 @@ export function startStalenessChecker(ctx: WatcherContext) {
         continue;
       }
 
-      // Mark as idle after inactivity (but don't remove the session)
+      // Mark as idle after inactivity
       if (idleSeconds >= IDLE_THRESHOLD_S) {
         stateManager.setAgentWaitingById(tracked.sessionId, false);
 
@@ -56,6 +56,21 @@ export function startStalenessChecker(ctx: WatcherContext) {
           stateManager.removeAgent(tracked.sessionId);
           trackedSessions.delete(tracked.filePath);
           registeredSubagents.delete(tracked.sessionId);
+        }
+
+        // Remove solo sessions after extended inactivity (SESSION_EXPIRY_S).
+        // This prevents stale sessions from accumulating over hours.
+        // Event-driven: broadcasts session_ended to all connected clients.
+        if (tracked.isSolo && !agent?.isSubagent && idleSeconds >= SESSION_EXPIRY_S) {
+          console.log(`[watcher] Expiring stale session: ${tracked.sessionId.slice(0, 8)} (idle ${Math.round(idleSeconds)}s)`);
+          stateManager.removeAgent(tracked.sessionId);
+          stateManager.removeSession(tracked.sessionId);
+          trackedSessions.delete(tracked.filePath);
+          ctx.registeredSessions.delete(tracked.sessionId);
+          // If the expired session was the active one, select the next most interesting
+          if (!stateManager.getState().session) {
+            stateManager.selectMostInterestingSession();
+          }
         }
       }
     }

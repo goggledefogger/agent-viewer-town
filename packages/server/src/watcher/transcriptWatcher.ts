@@ -49,7 +49,7 @@ export function startTranscriptWatcher(ctx: WatcherContext) {
     await Promise.allSettled(pendingDetections);
     pendingDetections = [];
     console.log(`[watcher] Initial scan complete, broadcasting ${stateManager.getSessions().size} sessions`);
-    stateManager.selectMostRecentSession();
+    stateManager.selectMostInterestingSession();
     stateManager.broadcastSessionsList();
   });
 
@@ -286,14 +286,20 @@ export function startTranscriptWatcher(ctx: WatcherContext) {
       return; // Don't continue with normal session registration
     }
 
-    // Determine initial status and last activity from file modification time
+    // Determine initial status and last activity from file modification time.
+    // Use a tiered heuristic: files actively being written to (< 10s) are likely
+    // working; files idle for 10-60s are ambiguous; files idle > 60s are definitely idle.
     let initialStatus: 'working' | 'idle' = 'idle';
     let fileMtime = Date.now();
     try {
       const stats = await fsStat(filePath);
       fileMtime = stats.mtimeMs;
       const ageSeconds = (Date.now() - fileMtime) / 1000;
-      initialStatus = ageSeconds < IDLE_THRESHOLD_S ? 'working' : 'idle';
+      // Only default to 'working' if the file is VERY recently modified (< 10s).
+      // This prevents showing stale "working" status for agents that finished
+      // responding 30-50 seconds ago but haven't been idle long enough for
+      // staleness check to fire.
+      initialStatus = ageSeconds < 10 ? 'working' : 'idle';
     } catch { /* default to idle, current time */ }
 
     // If a Stop hook has already fired for this session, respect it.
@@ -305,36 +311,55 @@ export function startTranscriptWatcher(ctx: WatcherContext) {
 
     // Read the tail of the transcript to determine accurate initial state.
     // Without this, agents show as just "working" or "idle" with no currentAction.
+    // IMPORTANT: Don't break on the first tool_call — scan the full window to
+    // check if a turn_end exists, which definitively means the agent is idle.
     let initialAction: string | undefined;
     let initialWaiting = false;
+    let foundTurnEnd = false;
+    let foundToolCall: { toolName: string; isUserPrompt: boolean } | null = null;
+    let foundThinking: string | null = null;
+    let foundCompact = false;
+
     const tailLines = lines.slice(-30);
     for (let i = tailLines.length - 1; i >= 0; i--) {
       const parsed = parseTranscriptLine(tailLines[i]);
       if (!parsed) continue;
 
       // turn_duration = definitive signal that the last turn completed.
-      // The session is idle regardless of file mtime.
       if (parsed.type === 'turn_end') {
-        initialStatus = 'idle';
+        foundTurnEnd = true;
         break;
       }
-      if (parsed.type === 'tool_call' && parsed.toolName) {
-        initialAction = parsed.toolName;
-        if (parsed.isUserPrompt) initialWaiting = true;
-        break;
+      // Record the first tool_call we find but DON'T break — keep scanning
+      // for a turn_end that may appear further back in the window.
+      if (parsed.type === 'tool_call' && parsed.toolName && !foundToolCall) {
+        foundToolCall = { toolName: parsed.toolName, isUserPrompt: !!parsed.isUserPrompt };
+        continue;
       }
       if (parsed.type === 'agent_activity') {
-        // Last meaningful event was a tool_result — agent is between actions
+        // tool_result — agent is between actions, treat as a natural break point
         break;
       }
-      if (parsed.type === 'thinking' && parsed.toolName) {
-        initialAction = parsed.toolName;
-        break;
+      if (parsed.type === 'thinking' && parsed.toolName && !foundThinking) {
+        foundThinking = parsed.toolName;
+        continue;
       }
-      if (parsed.type === 'compact') {
-        initialAction = 'Compacting conversation...';
-        break;
+      if (parsed.type === 'compact' && !foundCompact) {
+        foundCompact = true;
+        continue;
       }
+    }
+
+    // Apply findings in priority order
+    if (foundTurnEnd) {
+      initialStatus = 'idle';
+    } else if (foundToolCall) {
+      initialAction = foundToolCall.toolName;
+      if (foundToolCall.isUserPrompt) initialWaiting = true;
+    } else if (foundThinking) {
+      initialAction = foundThinking;
+    } else if (foundCompact) {
+      initialAction = 'Compacting conversation...';
     }
 
     // Always read the real git branch and worktree info from the working directory.

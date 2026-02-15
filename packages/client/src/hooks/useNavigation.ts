@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { GroupedSessionsList, ProjectGroup, BranchGroup } from '@agent-viewer/shared';
 
 export type ZoomLevel = 0 | 1 | 2;
@@ -63,6 +63,10 @@ export function useNavigation(
     })(),
   }));
 
+  // Track whether user has manually navigated — prevents auto-zoom from
+  // re-firing on every WebSocket update and trapping the user
+  const hasUserNavigated = useRef(false);
+
   // Persist hideIdle preference
   useEffect(() => {
     try {
@@ -73,6 +77,7 @@ export function useNavigation(
   }, [navState.hideIdle]);
 
   const zoomTo = useCallback((level: ZoomLevel, projectKey?: string, branch?: string) => {
+    hasUserNavigated.current = true;
     setNavState((prev) => ({
       ...prev,
       zoomLevel: level,
@@ -104,19 +109,19 @@ export function useNavigation(
 
   const projects = grouped?.projects ?? [];
 
-  // Auto-zoom: if only 1 project, zoom to it; if 1 project + 1 branch, zoom to branch
+  // Auto-zoom on initial mount: if only 1 project, zoom to it; 1 project + 1 branch → zoom to branch.
+  // Once the user has manually navigated (via zoomTo), auto-zoom is permanently disabled so
+  // WebSocket updates can't trap the user by re-zooming them away from level 0.
   useEffect(() => {
+    if (hasUserNavigated.current) return;
     if (projects.length === 0) return;
     setNavState((prev) => {
-      // Only auto-zoom from level 0 if user hasn't manually navigated
       if (prev.zoomLevel !== 0) return prev;
       if (projects.length === 1) {
         const p = projects[0];
         if (p.branches.length === 1) {
-          // Single project, single branch → zoom straight to branch level
           return { ...prev, zoomLevel: 2 as ZoomLevel, projectKey: p.projectKey, branch: p.branches[0].branch };
         }
-        // Single project, multiple branches → zoom to project
         return { ...prev, zoomLevel: 1 as ZoomLevel, projectKey: p.projectKey };
       }
       return prev;
@@ -178,7 +183,8 @@ export function useNavigation(
     return result;
   }, [projects, navState.searchFilter, navState.hideIdle]);
 
-  // Build breadcrumbs
+  // Build breadcrumbs — always include a clickable root segment when zoomed in
+  // so the user can always navigate back to the top level.
   const breadcrumbs = useMemo((): BreadcrumbSegment[] => {
     const segments: BreadcrumbSegment[] = [];
     const totalProjects = projects.length;
@@ -190,14 +196,12 @@ export function useNavigation(
         isCurrent: true,
       });
     } else {
-      // Only show "All" breadcrumb if there are multiple projects to go back to
-      if (totalProjects > 1) {
-        segments.push({
-          label: 'All',
-          level: 0,
-          isCurrent: false,
-        });
-      }
+      // Always show a clickable root breadcrumb when zoomed in, even with single project
+      segments.push({
+        label: totalProjects > 1 ? 'All' : 'Sessions',
+        level: 0,
+        isCurrent: false,
+      });
     }
 
     if (navState.zoomLevel >= 1 && currentProject) {
@@ -220,7 +224,7 @@ export function useNavigation(
     }
 
     return segments;
-  }, [navState.zoomLevel, navState.projectKey, currentProject, currentBranch]);
+  }, [navState.zoomLevel, navState.projectKey, currentProject, currentBranch, projects]);
 
   const waitingCount = useMemo(() => {
     return projects.filter((p) => p.hasWaitingAgent).reduce((count, p) => {
