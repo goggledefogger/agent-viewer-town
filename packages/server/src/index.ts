@@ -45,7 +45,7 @@ app.post('/api/hook', (req, res) => {
     // Validate event structure
     const validationError = validateHookEvent(event);
     if (validationError) {
-      console.warn('[hooks] Invalid event:', validationError);
+      console.warn('[hooks] Invalid event rejected:', validationError);
       res.status(400).json({ ok: false, error: validationError });
       return;
     }
