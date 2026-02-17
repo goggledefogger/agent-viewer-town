@@ -129,6 +129,15 @@ export function applyMessage(state: TeamState, msg: WSMessage): TeamState {
       };
 
     case 'agent_added':
+      // Deduplicate: if agent already exists, treat as update
+      if (state.agents.some((a) => a.id === msg.data.id)) {
+        return {
+          ...state,
+          agents: state.agents.map((a) =>
+            a.id === msg.data.id ? msg.data : a
+          ),
+        };
+      }
       return {
         ...state,
         agents: [...state.agents, msg.data],
