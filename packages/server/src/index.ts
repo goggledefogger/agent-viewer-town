@@ -4,11 +4,12 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
+import { validateHookEvent } from './validation';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
-const app = express();
-const server = createServer(app);
+export const app = express();
+export const server = createServer(app);
 
 // Security headers
 app.disable('x-powered-by');
@@ -40,6 +41,15 @@ app.get('/api/state', (_req, res) => {
 app.post('/api/hook', (req, res) => {
   try {
     const event = req.body;
+
+    // Validate event structure
+    const validationError = validateHookEvent(event);
+    if (validationError) {
+      console.warn('[hooks] Invalid event:', validationError);
+      res.status(400).json({ ok: false, error: validationError });
+      return;
+    }
+
     if (event && typeof event === 'object' && event.hook_event_name) {
       hookHandler.handleEvent(event);
     }
@@ -170,7 +180,7 @@ wss.on('connection', (ws: WebSocket) => {
 });
 
 // Start file watcher
-const watcher = startWatcher(stateManager);
+export const watcher = startWatcher(stateManager);
 
 // Graceful shutdown
 process.on('SIGINT', () => {
