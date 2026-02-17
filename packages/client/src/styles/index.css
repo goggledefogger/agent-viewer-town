@@ -307,6 +307,51 @@ html, body, #root {
   flex: 1;
   position: relative;
   overflow: hidden;
+  /* Cursor style is now handled dynamically via inline style in Scene.tsx for grab/grabbing */
+}
+
+/* Zoom Controls Overlay */
+.scene-controls {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+}
+
+.scene-controls button {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  background: rgba(15, 52, 96, 0.8);
+  border: 1px solid #4169E1;
+  color: #e2e8f0;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+}
+
+.scene-controls button:hover {
+  background: rgba(65, 105, 225, 0.9);
+  color: white;
+  transform: scale(1.05);
+}
+
+.scene-controls button:active {
+  transform: scale(0.95);
+}
+
+.scene-controls button[title="Reset View"] {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* Sidebar fixed width */

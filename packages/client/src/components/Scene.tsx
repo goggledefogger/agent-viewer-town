@@ -528,13 +528,145 @@ export function Scene({ state, className, focusAgentId, onFocusTask }: SceneProp
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
 
-  // When focusAgentId changes from outside (e.g. clicking agent link in sidebar),
-  // select that agent in the scene
+  // --- Zoom & Pan State ---
+  // Default viewBox: x=0, y=0, w=900, h=600
+  const [viewport, setViewport] = useState({ x: 0, y: 0, w: 900, h: 600 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  // Zoom constraints
+  const MIN_ZOOM = 0.4;  // Zoomed out (see more)
+  const MAX_ZOOM = 2.5;  // Zoomed in (see details)
+  const BASE_WIDTH = 900;
+  const BASE_HEIGHT = 600;
+
+  // Helper to clamp values
+  const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max);
+
+  // Handle Zoom (Wheel)
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey) {
+      // Browser zoom - let it happen or handle pinch?
+      // For now, standard wheel zoom
+    }
+
+    const zoomStep = 0.1;
+    const direction = e.deltaY > 0 ? 1 : -1; // deltaY > 0 is scroll down (zoom out)
+    const currentZoom = BASE_WIDTH / viewport.w;
+    let newZoom = currentZoom - direction * zoomStep;
+    newZoom = clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
+
+    const newW = BASE_WIDTH / newZoom;
+    const newH = BASE_HEIGHT / newZoom;
+
+    // Zoom centered on pointer requires complex math for SVG coordinates.
+    // For simplicity/stability, we zoom centered on the current view center first,
+    // which is predictable and standard for this type of view.
+    const centerX = viewport.x + viewport.w / 2;
+    const centerY = viewport.y + viewport.h / 2;
+
+    const newX = centerX - newW / 2;
+    const newY = centerY - newH / 2;
+
+    setViewport({ x: newX, y: newY, w: newW, h: newH });
+  };
+
+  // Handle Pan (Drag)
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only drag with left mouse button
+    if (e.button !== 0) return;
+    setIsDragging(true);
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    
+    // Delta in screen pixels
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+
+    // Convert to SVG units based on current zoom
+    // SVG width / screen width = ratio
+    // But simplier: viewport.w / clientWidth (approx if 100% width)
+    // Actually, we can just use a sensitivity factor or use the ratio if container ref exist.
+    // Let's assume standard behavior: 
+    // If we move mouse right, we drag the "paper" right, so the view (camera) moves LEFT.
+    // viewport.x -= dx * (viewport.w / svgWidth)
+    // For now, using a calculated ratio:
+    const svgEl = e.currentTarget.closest('svg');
+    const ratio = svgEl ? viewport.w / svgEl.clientWidth : 1;
+    
+    setViewport(prev => ({
+      ...prev,
+      x: prev.x - dx * ratio,
+      y: prev.y - dy * ratio
+    }));
+    
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+  };
+
+  // Zoom Buttons Handlers
+  const handleZoomIn = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const currentZoom = BASE_WIDTH / viewport.w;
+    const newZoom = clamp(currentZoom + 0.2, MIN_ZOOM, MAX_ZOOM);
+    const newW = BASE_WIDTH / newZoom;
+    const newH = BASE_HEIGHT / newZoom;
+    
+    // Keep center
+    const centerX = viewport.x + viewport.w / 2;
+    const centerY = viewport.y + viewport.h / 2;
+    
+    setViewport({ x: centerX - newW/2, y: centerY - newH/2, w: newW, h: newH });
+  };
+
+  const handleZoomOut = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const currentZoom = BASE_WIDTH / viewport.w;
+    const newZoom = clamp(currentZoom - 0.2, MIN_ZOOM, MAX_ZOOM);
+    const newW = BASE_WIDTH / newZoom;
+    const newH = BASE_HEIGHT / newZoom;
+    
+    const centerX = viewport.x + viewport.w / 2;
+    const centerY = viewport.y + viewport.h / 2;
+    
+    setViewport({ x: centerX - newW/2, y: centerY - newH/2, w: newW, h: newH });
+  };
+
+  const handleResetZoom = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setViewport({ x: 0, y: 0, w: BASE_WIDTH, h: BASE_HEIGHT });
+  };
+
+  // When focusAgentId changes from outside, select that agent AND center on them
   useEffect(() => {
     if (focusAgentId) {
       setSelectedAgentId(focusAgentId);
+      
+      // Also pan to the agent
+      const positions = computeAllPositions(state.agents); // Recompute locally or use memo
+      const pos = positions.get(focusAgentId);
+      if (pos) {
+        // Center the view on this agent
+        // Preserve current zoom level (width/height)
+        setViewport(prev => ({
+          ...prev,
+          x: pos.x - prev.w / 2,
+          y: pos.y - prev.h / 2
+        }));
+      }
     }
-  }, [focusAgentId]);
+  }, [focusAgentId, state.agents]);
 
   // Crowded scene: dim non-hovered agents when 5+ agents present
   const isCrowded = state.agents.length >= 5;
@@ -562,13 +694,25 @@ export function Scene({ state, className, focusAgentId, onFocusTask }: SceneProp
   }
 
   return (
-    <div className={`scene-container${className ? ` ${className}` : ''}`}>
+    <div className={`scene-container${className ? ` ${className}` : ''}`} style={{ cursor: isDragging ? 'grabbing' : 'grab' }}>
+      {/* Zoom Controls Overlay */}
+      <div className="scene-controls">
+        <button onClick={handleZoomIn} title="Zoom In">+</button>
+        <button onClick={handleZoomOut} title="Zoom Out">−</button>
+        <button onClick={handleResetZoom} title="Reset View">Reset</button>
+      </div>
+
       <svg
-        viewBox="0 0 900 600"
+        viewBox={`${viewport.x} ${viewport.y} ${viewport.w} ${viewport.h}`}
         width="100%"
         height="100%"
         preserveAspectRatio="xMidYMid meet"
-        style={{ background: 'var(--color-bg)' }}
+        style={{ background: 'var(--color-bg)', touchAction: 'none' }}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
       >
         {/* Sky gradient */}
         <defs>
@@ -578,11 +722,16 @@ export function Scene({ state, className, focusAgentId, onFocusTask }: SceneProp
             <stop offset="100%" stopColor="#0f3460" />
           </linearGradient>
         </defs>
-        <rect width="900" height="600" fill="url(#skyGrad)" />
-
-        {/* Ground */}
-        <rect x="0" y="480" width="900" height="120" fill="#2d5a27" rx="0" />
-        <rect x="0" y="480" width="900" height="4" fill="#4a6741" />
+        <rect x={viewport.x} y={viewport.y} width={viewport.w} height={viewport.h} fill="url(#skyGrad)" />
+        {/* Note: We redraw sky rect to cover full viewport area. 
+            Alternatively, use a fixed huge rect or rely on container bg.
+            Re-using viewbox coords ensures it covers the visible area. */}
+            
+        {/* Ground - Fixed Y coordinates meant for 600h scene. 
+            Background elements need to stay relative to the "world" coordinates (0,0 to 900,600).
+        */}
+        <rect x="-1000" y="480" width="3000" height="500" fill="#2d5a27" rx="0" />
+        <rect x="-1000" y="480" width="3000" height="4" fill="#4a6741" />
 
         {/* Branch grouping zones — subtle background enclosures behind agents sharing a branch */}
         {branchZones.map((zone) => (
@@ -615,22 +764,22 @@ export function Scene({ state, className, focusAgentId, onFocusTask }: SceneProp
         {branchLanes.size > 0 && Array.from(branchLanes.entries()).map(([branch, lane]) => (
           <g key={`lane-${branch}`}>
             <rect
-              x="0"
+              x="-1000"
               y={lane.y}
-              width="900"
+              width="3000"
               height="18"
               fill={lane.color}
               opacity="0.12"
             />
             <rect
-              x="0"
+              x="-1000"
               y={lane.y}
-              width="900"
+              width="3000"
               height="1"
               fill={lane.color}
               opacity="0.2"
             />
-            {/* Branch name label at left edge of lane */}
+            {/* Branch name label — fixed X position? No, should pan with world. */}
             <text
               x="8"
               y={lane.y + 12}
