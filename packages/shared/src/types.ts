@@ -13,6 +13,8 @@ export interface AgentState {
   recentActions?: Array<{ action: string; timestamp: number }>;
   /** True when the agent is blocked waiting for user approval/input */
   waitingForInput?: boolean;
+  /** The specific type of waiting state, for richer notification/UI handling */
+  waitingType?: 'permission' | 'question' | 'plan' | 'plan_approval';
   /** True if this is a subagent spawned via the Task tool */
   isSubagent?: boolean;
   /** The parent session/agent ID that spawned this subagent */

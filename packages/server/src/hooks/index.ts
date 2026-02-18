@@ -268,7 +268,7 @@ export function createHookHandler(stateManager: StateManager) {
 
   function handlePermissionRequest(event: PermissionRequestEvent, agentId: string) {
     const { action, context } = describeToolAction(event.tool_name, event.tool_input);
-    stateManager.setAgentWaitingById(agentId, true, action, context);
+    stateManager.setAgentWaitingById(agentId, true, action, context, 'permission');
   }
 
   function handlePreCompact(agentId: string) {

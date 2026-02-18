@@ -531,8 +531,13 @@ export function startTranscriptWatcher(ctx: WatcherContext) {
       if (parsed.type === 'tool_call' && parsed.toolName) {
         // Immediately mark as waiting for tools that always require user input
         if (parsed.isUserPrompt && currentTracked) {
+          // Determine the specific waiting type from the raw tool name
+          let waitingType: 'question' | 'plan' | 'plan_approval' | undefined;
+          if (parsed.rawToolName === 'AskUserQuestion') waitingType = 'question';
+          else if (parsed.rawToolName === 'EnterPlanMode' || parsed.rawToolName === 'ExitPlanMode') waitingType = 'plan';
+
           if (currentTracked.isSolo) {
-            stateManager.setAgentWaitingById(currentTracked.sessionId, true, parsed.toolName);
+            stateManager.setAgentWaitingById(currentTracked.sessionId, true, parsed.toolName, undefined, waitingType);
           } else {
             const agentName = parsed.agentName || findWorkingAgentName();
             if (agentName) {

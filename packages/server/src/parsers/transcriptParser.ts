@@ -4,6 +4,8 @@ export interface ParsedTranscriptLine {
   type: 'message' | 'tool_call' | 'agent_activity' | 'compact' | 'thinking' | 'progress' | 'turn_end' | 'unknown';
   agentName?: string;
   toolName?: string;
+  /** The raw tool name (e.g., 'AskUserQuestion') before description formatting */
+  rawToolName?: string;
   message?: MessageState;
   /** True when this tool call always requires user input (e.g., AskUserQuestion) */
   isUserPrompt?: boolean;
@@ -187,6 +189,7 @@ export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
       type: 'tool_call',
       agentName,
       toolName: describeToolAction(block),
+      rawToolName: block.name,
       isUserPrompt: userPromptTools.includes(block.name),
     };
   }

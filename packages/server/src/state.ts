@@ -189,6 +189,7 @@ export class StateManager {
         // Clear waiting flag when going idle or done
         if (status === 'idle' || status === 'done') {
           agent.waitingForInput = false;
+          agent.waitingType = undefined;
         }
         // Push to recent actions ring buffer
         if (action && status === 'working') {
@@ -205,6 +206,7 @@ export class StateManager {
       agent.actionContext = actionContext;
       if (status === 'idle' || status === 'done') {
         agent.waitingForInput = false;
+        agent.waitingType = undefined;
       }
       this.broadcast({ type: 'agent_update', data: agent });
     }
@@ -226,6 +228,7 @@ export class StateManager {
     agent.actionContext = actionContext;
     if (status === 'idle' || status === 'done') {
       agent.waitingForInput = false;
+      agent.waitingType = undefined;
     }
     // Push to recent actions ring buffer
     if (action && status === 'working') {
@@ -239,6 +242,7 @@ export class StateManager {
       displayed.actionContext = actionContext;
       if (status === 'idle' || status === 'done') {
         displayed.waitingForInput = false;
+        displayed.waitingType = undefined;
       }
 
       // For status transitions (idle, done) broadcast immediately.
@@ -288,16 +292,18 @@ export class StateManager {
    * This is essential for solo sessions where multiple sessions in the same
    * project would have agents with the same name (slug).
    */
-  setAgentWaitingById(agentId: string, waiting: boolean, action?: string, actionContext?: string) {
+  setAgentWaitingById(agentId: string, waiting: boolean, action?: string, actionContext?: string, waitingType?: AgentState['waitingType']) {
     const agent = this.allAgents.get(agentId);
     if (!agent) return;
     agent.waitingForInput = waiting;
+    agent.waitingType = waiting ? waitingType : undefined;
     if (action) agent.currentAction = action;
     if (actionContext !== undefined) agent.actionContext = actionContext;
     // Also update in the displayed state if this agent is currently shown
     const displayed = this.state.agents.find((a) => a.id === agentId);
     if (displayed) {
       displayed.waitingForInput = waiting;
+      displayed.waitingType = waiting ? waitingType : undefined;
       if (action) displayed.currentAction = action;
       if (actionContext !== undefined) displayed.actionContext = actionContext;
       this.broadcast({ type: 'agent_update', data: displayed });
