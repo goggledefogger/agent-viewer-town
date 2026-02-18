@@ -134,10 +134,13 @@ export function NavigationTree({
       ) : (
         visibleProjects.map((project, pIdx) => {
           const isFocused = focusIndex === pIdx;
+          const isActive = activeSessionId != null && project.branches.some((b) =>
+            b.sessions.some((s) => s.sessionId === activeSessionId)
+          );
           return (
             <button
               key={project.projectKey}
-              className={`nav-project-row ${isFocused ? 'focused' : ''}`}
+              className={`nav-project-row ${isFocused ? 'focused' : ''} ${isActive ? 'active' : ''}`}
               data-nav-row
               onClick={() => {
                 // Select best session for scene, then drill into project
@@ -191,10 +194,12 @@ export function NavigationTree({
             {currentProject.totalSessions} session{currentProject.totalSessions !== 1 ? 's' : ''}, {currentProject.totalAgents} agent{currentProject.totalAgents !== 1 ? 's' : ''}
           </span>
         </div>
-        {currentProject.branches.map((branch) => (
+        {currentProject.branches.map((branch) => {
+          const isBranchActive = activeSessionId != null && branch.sessions.some((s) => s.sessionId === activeSessionId);
+          return (
           <button
             key={branch.branch}
-            className="nav-branch-row"
+            className={`nav-branch-row ${isBranchActive ? 'active' : ''}`}
             data-nav-row
             onClick={() => {
               // Select best session for this branch
@@ -216,7 +221,8 @@ export function NavigationTree({
             </span>
             {branch.sessions.length > 1 && <span className="nav-row-arrow">&gt;</span>}
           </button>
-        ))}
+        );
+        })}
       </div>
     );
   };
@@ -301,7 +307,7 @@ export function NavigationTree({
         <button
           className={`nav-filter-toggle ${hideIdle ? 'active' : ''}`}
           onClick={onToggleHideIdle}
-          title="Hide idle sessions (>5min inactive)"
+          title="Show only sessions with active or waiting agents"
         >
           Active Only
         </button>

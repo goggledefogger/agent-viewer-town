@@ -137,11 +137,10 @@ function getClientActiveSessionId(ws: WebSocket): string | undefined {
 
 wss.on('connection', (ws: WebSocket) => {
   console.log('[ws] client connected');
-  clientStates.set(ws, {});
-
-  // Send current state, sessions list, and grouped sessions on connect
-  // Use the same resolved active session ID for both state and sort consistency
-  const activeId = getClientActiveSessionId(ws);
+  // Lock the client into their initial session so subsequent server
+  // auto-selections (from addSession/selectSession) don't change their view
+  const activeId = stateManager.getDefaultSessionId();
+  clientStates.set(ws, { selectedSessionId: activeId });
   ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
   ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
   ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(activeId) }));

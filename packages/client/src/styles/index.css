@@ -1301,6 +1301,11 @@ html, body, #root {
   background: rgba(65, 105, 225, 0.12);
 }
 
+.nav-project-row.active {
+  border-color: var(--color-green);
+  background: rgba(40, 167, 69, 0.08);
+}
+
 .nav-project-name {
   font-weight: bold;
   font-size: 13px;
@@ -1375,6 +1380,11 @@ html, body, #root {
 .nav-branch-row:hover {
   background: rgba(65, 105, 225, 0.06);
   border-color: var(--color-blue);
+}
+
+.nav-branch-row.active {
+  border-color: var(--color-green);
+  background: rgba(40, 167, 69, 0.08);
 }
 
 .nav-branch-name {

@@ -31,6 +31,7 @@ export function useWebSocket(url: string): WebSocketState {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const hasConnectedOnce = useRef(false);
+  const hasLockedSession = useRef(false);
 
   const selectSession = useCallback((sessionId: string) => {
     const ws = wsRef.current;
@@ -47,6 +48,7 @@ export function useWebSocket(url: string): WebSocketState {
       console.log('[ws] connected');
       setConnectionStatus('connected');
       hasConnectedOnce.current = true;
+      hasLockedSession.current = false;
     };
 
     ws.onmessage = (event) => {
@@ -84,6 +86,11 @@ export function useWebSocket(url: string): WebSocketState {
           default:
             if (msg.type === 'full_state') {
               console.log(`[ws] full_state: session=${msg.data.session?.projectName || 'none'} agents=${msg.data.agents?.length || 0}`);
+              // Lock into the initial session so server auto-selections don't change our view
+              if (!hasLockedSession.current && msg.data.session?.sessionId && ws.readyState === WebSocket.OPEN) {
+                hasLockedSession.current = true;
+                ws.send(JSON.stringify({ type: 'select_session', sessionId: msg.data.session.sessionId }));
+              }
             }
             setState((prev) => applyMessage(prev, msg));
             break;

@@ -172,7 +172,7 @@ export function useNavigation(
       result = result
         .map((project) => {
           const activeBranches = project.branches.filter((b) =>
-            b.sessions.some((s) => now - s.lastActivity < IDLE_THRESHOLD)
+            b.sessions.some((s) => s.hasWaitingAgent || now - s.lastActivity < IDLE_THRESHOLD)
           );
           if (activeBranches.length === 0) return null;
           return { ...project, branches: activeBranches };
