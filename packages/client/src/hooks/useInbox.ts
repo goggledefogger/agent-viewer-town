@@ -20,19 +20,34 @@ const PRIORITY_ORDER: Record<NotificationType, number> = {
   agent_stopped: 6,
 };
 
-function getNotificationType(agent: AgentState): NotificationType | null {
-  if (!agent.waitingForInput) return null;
+/** Max number of notifications to keep in the list */
+const MAX_NOTIFICATIONS = 50;
+
+function getNotificationType(agent: AgentState): NotificationType {
+  if (!agent.waitingForInput) return 'permission_request';
   const action = (agent.currentAction || '').toLowerCase();
-  if (action.includes('permission') || action.includes('approve')) return 'permission_request';
+  // Check for specific waiting types in order of specificity
+  if (action.includes('plan') && (action.includes('approv') || action.includes('review'))) return 'plan_approval';
   if (action.includes('question') || action.includes('ask')) return 'ask_user_question';
-  if (action.includes('plan')) return 'plan_approval';
-  return 'permission_request'; // default waiting = permission request
+  if (action.includes('permission') || action.includes('approve') || action.includes('allow')) return 'permission_request';
+  // Default: permission_request is the most common waiting type
+  return 'permission_request';
 }
 
 /** Client-side inbox: generates notifications from agent state transitions */
 export function useInbox(agents: AgentState[], session?: SessionInfo): InboxResult {
   const [notifications, setNotifications] = useState<InboxNotification[]>([]);
   const prevWaiting = useRef<Set<string>>(new Set());
+  const prevSessionId = useRef<string | undefined>(undefined);
+
+  // Reset prevWaiting ref when session changes to prevent stale IDs
+  useEffect(() => {
+    const currentSessionId = session?.sessionId;
+    if (currentSessionId !== prevSessionId.current) {
+      prevWaiting.current = new Set();
+      prevSessionId.current = currentSessionId;
+    }
+  }, [session?.sessionId]);
 
   // Detect waiting-for-input transitions
   useEffect(() => {
@@ -42,9 +57,9 @@ export function useInbox(agents: AgentState[], session?: SessionInfo): InboxResu
       if (agent.waitingForInput) {
         currentWaiting.add(agent.id);
 
-        // New waiting agent — create notification
+        // New waiting agent -- create notification
         if (!prevWaiting.current.has(agent.id)) {
-          const type = getNotificationType(agent) || 'permission_request';
+          const type = getNotificationType(agent);
           const actionText = agent.currentAction || 'Waiting for input';
           const notif: InboxNotification = {
             id: `${agent.id}-${Date.now()}`,
@@ -61,7 +76,14 @@ export function useInbox(agents: AgentState[], session?: SessionInfo): InboxResu
             read: false,
             resolved: false,
           };
-          setNotifications((prev) => [notif, ...prev]);
+          setNotifications((prev) => {
+            const updated = [notif, ...prev];
+            // Cap at MAX_NOTIFICATIONS, trim oldest
+            if (updated.length > MAX_NOTIFICATIONS) {
+              return updated.slice(0, MAX_NOTIFICATIONS);
+            }
+            return updated;
+          });
         }
       }
     }
