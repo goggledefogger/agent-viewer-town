@@ -78,7 +78,7 @@ function filterProjects(
     result = result
       .map((project) => {
         const activeBranches = project.branches.filter((b) =>
-          b.sessions.some((s) => now - s.lastActivity < IDLE_THRESHOLD)
+          b.sessions.some((s) => s.hasWaitingAgent || now - s.lastActivity < IDLE_THRESHOLD)
         );
         if (activeBranches.length === 0) return null;
         return { ...project, branches: activeBranches };
@@ -497,5 +497,72 @@ describe('Breadcrumb edge cases', () => {
     expect(crumbs[1].label).toBe('my-app');
     // At level 2, project is NOT current (branch should be), but branch is missing
     expect(crumbs[1].isCurrent).toBe(false);
+  });
+});
+
+describe('Regression: hideIdle preserves sessions with waiting agents', () => {
+  const now = Date.now();
+
+  it('keeps an idle session that has a waiting agent', () => {
+    const waitingSession = makeSession({
+      sessionId: 'waiting-idle',
+      projectName: 'proj',
+      slug: 'waiting-session',
+      lastActivity: now - 10 * 60 * 1000, // 10 min ago (idle)
+      hasWaitingAgent: true,
+    });
+
+    const projects = [
+      makeProject('proj', [
+        makeBranch('main', [waitingSession]),
+      ]),
+    ];
+
+    const result = filterProjects(projects, '', true);
+    expect(result).toHaveLength(1);
+    expect(result[0].branches[0].sessions[0].sessionId).toBe('waiting-idle');
+  });
+
+  it('removes idle session without waiting agent', () => {
+    const idleSession = makeSession({
+      sessionId: 'idle-no-waiting',
+      projectName: 'proj',
+      slug: 'idle-session',
+      lastActivity: now - 10 * 60 * 1000,
+      hasWaitingAgent: false,
+    });
+
+    const projects = [
+      makeProject('proj', [
+        makeBranch('main', [idleSession]),
+      ]),
+    ];
+
+    const result = filterProjects(projects, '', true);
+    expect(result).toHaveLength(0);
+  });
+
+  it('keeps branch with mixed idle sessions when one has waiting agent', () => {
+    const waitingSession = makeSession({
+      sessionId: 'waiting',
+      lastActivity: now - 10 * 60 * 1000,
+      hasWaitingAgent: true,
+    });
+    const idleSession = makeSession({
+      sessionId: 'idle',
+      lastActivity: now - 10 * 60 * 1000,
+      hasWaitingAgent: false,
+    });
+
+    const projects = [
+      makeProject('proj', [
+        makeBranch('main', [waitingSession, idleSession]),
+      ]),
+    ];
+
+    const result = filterProjects(projects, '', true);
+    expect(result).toHaveLength(1);
+    // Both sessions kept because branch-level filter keeps whole branch
+    expect(result[0].branches[0].sessions).toHaveLength(2);
   });
 });

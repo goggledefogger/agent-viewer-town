@@ -659,4 +659,34 @@ describe('getGroupedSessionsList', () => {
     expect(grouped.projects[0].projectKey).toBe('team:my-team-project');
     expect(grouped.projects[0].projectName).toBe('my-team-project');
   });
+
+  it('team session with inherited projectPath groups under parent project', () => {
+    // Regression: team sessions should group under their parent project
+    // when they inherit projectPath from a solo session (via teamWatcher).
+    sm.registerAgent(makeAgent('s1', 'agent-solo'));
+    sm.registerAgent(makeAgent('team-lead', 'lead', { role: 'lead', teamName: 'nav-fix' }));
+
+    // Solo session exists first
+    sm.addSession(makeSession('s1', 'agent-viewer-town', {
+      lastActivity: 1000,
+      gitBranch: 'main',
+      projectPath: '/home/user/agent-viewer-town',
+    }));
+
+    // Team session inherits the same projectPath (as teamWatcher now does)
+    sm.addSession(makeSession('team-1', 'agent-viewer-town', {
+      lastActivity: 2000,
+      isTeam: true,
+      teamName: 'nav-fix',
+      projectPath: '/home/user/agent-viewer-town',
+      gitBranch: 'feature/nav-fix',
+    }));
+
+    const grouped = sm.getGroupedSessionsList();
+    // Both should be under one project since they share projectPath
+    expect(grouped.projects).toHaveLength(1);
+    expect(grouped.projects[0].projectKey).toBe('/home/user/agent-viewer-town');
+    expect(grouped.projects[0].branches).toHaveLength(2);
+    expect(grouped.projects[0].totalSessions).toBe(2);
+  });
 });
