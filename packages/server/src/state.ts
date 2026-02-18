@@ -542,7 +542,18 @@ export class StateManager {
    */
   getStateForSession(sessionId: string): TeamState {
     const session = this.sessions.get(sessionId);
-    if (!session) return this.state;
+    if (!session) {
+      // Session was removed (expired). Return empty state rather than falling
+      // back to the global state, which would cause the client to suddenly
+      // see a different project's agents. The client keeps their selectedSessionId
+      // and will continue showing this empty state until they navigate away.
+      return {
+        name: '',
+        agents: [],
+        tasks: [],
+        messages: [],
+      };
+    }
 
     return {
       name: session.isTeam
