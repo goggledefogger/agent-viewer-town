@@ -78,11 +78,25 @@ export function startTeamWatcher(ctx: WatcherContext) {
     // Use team: prefix to prevent collision with JSONL session UUIDs.
     const teamSessionId = `team:${teamName}`;
     if (!stateManager.getSessions().has(teamSessionId)) {
+      // Inherit projectPath/projectName from the most recently active solo session
+      // so the team groups under the same project in the nav tree.
+      let inheritedPath = '';
+      let inheritedName = teamName;
+      const allSessions = stateManager.getSessions();
+      let bestActivity = 0;
+      for (const s of allSessions.values()) {
+        if (!s.isTeam && s.projectPath && s.lastActivity > bestActivity) {
+          bestActivity = s.lastActivity;
+          inheritedPath = s.mainRepoPath || s.projectPath;
+          inheritedName = s.projectName;
+        }
+      }
+
       stateManager.addSession({
         sessionId: teamSessionId,
         slug: teamName,
-        projectPath: '',
-        projectName: teamName,
+        projectPath: inheritedPath,
+        projectName: inheritedName,
         isTeam: true,
         teamName,
         lastActivity: fileMtimeMs,
