@@ -302,6 +302,21 @@ export function startTranscriptWatcher(ctx: WatcherContext) {
       // Register the session (auto-selects if it's the first or most active)
       stateManager.addSession(meta);
 
+      // Check if an acompact subagent was already detected for this session
+      // (race: subagent file may be scanned before parent). If so, override
+      // the initial idle status with compacting.
+      if (initialStatus === 'idle') {
+        for (const t of trackedSessions.values()) {
+          if (t.isInternalSubagent && t.filePath.includes(`/${meta.sessionId}/`)) {
+            const acompactAgeS = (Date.now() - t.lastActivity) / 1000;
+            if (acompactAgeS < IDLE_THRESHOLD_S) {
+              stateManager.updateAgentActivityById(meta.sessionId, 'working', 'Compacting conversation...');
+              break;
+            }
+          }
+        }
+      }
+
       // For team sessions, register session-to-agent mapping so hook events
       // (which use JSONL session UUIDs) can route to the correct team agent
       // (which uses config-based IDs like "researcher@team-name").
