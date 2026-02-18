@@ -20,6 +20,7 @@ import type {
   HookEvent,
   PreToolUseEvent,
   PostToolUseEvent,
+  PostToolUseFailureEvent,
   PermissionRequestEvent,
   SubagentStartEvent,
   SubagentStopEvent,
@@ -27,6 +28,7 @@ import type {
   TeammateIdleEvent,
   TaskCompletedEvent,
   UserPromptSubmitEvent,
+  NotificationEvent,
   PendingSpawn,
 } from './types';
 
@@ -190,9 +192,25 @@ export function createHookHandler(stateManager: StateManager) {
       case 'UserPromptSubmit':
         handleUserPromptSubmit(sessionId, agentId);
         break;
+      case 'PostToolUseFailure':
+        handlePostToolUseFailure(event as PostToolUseFailureEvent, agentId);
+        break;
+      case 'Notification':
+        handleNotification(event as NotificationEvent, agentId);
+        break;
       default:
         console.log(`[hooks] Unhandled event: ${event.hook_event_name} session=${sessionId.slice(0, 8)}`);
         break;
+    }
+
+    // Use permission_mode as a supplemental plan mode signal.
+    // When permission_mode is "plan", the agent is in plan mode — set waiting
+    // state if not already waiting for something else.
+    if (event.permission_mode === 'plan') {
+      const agent = stateManager.getAgentById(agentId);
+      if (agent && !agent.waitingForInput) {
+        stateManager.setAgentWaitingById(agentId, true, 'In plan mode', undefined, 'plan');
+      }
     }
   }
 
@@ -300,6 +318,35 @@ export function createHookHandler(stateManager: StateManager) {
     stateManager.setAgentWaitingById(agentId, false);
     stateManager.updateAgentActivityById(agentId, 'working', 'Processing prompt...');
     console.log(`[hooks] UserPromptSubmit: session=${sessionId.slice(0, 8)} agent=${agentId.slice(0, 12)}`);
+  }
+
+  function handlePostToolUseFailure(event: PostToolUseFailureEvent, agentId: string) {
+    // Tool failed but Claude will respond to the error — keep agent in working state.
+    // Show the failure as the current action for visibility.
+    const { action } = describeToolAction(event.tool_name, event.tool_input);
+    const failAction = event.is_interrupt ? 'Interrupted' : `Failed: ${action}`;
+    stateManager.setAgentWaitingById(agentId, false);
+    stateManager.updateAgentActivityById(agentId, 'working', failAction);
+  }
+
+  function handleNotification(event: NotificationEvent, agentId: string) {
+    // notification_type field is bugged and may be absent (GitHub issue #11964).
+    // Match defensively on both notification_type and message text.
+    const nType = event.notification_type;
+    const msg = event.message || '';
+
+    if (nType === 'idle_prompt' || msg.includes('idle') || msg.includes('waiting for input')) {
+      // Claude has been idle 60+ seconds waiting for user input
+      stateManager.setAgentWaitingById(agentId, true, 'Waiting for input', undefined, 'question');
+      console.log(`[hooks] Notification idle_prompt: ${agentId.slice(0, 12)}`);
+    } else if (nType === 'permission_prompt') {
+      // Redundant with PermissionRequest but good to handle as fallback
+      if (!stateManager.getAgentById(agentId)?.waitingForInput) {
+        stateManager.setAgentWaitingById(agentId, true, 'Awaiting permission', undefined, 'permission');
+      }
+      console.log(`[hooks] Notification permission_prompt: ${agentId.slice(0, 12)}`);
+    }
+    // auth_success and elicitation_dialog are informational — no state change needed
   }
 
   return { handleEvent };
