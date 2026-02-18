@@ -108,14 +108,14 @@ function computeBreadcrumbs(
 
   if (zoomLevel === 0) {
     segments.push({
-      label: totalProjects <= 1 ? 'Sessions' : `${totalProjects} Projects`,
+      label: totalProjects <= 1 ? 'Projects' : `${totalProjects} Projects`,
       level: 0,
       isCurrent: true,
     });
   } else {
     // Always show a clickable root breadcrumb when zoomed in
     segments.push({
-      label: totalProjects > 1 ? 'All' : 'Sessions',
+      label: totalProjects > 1 ? `${totalProjects} Projects` : 'Projects',
       level: 0,
       isCurrent: false,
     });
@@ -259,26 +259,26 @@ describe('Breadcrumb computation', () => {
     expect(crumbs[0].isCurrent).toBe(true);
   });
 
-  it('Level 0 with single project: shows "Sessions" segment', () => {
+  it('Level 0 with single project: shows "Projects" segment', () => {
     const crumbs = computeBreadcrumbs(0, undefined, undefined, undefined, 1);
     expect(crumbs).toHaveLength(1);
-    expect(crumbs[0].label).toBe('Sessions');
+    expect(crumbs[0].label).toBe('Projects');
     expect(crumbs[0].isCurrent).toBe(true);
   });
 
-  it('Level 1 with multiple projects: shows "All" link + project name as current', () => {
+  it('Level 1 with multiple projects: shows "N Projects" link + project name as current', () => {
     const crumbs = computeBreadcrumbs(1, project.projectKey, project, undefined, 2);
     expect(crumbs).toHaveLength(2);
-    expect(crumbs[0].label).toBe('All');
+    expect(crumbs[0].label).toBe('2 Projects');
     expect(crumbs[0].isCurrent).toBe(false);
     expect(crumbs[1].label).toBe('my-app');
     expect(crumbs[1].isCurrent).toBe(true);
   });
 
-  it('Level 1 with single project: shows "Sessions" root link + project name', () => {
+  it('Level 1 with single project: shows "Projects" root link + project name', () => {
     const crumbs = computeBreadcrumbs(1, project.projectKey, project, undefined, 1);
     expect(crumbs).toHaveLength(2);
-    expect(crumbs[0].label).toBe('Sessions');
+    expect(crumbs[0].label).toBe('Projects');
     expect(crumbs[0].isCurrent).toBe(false);
     expect(crumbs[1].label).toBe('my-app');
     expect(crumbs[1].isCurrent).toBe(true);
@@ -287,7 +287,7 @@ describe('Breadcrumb computation', () => {
   it('Level 2: shows root link + project link + branch as current', () => {
     const crumbs = computeBreadcrumbs(2, project.projectKey, project, branch, 2);
     expect(crumbs).toHaveLength(3);
-    expect(crumbs[0].label).toBe('All');
+    expect(crumbs[0].label).toBe('2 Projects');
     expect(crumbs[0].isCurrent).toBe(false);
     expect(crumbs[1].label).toBe('my-app');
     expect(crumbs[1].isCurrent).toBe(false);
@@ -475,14 +475,14 @@ describe('Breadcrumb edge cases', () => {
     const crumbs = computeBreadcrumbs(1, 'nonexistent-key', undefined, undefined, 2);
     // currentProject is undefined, so only the root segment is added
     expect(crumbs).toHaveLength(1);
-    expect(crumbs[0].label).toBe('All');
+    expect(crumbs[0].label).toBe('2 Projects');
     expect(crumbs[0].isCurrent).toBe(false);
   });
 
-  it('Level 1 with single project and undefined project returns "Sessions" root', () => {
+  it('Level 1 with single project and undefined project returns "Projects" root', () => {
     const crumbs = computeBreadcrumbs(1, 'nonexistent-key', undefined, undefined, 1);
     expect(crumbs).toHaveLength(1);
-    expect(crumbs[0].label).toBe('Sessions');
+    expect(crumbs[0].label).toBe('Projects');
     expect(crumbs[0].isCurrent).toBe(false);
   });
 
@@ -493,7 +493,7 @@ describe('Breadcrumb edge cases', () => {
     const crumbs = computeBreadcrumbs(2, project.projectKey, project, undefined, 2);
     // currentBranch is undefined, so branch segment is skipped
     expect(crumbs).toHaveLength(2);
-    expect(crumbs[0].label).toBe('All');
+    expect(crumbs[0].label).toBe('2 Projects');
     expect(crumbs[1].label).toBe('my-app');
     // At level 2, project is NOT current (branch should be), but branch is missing
     expect(crumbs[1].isCurrent).toBe(false);

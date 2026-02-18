@@ -191,14 +191,14 @@ export function useNavigation(
 
     if (navState.zoomLevel === 0) {
       segments.push({
-        label: totalProjects <= 1 ? (projects[0]?.projectName || 'Sessions') : `${totalProjects} Projects`,
+        label: totalProjects <= 1 ? 'Projects' : `${totalProjects} Projects`,
         level: 0,
         isCurrent: true,
       });
     } else {
-      // Always show a clickable root breadcrumb when zoomed in, even with single project
+      // Always show a clickable root breadcrumb when zoomed in
       segments.push({
-        label: totalProjects > 1 ? 'All' : 'Sessions',
+        label: totalProjects > 1 ? `${totalProjects} Projects` : 'Projects',
         level: 0,
         isCurrent: false,
       });

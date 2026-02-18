@@ -1272,12 +1272,7 @@ html, body, #root {
   background: rgba(65, 105, 225, 0.1);
 }
 
-/* Project group */
-.nav-project-group {
-  margin-bottom: 4px;
-}
-
-.nav-project-header,
+/* Project row (drill-down) */
 .nav-project-row {
   width: 100%;
   display: flex;
@@ -1293,9 +1288,9 @@ html, body, #root {
   font-size: 12px;
   color: var(--color-text);
   text-align: left;
+  margin-bottom: 4px;
 }
 
-.nav-project-header:hover,
 .nav-project-row:hover {
   background: rgba(65, 105, 225, 0.08);
   border-color: var(--color-blue);
@@ -1310,78 +1305,87 @@ html, body, #root {
   font-weight: bold;
   font-size: 13px;
   color: var(--color-text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.nav-project-stats {
+.nav-project-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+}
+
+.nav-meta-sep {
+  color: var(--color-border);
+}
+
+.nav-row-arrow {
+  color: var(--color-text-dim);
+  font-size: 12px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Level header (project name at level 1, branch name at level 2) */
+.nav-level-header {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.nav-level-header-name {
+  font-weight: bold;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.nav-level-header-stats {
   font-size: 11px;
   color: var(--color-text-dim);
 }
 
-.nav-project-counts {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.nav-expand-toggle {
-  color: var(--color-text-dim);
-  font-size: 10px;
-}
-
-/* Branch section */
-.nav-branch-section {
-  margin-top: 8px;
-  padding-left: 12px;
-  border-left: 2px solid var(--color-border);
-}
-
-.nav-branch-header,
+/* Branch row (drill-down) */
 .nav-branch-row {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  margin-left: 12px;
+  padding: 8px 12px;
   background: var(--color-card-bg);
   border: 1px solid var(--color-border);
   border-radius: 4px;
   cursor: pointer;
   margin-bottom: 4px;
-  transition: background 0.2s;
+  transition: background 0.2s, border-color 0.2s;
   font-family: 'Courier New', monospace;
   font-size: 12px;
   color: var(--color-text);
   text-align: left;
 }
 
-.nav-branch-header:hover,
 .nav-branch-row:hover {
   background: rgba(65, 105, 225, 0.06);
-}
-
-.nav-branch-row.focused {
   border-color: var(--color-blue);
-  background: rgba(65, 105, 225, 0.1);
-}
-
-.nav-branch-row.current {
-  border-left: 3px solid var(--color-green);
-}
-
-.nav-branch-header-detail {
-  cursor: default;
-  margin-bottom: 8px;
-  background: rgba(65, 105, 225, 0.05);
 }
 
 .nav-branch-name {
   font-size: 12px;
   color: var(--color-gold);
   font-family: 'Courier New', monospace;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .nav-branch-time {
@@ -1446,6 +1450,12 @@ html, body, #root {
 
 .nav-session-waiting {
   color: var(--color-gold);
+  font-weight: bold;
+}
+
+.nav-session-waiting-label {
+  color: var(--color-gold);
+  font-size: 10px;
   font-weight: bold;
 }
 
