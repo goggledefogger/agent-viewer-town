@@ -652,6 +652,14 @@ export class StateManager {
    * over raw recency.
    */
   selectMostInterestingSession() {
+    const id = this.getMostInterestingSessionId();
+    if (id) {
+      this.selectSession(id);
+    }
+  }
+
+  /** Return the session ID with the highest interestingness score, without selecting it. */
+  getMostInterestingSessionId(): string | undefined {
     let bestSession: SessionInfo | undefined;
     let bestScore = -1;
 
@@ -663,9 +671,7 @@ export class StateManager {
       }
     }
 
-    if (bestSession) {
-      this.selectSession(bestSession.sessionId);
-    }
+    return bestSession?.sessionId;
   }
 
   broadcastSessionsList() {

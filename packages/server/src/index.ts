@@ -137,9 +137,9 @@ function getClientActiveSessionId(ws: WebSocket): string | undefined {
 
 wss.on('connection', (ws: WebSocket) => {
   console.log('[ws] client connected');
-  // Lock the client into their initial session so subsequent server
-  // auto-selections (from addSession/selectSession) don't change their view
-  const activeId = stateManager.getDefaultSessionId();
+  // Pick the most interesting session for this new client, rather than using
+  // the global default (which may be stale from a previous client's navigation).
+  const activeId = stateManager.getMostInterestingSessionId() || stateManager.getDefaultSessionId();
   clientStates.set(ws, { selectedSessionId: activeId });
   ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
   ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
