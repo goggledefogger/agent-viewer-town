@@ -40,6 +40,7 @@ app.get('/api/state', (_req, res) => {
 const VALID_HOOK_EVENTS = new Set([
   'PreToolUse',
   'PostToolUse',
+  'PostToolUseFailure',
   'PermissionRequest',
   'SubagentStart',
   'SubagentStop',
@@ -50,6 +51,7 @@ const VALID_HOOK_EVENTS = new Set([
   'TeammateIdle',
   'TaskCompleted',
   'UserPromptSubmit',
+  'Notification',
 ]);
 
 function validateHookEvent(event: any): string | null {

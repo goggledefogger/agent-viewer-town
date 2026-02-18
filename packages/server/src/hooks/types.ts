@@ -86,9 +86,26 @@ export interface UserPromptSubmitEvent extends HookEventBase {
   prompt?: string;
 }
 
+export interface PostToolUseFailureEvent extends HookEventBase {
+  hook_event_name: 'PostToolUseFailure';
+  tool_name: string;
+  tool_input?: Record<string, unknown>;
+  tool_use_id?: string;
+  error?: string;
+  is_interrupt?: boolean;
+}
+
+export interface NotificationEvent extends HookEventBase {
+  hook_event_name: 'Notification';
+  message: string;
+  title?: string;
+  notification_type?: 'permission_prompt' | 'idle_prompt' | 'auth_success' | 'elicitation_dialog';
+}
+
 export type HookEvent =
   | PreToolUseEvent
   | PostToolUseEvent
+  | PostToolUseFailureEvent
   | PermissionRequestEvent
   | SubagentStartEvent
   | SubagentStopEvent
@@ -99,6 +116,7 @@ export type HookEvent =
   | TeammateIdleEvent
   | TaskCompletedEvent
   | UserPromptSubmitEvent
+  | NotificationEvent
   | HookEventBase;
 
 /** Pending Task tool spawn awaiting SubagentStart correlation */
