@@ -480,6 +480,23 @@ export function startTranscriptWatcher(ctx: WatcherContext) {
           }
         }
       }
+
+      // Turn ended — agent finished responding, transition to idle.
+      // This is the JSONL equivalent of the Stop hook. Critical for sessions
+      // where hooks aren't installed — without this, the agent stays "working"
+      // until the 60s staleness checker fires.
+      if (parsed.type === 'turn_end') {
+        if (currentTracked?.isSolo) {
+          stateManager.setAgentWaitingById(currentTracked.sessionId, false);
+          stateManager.updateAgentActivityById(currentTracked.sessionId, 'idle');
+        } else {
+          const agentName = findWorkingAgentName();
+          if (agentName) {
+            stateManager.setAgentWaiting(agentName, false);
+            stateManager.updateAgentActivity(agentName, 'idle');
+          }
+        }
+      }
     }
 
     // Only update session activity timestamp when we processed meaningful events
