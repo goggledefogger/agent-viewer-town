@@ -1,3 +1,4 @@
+import { statSync } from 'fs';
 import { IDLE_THRESHOLD_S, STALENESS_CHECK_INTERVAL_MS, SESSION_EXPIRY_S } from './types';
 import type { WatcherContext } from './types';
 
@@ -22,12 +23,21 @@ export function runStalenessCheck(ctx: WatcherContext) {
       continue;
     }
 
-    // Use the most recent activity from either JSONL file changes OR hook events.
-    // Hooks update session.lastActivity via stateManager.updateSessionActivity(),
-    // but that's a different timestamp than tracked.lastActivity (JSONL-based).
-    // We must check both so hook activity prevents false idle transitions.
+    // Use the most recent activity from three sources:
+    // 1. tracked.lastActivity — updated when JSONL watcher processes meaningful events
+    // 2. session.lastActivity — updated by hooks via stateManager.updateSessionActivity()
+    // 3. JSONL file mtime — catches activity during long thinking/generation where
+    //    the file is being written to but no "meaningful" events have been parsed yet.
+    //    This prevents false idle transitions during extended thinking periods (>60s).
     const sessionActivity = stateManager.getSessions().get(tracked.sessionId)?.lastActivity ?? 0;
-    const mostRecentActivity = Math.max(tracked.lastActivity, sessionActivity);
+    let fileMtime = 0;
+    try {
+      const stats = statSync(filePath);
+      fileMtime = stats.mtimeMs;
+    } catch {
+      // File may have been removed
+    }
+    const mostRecentActivity = Math.max(tracked.lastActivity, sessionActivity, fileMtime);
     const idleSeconds = (now - mostRecentActivity) / 1000;
 
     // Internal subagents (acompact): just clean up tracking when done, no display

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { AgentState, InboxNotification, NotificationType, SessionInfo } from '@agent-viewer/shared';
+import type { AgentState, InboxNotification, NotificationType, SessionInfo, SessionListEntry } from '@agent-viewer/shared';
 
 interface InboxResult {
   activeNotifications: InboxNotification[];
@@ -35,7 +35,7 @@ function getNotificationType(agent: AgentState): NotificationType {
 }
 
 /** Client-side inbox: generates notifications from agent state transitions */
-export function useInbox(agents: AgentState[], session?: SessionInfo): InboxResult {
+export function useInbox(agents: AgentState[], session?: SessionInfo, sessions?: SessionListEntry[]): InboxResult {
   const [notifications, setNotifications] = useState<InboxNotification[]>([]);
   const prevWaiting = useRef<Set<string>>(new Set());
   const prevSessionId = useRef<string | undefined>(undefined);
@@ -100,6 +100,31 @@ export function useInbox(agents: AgentState[], session?: SessionInfo): InboxResu
 
     prevWaiting.current = currentWaiting;
   }, [agents, session]);
+
+  // Cross-session notification resolution: when the sessions list updates and
+  // a session's hasWaitingAgent becomes false, resolve notifications for agents
+  // in that session. This handles the case where the user responds to Claude Code
+  // in a terminal for a session that isn't currently displayed in the viewer.
+  useEffect(() => {
+    if (!sessions || sessions.length === 0) return;
+
+    // Build a set of session IDs that still have waiting agents
+    const sessionsWithWaiting = new Set(
+      sessions.filter((s) => s.hasWaitingAgent).map((s) => s.sessionId)
+    );
+
+    setNotifications((prev) => {
+      let changed = false;
+      const updated = prev.map((n) => {
+        if (!n.resolved && !sessionsWithWaiting.has(n.sessionId)) {
+          changed = true;
+          return { ...n, resolved: true };
+        }
+        return n;
+      });
+      return changed ? updated : prev;
+    });
+  }, [sessions]);
 
   const markRead = useCallback((id: string) => {
     setNotifications((prev) =>

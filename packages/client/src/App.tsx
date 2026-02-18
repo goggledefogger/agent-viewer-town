@@ -67,8 +67,8 @@ function LiveIndicator({ lastActivity }: { lastActivity?: number }) {
 export default function App() {
   const { team: state, sessions, groupedSessions, connectionStatus, selectSession } = useWebSocket('ws://localhost:3001/ws');
   const notifications = useNotifications(state.agents);
-  const navigation = useNavigation(groupedSessions);
-  const inbox = useInbox(state.agents, state.session);
+  const navigation = useNavigation(groupedSessions, state.session);
+  const inbox = useInbox(state.agents, state.session, sessions);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileTab, setMobileTab] = useState<MobileTab>('scene');
   const isMobile = useIsMobile();

@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import type { GroupedSessionsList, ProjectGroup, BranchGroup } from '@agent-viewer/shared';
+import type { GroupedSessionsList, ProjectGroup, BranchGroup, SessionInfo } from '@agent-viewer/shared';
 
 export type ZoomLevel = 0 | 1 | 2;
 
@@ -48,7 +48,8 @@ export interface UseNavigationReturn {
 const HIDE_IDLE_KEY = 'agent-viewer-nav-hide-idle';
 
 export function useNavigation(
-  grouped: GroupedSessionsList | null
+  grouped: GroupedSessionsList | null,
+  activeSession?: SessionInfo
 ): UseNavigationReturn {
   const [navState, setNavState] = useState<NavigationState>(() => ({
     zoomLevel: 0,
@@ -109,7 +110,10 @@ export function useNavigation(
 
   const projects = grouped?.projects ?? [];
 
-  // Auto-zoom on initial mount: if only 1 project, zoom to it; 1 project + 1 branch → zoom to branch.
+  const prevActiveSessionId = useRef<string | undefined>(undefined);
+
+  // Auto-zoom on initial mount: zoom to the active session's project/branch.
+  // Falls back to single-project zoom if no active session.
   // Once the user has manually navigated (via zoomTo), auto-zoom is permanently disabled so
   // WebSocket updates can't trap the user by re-zooming them away from level 0.
   useEffect(() => {
@@ -117,16 +121,64 @@ export function useNavigation(
     if (projects.length === 0) return;
     setNavState((prev) => {
       if (prev.zoomLevel !== 0) return prev;
-      if (projects.length === 1) {
-        const p = projects[0];
-        if (p.branches.length === 1) {
-          return { ...prev, zoomLevel: 2 as ZoomLevel, projectKey: p.projectKey, branch: p.branches[0].branch };
+
+      // Find the project matching the active session
+      let targetProject: ProjectGroup | undefined;
+      if (activeSession) {
+        targetProject = projects.find((p) =>
+          p.branches.some((b) =>
+            b.sessions.some((s) => s.sessionId === activeSession.sessionId)
+          )
+        );
+      }
+
+      // Fall back to single-project auto-zoom
+      if (!targetProject && projects.length === 1) {
+        targetProject = projects[0];
+      }
+
+      if (targetProject) {
+        // If the project has only one branch, zoom all the way to branch level
+        if (targetProject.branches.length === 1) {
+          return { ...prev, zoomLevel: 2 as ZoomLevel, projectKey: targetProject.projectKey, branch: targetProject.branches[0].branch };
         }
-        return { ...prev, zoomLevel: 1 as ZoomLevel, projectKey: p.projectKey };
+        return { ...prev, zoomLevel: 1 as ZoomLevel, projectKey: targetProject.projectKey };
       }
       return prev;
     });
-  }, [projects]);
+  }, [projects, activeSession]);
+
+  // When the user selects a different session (via navigation tree), zoom the
+  // breadcrumb to show that session's project. This fires on explicit session
+  // changes only, not on initial mount or WebSocket-driven updates.
+  useEffect(() => {
+    const sessionId = activeSession?.sessionId;
+    if (sessionId === prevActiveSessionId.current) return;
+    const prevId = prevActiveSessionId.current;
+    prevActiveSessionId.current = sessionId;
+    // Skip the initial mount (prevId is undefined)
+    if (!prevId || !sessionId) return;
+    if (projects.length === 0) return;
+
+    const targetProject = projects.find((p) =>
+      p.branches.some((b) =>
+        b.sessions.some((s) => s.sessionId === sessionId)
+      )
+    );
+    if (!targetProject) return;
+
+    // Find the specific branch
+    const targetBranch = targetProject.branches.find((b) =>
+      b.sessions.some((s) => s.sessionId === sessionId)
+    );
+
+    setNavState((prev) => {
+      if (targetBranch && targetProject.branches.length === 1) {
+        return { ...prev, zoomLevel: 2 as ZoomLevel, projectKey: targetProject.projectKey, branch: targetBranch.branch };
+      }
+      return { ...prev, zoomLevel: 1 as ZoomLevel, projectKey: targetProject.projectKey };
+    });
+  }, [activeSession?.sessionId, projects]);
 
   // Find current project and branch
   const currentProject = useMemo(() => {
@@ -187,7 +239,7 @@ export function useNavigation(
   // so the user can always navigate back to the top level.
   const breadcrumbs = useMemo((): BreadcrumbSegment[] => {
     const segments: BreadcrumbSegment[] = [];
-    const totalProjects = projects.length;
+    const totalProjects = visibleProjects.length;
 
     if (navState.zoomLevel === 0) {
       segments.push({
@@ -224,7 +276,7 @@ export function useNavigation(
     }
 
     return segments;
-  }, [navState.zoomLevel, navState.projectKey, currentProject, currentBranch, projects]);
+  }, [navState.zoomLevel, navState.projectKey, currentProject, currentBranch, visibleProjects]);
 
   const waitingCount = useMemo(() => {
     return projects.filter((p) => p.hasWaitingAgent).reduce((count, p) => {

@@ -295,6 +295,7 @@ export class StateManager {
   setAgentWaitingById(agentId: string, waiting: boolean, action?: string, actionContext?: string, waitingType?: AgentState['waitingType']) {
     const agent = this.allAgents.get(agentId);
     if (!agent) return;
+    const wasWaiting = agent.waitingForInput;
     agent.waitingForInput = waiting;
     agent.waitingType = waiting ? waitingType : undefined;
     if (action) agent.currentAction = action;
@@ -307,6 +308,12 @@ export class StateManager {
       if (action) displayed.currentAction = action;
       if (actionContext !== undefined) displayed.actionContext = actionContext;
       this.broadcast({ type: 'agent_update', data: displayed });
+    }
+    // When an agent transitions from waiting to not-waiting, broadcast updated
+    // sessions list so ALL clients (even those viewing other sessions) learn that
+    // hasWaitingAgent changed. This enables cross-session notification resolution.
+    if (wasWaiting && !waiting) {
+      this.broadcastSessionsList();
     }
   }
 
