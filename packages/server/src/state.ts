@@ -399,12 +399,13 @@ export class StateManager {
     this.sessions.set(session.sessionId, session);
     this.broadcast({ type: 'session_started', data: session });
 
-    // Auto-select: pick this session if none is active, or if it's fresher.
-    // This is a simple heuristic for incremental discovery — the final
-    // selectMostInterestingSession() call after all sessions load will
-    // re-evaluate using full scoring.
+    // Auto-select: pick this session if none is active, or if it's a fresher
+    // solo session. Team sessions are NOT auto-selected here because they may
+    // be stale configs discovered during startup — let selectMostInterestingSession()
+    // handle them after all watchers finish with proper scoring.
     const current = this.state.session;
-    const shouldSelect = !current || session.lastActivity > (current.lastActivity || 0);
+    const shouldSelect = !session.isTeam &&
+      (!current || session.lastActivity > (current.lastActivity || 0));
     if (shouldSelect) {
       this.selectSession(session.sessionId);
     } else {

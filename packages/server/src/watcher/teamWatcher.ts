@@ -1,13 +1,13 @@
 import chokidar from 'chokidar';
 import { basename, dirname, join } from 'path';
-import { readdir } from 'fs/promises';
+import { readdir, stat as fsStat } from 'fs/promises';
 import {
   parseTeamConfig,
   parseTaskFile,
   teamMemberToAgent,
 } from '../parser';
 import { isReadable, isNodeError } from './utils';
-import { TEAMS_DIR, TASKS_DIR } from './types';
+import { TEAMS_DIR, TASKS_DIR, SESSION_EXPIRY_S } from './types';
 import type { WatcherContext } from './types';
 
 export function startTeamWatcher(ctx: WatcherContext) {
@@ -46,15 +46,32 @@ export function startTeamWatcher(ctx: WatcherContext) {
   async function handleTeamConfig(filePath: string) {
     if (!(await isReadable(filePath))) return;
 
+    // Check file age — skip stale configs from old teams that were never cleaned up.
+    // Only process configs modified within SESSION_EXPIRY_S (1 hour).
+    let fileMtimeMs: number;
+    try {
+      const stats = await fsStat(filePath);
+      fileMtimeMs = stats.mtimeMs;
+      const ageSeconds = (Date.now() - fileMtimeMs) / 1000;
+      if (ageSeconds > SESSION_EXPIRY_S) {
+        console.log(`[watcher] Skipping stale team config: ${filePath} (${Math.round(ageSeconds / 3600)}h old)`);
+        return;
+      }
+    } catch {
+      return;
+    }
+
     const config = await parseTeamConfig(filePath);
     if (!config) return;
 
     const teamName = basename(dirname(filePath));
-    stateManager.setTeamName(teamName);
-    stateManager.setAgents(config.members.map(m => ({
-      ...teamMemberToAgent(m),
-      teamName,
-    })));
+
+    // Register team agents in the allAgents registry (don't use setAgents which
+    // replaces state.agents globally — that would override the active session's display).
+    for (const member of config.members) {
+      const agent = { ...teamMemberToAgent(member), teamName };
+      stateManager.registerAgent(agent);
+    }
 
     // Create a session entry for the team so it appears in the session picker
     // and per-client WebSocket filtering works correctly.
@@ -68,7 +85,7 @@ export function startTeamWatcher(ctx: WatcherContext) {
         projectName: teamName,
         isTeam: true,
         teamName,
-        lastActivity: Date.now(),
+        lastActivity: fileMtimeMs,
       });
       console.log(`[watcher] Team session created: ${teamSessionId}`);
     } else {
