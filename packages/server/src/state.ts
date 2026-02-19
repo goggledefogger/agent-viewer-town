@@ -223,6 +223,7 @@ export class StateManager {
   updateAgentActivityById(agentId: string, status: 'idle' | 'working' | 'done', action?: string, actionContext?: string) {
     const agent = this.allAgents.get(agentId);
     if (!agent) return;
+    const prevStatus = agent.status;
     agent.status = status;
     agent.currentAction = action;
     agent.actionContext = actionContext;
@@ -264,6 +265,13 @@ export class StateManager {
           this.broadcast({ type: 'agent_update', data: displayed });
         }, this.activityDebounceMs));
       }
+    }
+
+    // When status transitions between idle/working/done, broadcast updated
+    // sessions list so ALL clients see the change in their navigation tree
+    // (e.g., openclaw-setup becoming active while viewing agent-viewer-town).
+    if (prevStatus !== status) {
+      this.broadcastSessionsList();
     }
   }
 
