@@ -91,56 +91,28 @@ function filterProjects(
 
 interface BreadcrumbSegment {
   label: string;
-  level: 0 | 1 | 2;
-  projectKey?: string;
-  branch?: string;
   isCurrent: boolean;
 }
 
 function computeBreadcrumbs(
-  zoomLevel: 0 | 1 | 2,
-  projectKey: string | undefined,
-  currentProject: ProjectGroup | undefined,
-  currentBranch: BranchGroup | undefined,
+  currentProjectName: string | undefined,
   totalProjects: number = 2
 ): BreadcrumbSegment[] {
-  const segments: BreadcrumbSegment[] = [];
+  if (currentProjectName) {
+    return [
+      {
+        label: currentProjectName,
+        isCurrent: true,
+      },
+    ];
+  }
 
-  if (zoomLevel === 0) {
-    segments.push({
+  return [
+    {
       label: totalProjects <= 1 ? 'Projects' : `${totalProjects} Projects`,
-      level: 0,
       isCurrent: true,
-    });
-  } else {
-    // Always show a clickable root breadcrumb when zoomed in
-    segments.push({
-      label: totalProjects > 1 ? `${totalProjects} Projects` : 'Projects',
-      level: 0,
-      isCurrent: false,
-    });
-  }
-
-  if (zoomLevel >= 1 && currentProject) {
-    segments.push({
-      label: currentProject.projectName,
-      level: 1,
-      projectKey: currentProject.projectKey,
-      isCurrent: zoomLevel === 1,
-    });
-  }
-
-  if (zoomLevel >= 2 && currentBranch) {
-    segments.push({
-      label: currentBranch.branch,
-      level: 2,
-      projectKey,
-      branch: currentBranch.branch,
-      isCurrent: true,
-    });
-  }
-
-  return segments;
+    },
+  ];
 }
 
 function computeWaitingCount(projects: ProjectGroup[]): number {
@@ -246,73 +218,45 @@ describe('Navigation filtering', () => {
 });
 
 describe('Breadcrumb computation', () => {
-  const project = makeProject('my-app', [
-    makeBranch('main', [makeSession()]),
-    makeBranch('feature/nav', [makeSession({ sessionId: 's2' })]),
-  ]);
-  const branch = project.branches[0]; // main
-
-  it('Level 0 with multiple projects: shows "N Projects" segment', () => {
-    const crumbs = computeBreadcrumbs(0, undefined, undefined, undefined, 3);
+  it('no active project with multiple projects: shows "N Projects"', () => {
+    const crumbs = computeBreadcrumbs(undefined, 3);
     expect(crumbs).toHaveLength(1);
     expect(crumbs[0].label).toBe('3 Projects');
     expect(crumbs[0].isCurrent).toBe(true);
   });
 
-  it('Level 0 with single project: shows "Projects" segment', () => {
-    const crumbs = computeBreadcrumbs(0, undefined, undefined, undefined, 1);
+  it('no active project with single project: shows "Projects"', () => {
+    const crumbs = computeBreadcrumbs(undefined, 1);
     expect(crumbs).toHaveLength(1);
     expect(crumbs[0].label).toBe('Projects');
     expect(crumbs[0].isCurrent).toBe(true);
   });
 
-  it('Level 1 with multiple projects: shows "N Projects" link + project name as current', () => {
-    const crumbs = computeBreadcrumbs(1, project.projectKey, project, undefined, 2);
-    expect(crumbs).toHaveLength(2);
-    expect(crumbs[0].label).toBe('2 Projects');
-    expect(crumbs[0].isCurrent).toBe(false);
-    expect(crumbs[1].label).toBe('my-app');
-    expect(crumbs[1].isCurrent).toBe(true);
-  });
-
-  it('Level 1 with single project: shows "Projects" root link + project name', () => {
-    const crumbs = computeBreadcrumbs(1, project.projectKey, project, undefined, 1);
-    expect(crumbs).toHaveLength(2);
+  it('no active project with zero projects: shows "Projects"', () => {
+    const crumbs = computeBreadcrumbs(undefined, 0);
+    expect(crumbs).toHaveLength(1);
     expect(crumbs[0].label).toBe('Projects');
-    expect(crumbs[0].isCurrent).toBe(false);
-    expect(crumbs[1].label).toBe('my-app');
-    expect(crumbs[1].isCurrent).toBe(true);
+    expect(crumbs[0].isCurrent).toBe(true);
   });
 
-  it('Level 2: shows root link + project link + branch as current', () => {
-    const crumbs = computeBreadcrumbs(2, project.projectKey, project, branch, 2);
-    expect(crumbs).toHaveLength(3);
-    expect(crumbs[0].label).toBe('2 Projects');
-    expect(crumbs[0].isCurrent).toBe(false);
-    expect(crumbs[1].label).toBe('my-app');
-    expect(crumbs[1].isCurrent).toBe(false);
-    expect(crumbs[2].label).toBe('main');
-    expect(crumbs[2].isCurrent).toBe(true);
+  it('active project: shows project name', () => {
+    const crumbs = computeBreadcrumbs('my-app', 3);
+    expect(crumbs).toHaveLength(1);
+    expect(crumbs[0].label).toBe('my-app');
+    expect(crumbs[0].isCurrent).toBe(true);
   });
 
-  it('Level 2 breadcrumbs include project key for navigation', () => {
-    const crumbs = computeBreadcrumbs(2, project.projectKey, project, branch);
-    expect(crumbs[1].projectKey).toBe(project.projectKey);
-    expect(crumbs[2].branch).toBe('main');
+  it('active project with single project: still shows project name', () => {
+    const crumbs = computeBreadcrumbs('my-app', 1);
+    expect(crumbs).toHaveLength(1);
+    expect(crumbs[0].label).toBe('my-app');
+    expect(crumbs[0].isCurrent).toBe(true);
   });
 
-  it('Root breadcrumb is always clickable when zoomed in (never isCurrent)', () => {
-    // Single project at level 1
-    const crumbs1 = computeBreadcrumbs(1, project.projectKey, project, undefined, 1);
-    expect(crumbs1[0].isCurrent).toBe(false);
-
-    // Single project at level 2
-    const crumbs2 = computeBreadcrumbs(2, project.projectKey, project, branch, 1);
-    expect(crumbs2[0].isCurrent).toBe(false);
-
-    // Multiple projects at level 1
-    const crumbs3 = computeBreadcrumbs(1, project.projectKey, project, undefined, 3);
-    expect(crumbs3[0].isCurrent).toBe(false);
+  it('always returns exactly one segment', () => {
+    expect(computeBreadcrumbs(undefined, 5)).toHaveLength(1);
+    expect(computeBreadcrumbs('proj', 5)).toHaveLength(1);
+    expect(computeBreadcrumbs(undefined, 0)).toHaveLength(1);
   });
 });
 
@@ -467,36 +411,6 @@ describe('Navigation filtering - edge cases', () => {
     const result = filterProjects(projects, 'my-app', false);
     expect(result).toHaveLength(1);
     expect(result[0].branches).toHaveLength(2);
-  });
-});
-
-describe('Breadcrumb edge cases', () => {
-  it('Level 1 with undefined project returns only root segment', () => {
-    const crumbs = computeBreadcrumbs(1, 'nonexistent-key', undefined, undefined, 2);
-    // currentProject is undefined, so only the root segment is added
-    expect(crumbs).toHaveLength(1);
-    expect(crumbs[0].label).toBe('2 Projects');
-    expect(crumbs[0].isCurrent).toBe(false);
-  });
-
-  it('Level 1 with single project and undefined project returns "Projects" root', () => {
-    const crumbs = computeBreadcrumbs(1, 'nonexistent-key', undefined, undefined, 1);
-    expect(crumbs).toHaveLength(1);
-    expect(crumbs[0].label).toBe('Projects');
-    expect(crumbs[0].isCurrent).toBe(false);
-  });
-
-  it('Level 2 with undefined branch returns root + project segments only', () => {
-    const project = makeProject('my-app', [
-      makeBranch('main', [makeSession()]),
-    ]);
-    const crumbs = computeBreadcrumbs(2, project.projectKey, project, undefined, 2);
-    // currentBranch is undefined, so branch segment is skipped
-    expect(crumbs).toHaveLength(2);
-    expect(crumbs[0].label).toBe('2 Projects');
-    expect(crumbs[1].label).toBe('my-app');
-    // At level 2, project is NOT current (branch should be), but branch is missing
-    expect(crumbs[1].isCurrent).toBe(false);
   });
 });
 
