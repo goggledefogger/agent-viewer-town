@@ -443,10 +443,20 @@ describe('parseTranscriptLine edge cases', () => {
     expect(result!.toolName).toBe('Agent working...');
   });
 
-  it('detects generic progress without specific type', () => {
+  it('detects hook_progress as progress with toolName', () => {
     const line = JSON.stringify({
       type: 'progress',
       data: { type: 'hook_progress' },
+    });
+    const result = parseTranscriptLine(line);
+    expect(result!.type).toBe('progress');
+    expect(result!.toolName).toBe('Processing...');
+  });
+
+  it('detects generic progress without specific type', () => {
+    const line = JSON.stringify({
+      type: 'progress',
+      data: { type: 'waiting_for_task' },
     });
     const result = parseTranscriptLine(line);
     expect(result!.type).toBe('progress');

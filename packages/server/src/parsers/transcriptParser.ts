@@ -210,6 +210,9 @@ export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
     if (progressType === 'agent_progress') {
       return { type: 'progress', toolName: 'Agent working...' };
     }
+    if (progressType === 'hook_progress') {
+      return { type: 'progress', toolName: 'Processing...' };
+    }
     return { type: 'progress' };
   }
 

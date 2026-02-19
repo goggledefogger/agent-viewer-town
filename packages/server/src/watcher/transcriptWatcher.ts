@@ -462,10 +462,21 @@ export function startTranscriptWatcher(ctx: WatcherContext) {
         }
       }
 
-      // Progress entries — tool is actively running, clear any waiting state
+      // Progress entries — tool is actively running. Set to working (catches
+      // idle→working transition when hooks are delayed) and clear waiting state.
       if (parsed.type === 'progress') {
-        if (parsed.toolName && currentTracked?.isSolo) {
-          stateManager.setAgentWaitingById(currentTracked.sessionId, false);
+        if (currentTracked?.isSolo) {
+          const progressAgent = stateManager.getAgentById(currentTracked.sessionId);
+          if (progressAgent && progressAgent.status !== 'working') {
+            stateManager.updateAgentActivityById(
+              currentTracked.sessionId,
+              'working',
+              parsed.toolName || 'Working...'
+            );
+          }
+          if (parsed.toolName) {
+            stateManager.setAgentWaitingById(currentTracked.sessionId, false);
+          }
         }
       }
 
