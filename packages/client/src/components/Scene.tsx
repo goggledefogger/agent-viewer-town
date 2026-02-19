@@ -167,13 +167,54 @@ export function Scene({ state, className, focusAgentId, onFocusTask }: SceneProp
                onMouseEnter={() => setHoveredAgentId(agent.id)}
                onMouseLeave={() => setHoveredAgentId(null)}
                style={{ cursor: 'pointer', opacity: agentOpacity, transition: 'opacity 0.2s ease' }}>
-              {/* Pulsing highlight ring when agent is waiting for input */}
-              {isWaiting && (
-                <circle cx={pos.x} cy={pos.y} r="35" fill="none" stroke="#FFD700" strokeWidth="2" opacity="0.4">
-                  <animate attributeName="r" values="35;42;35" dur="2s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.4;0.15;0.4" dur="2s" repeatCount="indefinite" />
-                </circle>
-              )}
+              {/* Pulsing highlight ring when agent is waiting for input — color varies by waitingType */}
+              {isWaiting && (() => {
+                const ringColor = agent.waitingType === 'permission' ? '#F97316'
+                  : agent.waitingType === 'question' ? '#3B82F6'
+                  : agent.waitingType === 'plan' ? '#8B5CF6'
+                  : agent.waitingType === 'plan_approval' ? '#22C55E'
+                  : '#EAB308';
+                return (
+                  <g>
+                    <circle cx={pos.x} cy={pos.y} r="35" fill="none" stroke={ringColor} strokeWidth="2" opacity="0.4">
+                      <animate attributeName="r" values="35;42;35" dur="2s" repeatCount="indefinite" />
+                      <animate attributeName="opacity" values="0.4;0.15;0.4" dur="2s" repeatCount="indefinite" />
+                    </circle>
+                    {/* Waiting-type icon badge */}
+                    {agent.waitingType === 'permission' && (
+                      <g transform={`translate(${pos.x + 28}, ${pos.y - 28})`}>
+                        <circle cx="0" cy="0" r="8" fill="#F97316" opacity="0.9" />
+                        {/* Lock icon */}
+                        <rect x="-3.5" y="-1" width="7" height="5" rx="1" fill="white" />
+                        <path d="M-2,-1 L-2,-3.5 A2,2 0 0,1 2,-3.5 L2,-1" fill="none" stroke="white" strokeWidth="1.2" />
+                      </g>
+                    )}
+                    {agent.waitingType === 'question' && (
+                      <g transform={`translate(${pos.x + 28}, ${pos.y - 28})`}>
+                        <circle cx="0" cy="0" r="8" fill="#3B82F6" opacity="0.9" />
+                        <text x="0" y="3.5" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold" fontFamily="'Courier New', monospace">?</text>
+                      </g>
+                    )}
+                    {agent.waitingType === 'plan' && (
+                      <g transform={`translate(${pos.x + 28}, ${pos.y - 28})`}>
+                        <circle cx="0" cy="0" r="8" fill="#8B5CF6" opacity="0.9" />
+                        {/* Clipboard icon */}
+                        <rect x="-3" y="-2" width="6" height="7" rx="0.5" fill="none" stroke="white" strokeWidth="1" />
+                        <rect x="-1.5" y="-4" width="3" height="2.5" rx="0.5" fill="white" />
+                        <line x1="-1.5" y1="1" x2="1.5" y2="1" stroke="white" strokeWidth="0.8" />
+                        <line x1="-1.5" y1="3" x2="1.5" y2="3" stroke="white" strokeWidth="0.8" />
+                      </g>
+                    )}
+                    {agent.waitingType === 'plan_approval' && (
+                      <g transform={`translate(${pos.x + 28}, ${pos.y - 28})`}>
+                        <circle cx="0" cy="0" r="8" fill="#22C55E" opacity="0.9" />
+                        {/* Checkmark icon */}
+                        <path d="M-3,0 L-1,3 L4,-3" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" />
+                      </g>
+                    )}
+                  </g>
+                );
+              })()}
               <AgentCharacter agent={agent} x={pos.x} y={pos.y} />
               <ActionBubble agent={agent} x={pos.x} y={pos.y} />
             </g>

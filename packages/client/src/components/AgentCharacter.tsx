@@ -47,6 +47,99 @@ function SteamPuffs({ active, color }: { active: boolean; color: string }) {
   );
 }
 
+const COMPACT_COLORS = ['#6366F1', '#8B5CF6', '#A78BFA', '#818CF8', '#7C3AED', '#6D28D9'];
+
+/** Compacting animation: particles spiraling inward to convey data compression */
+function CompactingParticles({ active }: { active: boolean }) {
+  if (!active) return null;
+
+  // 6 particles orbiting in a shrinking spiral
+  const particles = [
+    { angle: 0, delay: 0, dur: 3.0 },
+    { angle: 60, delay: 0.5, dur: 3.0 },
+    { angle: 120, delay: 1.0, dur: 3.0 },
+    { angle: 180, delay: 1.5, dur: 3.0 },
+    { angle: 240, delay: 2.0, dur: 3.0 },
+    { angle: 300, delay: 2.5, dur: 3.0 },
+  ];
+
+  return (
+    <g transform="translate(0, -8)">
+      {particles.map((p, i) => {
+        // Each particle starts at a wide orbit and spirals inward
+        const startRad = (p.angle * Math.PI) / 180;
+        const startR = 18;
+        const endR = 3;
+        // Start position on outer orbit
+        const sx = Math.cos(startRad) * startR;
+        const sy = Math.sin(startRad) * startR;
+        // End position near center (rotated further)
+        const endRad = startRad + Math.PI * 2.5;
+        const ex = Math.cos(endRad) * endR;
+        const ey = Math.sin(endRad) * endR;
+        // Midpoints for spiral path
+        const m1Rad = startRad + Math.PI * 0.8;
+        const m1R = 14;
+        const m1x = Math.cos(m1Rad) * m1R;
+        const m1y = Math.sin(m1Rad) * m1R;
+        const m2Rad = startRad + Math.PI * 1.6;
+        const m2R = 9;
+        const m2x = Math.cos(m2Rad) * m2R;
+        const m2y = Math.sin(m2Rad) * m2R;
+
+        return (
+          <circle
+            key={i}
+            cx={sx}
+            cy={sy}
+            r="2.5"
+            fill={COMPACT_COLORS[i % COMPACT_COLORS.length]}
+            opacity="0"
+          >
+            <animate
+              attributeName="cx"
+              values={`${sx};${m1x};${m2x};${ex};${sx}`}
+              keyTimes="0;0.3;0.6;0.9;1"
+              dur={`${p.dur}s`}
+              begin={`${p.delay}s`}
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="cy"
+              values={`${sy};${m1y};${m2y};${ey};${sy}`}
+              keyTimes="0;0.3;0.6;0.9;1"
+              dur={`${p.dur}s`}
+              begin={`${p.delay}s`}
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="opacity"
+              values="0;0.9;0.8;0.3;0"
+              keyTimes="0;0.1;0.5;0.85;1"
+              dur={`${p.dur}s`}
+              begin={`${p.delay}s`}
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="r"
+              values="2.5;2.5;2;1.5;2.5"
+              keyTimes="0;0.3;0.6;0.9;1"
+              dur={`${p.dur}s`}
+              begin={`${p.delay}s`}
+              repeatCount="indefinite"
+            />
+          </circle>
+        );
+      })}
+      {/* Central pulse — data converging */}
+      <circle cx="0" cy="0" r="3" fill="#8B5CF6" opacity="0">
+        <animate attributeName="r" values="2;5;2" dur="1.5s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.2;0.6;0.2" dur="1.5s" repeatCount="indefinite" />
+      </circle>
+    </g>
+  );
+}
+
 /** Spark burst effect: shown briefly when a task completes */
 function SparkBurst({ active }: { active: boolean }) {
   if (!active) return null;
@@ -112,6 +205,7 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
   const { AnimalComponent: AnimalSvg, accentColor: color } = resolveCharacter(agent);
   const stage = agent.isSubagent ? 1 : getEvolutionStage(agent.tasksCompleted);
   const isWorking = agent.status === 'working';
+  const isCompacting = isWorking && !!(agent.currentAction && agent.currentAction.includes('Compacting'));
 
   // Track task completion for spark/celebration effect
   const prevTaskCount = useRef(agent.tasksCompleted);
@@ -157,28 +251,31 @@ export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
         </g>
       </g>
 
-      {/* Steam puffs when working */}
-      <SteamPuffs active={isWorking} color={color} />
+      {/* Steam puffs when working (replaced by compacting particles during compaction) */}
+      {isCompacting ? <CompactingParticles active={true} /> : <SteamPuffs active={isWorking} color={color} />}
 
       {/* Spark burst + celebration on task completion */}
       <SparkBurst active={showSparks} />
       <CelebrationParticles active={showSparks} />
 
-      {/* Working gear indicator — speed scales with activity level */}
-      {isWorking && (
-        <g transform="translate(22, -10)">
-          <g style={{
-            animation: `spin ${Math.max(0.5, 2 - agent.tasksCompleted * 0.2)}s linear infinite`,
-            transformOrigin: '0px 0px',
-          }}>
-            <circle cx="0" cy="0" r="6" fill="none" stroke={color} strokeWidth="1.5" />
-            {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
-              <rect key={angle} x="-1" y="-8" width="2" height="3" fill={color} transform={`rotate(${angle})`} rx="0.5" />
-            ))}
-            <circle cx="0" cy="0" r="2" fill={color} />
+      {/* Working gear indicator — speed scales with activity level; purple tint during compacting */}
+      {isWorking && (() => {
+        const gearColor = isCompacting ? '#8B5CF6' : color;
+        return (
+          <g transform="translate(22, -10)">
+            <g style={{
+              animation: `spin ${isCompacting ? '3s' : `${Math.max(0.5, 2 - agent.tasksCompleted * 0.2)}s`} linear infinite`,
+              transformOrigin: '0px 0px',
+            }}>
+              <circle cx="0" cy="0" r="6" fill="none" stroke={gearColor} strokeWidth="1.5" />
+              {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
+                <rect key={angle} x="-1" y="-8" width="2" height="3" fill={gearColor} transform={`rotate(${angle})`} rx="0.5" />
+              ))}
+              <circle cx="0" cy="0" r="2" fill={gearColor} />
+            </g>
           </g>
-        </g>
-      )}
+        );
+      })()}
 
       {/* Done checkmark for finished subagents */}
       {agent.status === 'done' && (
