@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import type { AgentState } from '@agent-viewer/shared';
+import type { AgentState, SessionInfo, SessionListEntry } from '@agent-viewer/shared';
 
 export interface NotificationState {
   enabled: boolean;
@@ -60,7 +60,7 @@ function playChime() {
   }
 }
 
-export function useNotifications(agents: AgentState[]): NotificationState {
+export function useNotifications(agents: AgentState[], session?: SessionInfo, sessions?: SessionListEntry[]): NotificationState {
   const supported = typeof window !== 'undefined' && 'Notification' in window;
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
     supported ? Notification.permission : 'unsupported'
@@ -69,6 +69,8 @@ export function useNotifications(agents: AgentState[]): NotificationState {
 
   // Track previous waitingForInput state per agent ID to detect transitions
   const prevWaitingRef = useRef<Map<string, boolean>>(new Map());
+  // Track previous cross-session waiting state to detect transitions
+  const prevCrossWaitingRef = useRef<Set<string>>(new Set());
   // Tab title flash interval ref
   const titleIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -140,16 +142,58 @@ export function useNotifications(agents: AgentState[]): NotificationState {
     prevWaitingRef.current = newMap;
   }, [agents, enabled, supported]);
 
-  // Flashing tab title when agents are waiting
+  // Detect cross-session waiting transitions (agents in OTHER sessions)
+  // and fire browser notification + chime, same as same-session agents.
   useEffect(() => {
-    if (waitingAgents.length > 0) {
+    if (!enabled || !supported || Notification.permission !== 'granted') return;
+    if (!sessions) return;
+
+    const currentSessionId = session?.sessionId;
+    const currentCrossWaiting = new Set<string>();
+
+    for (const s of sessions) {
+      if (s.sessionId === currentSessionId) continue; // handled by same-session effect
+      if (s.hasWaitingAgent && s.waitingAgentInfo) {
+        const key = `${s.sessionId}:${s.waitingAgentInfo.agentId}`;
+        currentCrossWaiting.add(key);
+
+        if (!prevCrossWaitingRef.current.has(key)) {
+          const info = s.waitingAgentInfo;
+          const notification = new Notification(`${info.agentName} needs input`, {
+            body: `[${s.projectName}] ${info.action}`,
+            tag: `agent-waiting-${info.agentId}`,
+            requireInteraction: false,
+          });
+          notification.onclick = () => {
+            window.focus();
+            notification.close();
+          };
+          playChime();
+        }
+      }
+    }
+
+    prevCrossWaitingRef.current = currentCrossWaiting;
+  }, [sessions, session?.sessionId, enabled, supported]);
+
+  // Count cross-session waiting agents for title flash
+  const crossSessionWaitingCount = useMemo(() => {
+    if (!sessions || !session) return 0;
+    return sessions.filter((s) => s.sessionId !== session.sessionId && s.hasWaitingAgent).length;
+  }, [sessions, session]);
+
+  const totalWaitingCount = waitingAgents.length + crossSessionWaitingCount;
+
+  // Flashing tab title when agents are waiting (same-session + cross-session)
+  useEffect(() => {
+    if (totalWaitingCount > 0) {
       let flash = true;
       // Clear any existing interval
       if (titleIntervalRef.current) clearInterval(titleIntervalRef.current);
 
       titleIntervalRef.current = setInterval(() => {
         document.title = flash
-          ? `[${waitingAgents.length}] Input needed - ${ORIGINAL_TITLE}`
+          ? `[${totalWaitingCount}] Input needed - ${ORIGINAL_TITLE}`
           : ORIGINAL_TITLE;
         flash = !flash;
       }, 1500);
@@ -169,7 +213,7 @@ export function useNotifications(agents: AgentState[]): NotificationState {
       }
       document.title = ORIGINAL_TITLE;
     };
-  }, [waitingAgents.length]);
+  }, [totalWaitingCount]);
 
   return { enabled, permission, toggle, waitingAgents };
 }
