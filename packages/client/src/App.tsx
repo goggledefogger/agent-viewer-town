@@ -268,6 +268,8 @@ export default function App() {
           className={isMobile && mobileTab !== 'scene' ? 'mobile-hidden' : undefined}
           focusAgentId={focusAgentId}
           onFocusTask={handleFocusTask}
+          groupedSessions={groupedSessions}
+          onSelectSession={handleSelectSession}
         />
         <Sidebar
           state={state}
