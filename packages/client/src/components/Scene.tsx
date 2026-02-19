@@ -1,17 +1,21 @@
 import { useState, useMemo, useEffect } from 'react';
-import type { TeamState, AgentState } from '@agent-viewer/shared';
+import type { TeamState, AgentState, GroupedSessionsList } from '@agent-viewer/shared';
 import { AgentCharacter } from './AgentCharacter';
 import { Machine } from './Machine';
 import { ActionBubble } from './ActionBubble';
 import { AgentDetail } from './AgentDetail';
 import { SceneBackground, SubagentTethers, BranchTethers } from './SceneBackground';
+import { BranchSidebar } from './BranchSidebar';
 import { computeAllPositions, computeBranchLanes, computeBranchZones } from './sceneLayout';
+import type { ProjectInfo } from '../svg/characters';
 
 interface SceneProps {
   state: TeamState;
   className?: string;
   focusAgentId?: string | null;
   onFocusTask?: (taskId: string) => void;
+  groupedSessions?: GroupedSessionsList;
+  onSelectSession?: (sessionId: string) => void;
 }
 
 // --- Zoom & Pan Constants ---
@@ -22,7 +26,7 @@ const BASE_HEIGHT = 600;
 
 const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max);
 
-export function Scene({ state, className, focusAgentId, onFocusTask }: SceneProps) {
+export function Scene({ state, className, focusAgentId, onFocusTask, groupedSessions, onSelectSession }: SceneProps) {
   const mainAgents = useMemo(() => state.agents.filter((a) => !a.isSubagent), [state.agents]);
   const subagents = useMemo(() => state.agents.filter((a) => a.isSubagent), [state.agents]);
   const isSoloMode = mainAgents.length <= 1;
@@ -102,6 +106,22 @@ export function Scene({ state, className, focusAgentId, onFocusTask }: SceneProp
   const branchLanes = useMemo(() => computeBranchLanes(state.agents), [state.agents]);
   const branchZones = useMemo(() => computeBranchZones(state.agents, allPositions), [state.agents, allPositions]);
 
+  // Find the current project's branches for the sidebar
+  const currentProject = useMemo(() => {
+    if (!groupedSessions || !state.session?.projectPath) return null;
+    return groupedSessions.projects.find(p => p.projectPath === state.session!.projectPath) || null;
+  }, [groupedSessions, state.session]);
+
+  // Build project info for character resolution (solo agents get project-based animals)
+  const projectInfo: ProjectInfo | undefined = useMemo(() => {
+    if (!state.session) return undefined;
+    return {
+      projectPath: state.session.projectPath,
+      projectName: state.session.projectName,
+      gitBranch: state.session.gitBranch,
+    };
+  }, [state.session]);
+
   if (!state.name && state.agents.length === 0) {
     return (
       <div className={`scene-container no-team${className ? ` ${className}` : ''}`}>
@@ -114,6 +134,17 @@ export function Scene({ state, className, focusAgentId, onFocusTask }: SceneProp
 
   return (
     <div className={`scene-container${className ? ` ${className}` : ''}`} style={{ cursor: isDragging ? 'grabbing' : 'grab' }}>
+      {/* Branch sidebar overlay */}
+      {currentProject && currentProject.branches.length > 1 && onSelectSession && (
+        <BranchSidebar
+          projectName={currentProject.projectName}
+          projectBranches={currentProject.branches}
+          activeSessionId={state.session?.sessionId}
+          onSelectSession={onSelectSession}
+          currentBranch={state.session?.gitBranch}
+        />
+      )}
+
       {/* Zoom Controls Overlay */}
       <div className="scene-controls">
         <button onClick={(e) => zoomBy(0.2, e)} title="Zoom In">+</button>
@@ -215,7 +246,7 @@ export function Scene({ state, className, focusAgentId, onFocusTask }: SceneProp
                   </g>
                 );
               })()}
-              <AgentCharacter agent={agent} x={pos.x} y={pos.y} />
+              <AgentCharacter agent={agent} x={pos.x} y={pos.y} projectInfo={projectInfo} />
               <ActionBubble agent={agent} x={pos.x} y={pos.y} />
             </g>
           );

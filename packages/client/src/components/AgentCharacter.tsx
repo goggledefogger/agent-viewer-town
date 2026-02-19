@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { AgentState } from '@agent-viewer/shared';
 import { resolveCharacter, getEvolutionStage } from '../svg/characters';
+import type { ProjectInfo } from '../svg/characters';
 import { STEAM_COLORS, SPARK_COLORS, CONFETTI_COLORS, getBranchColor } from '../constants/colors';
 export { getBranchColor } from '../constants/colors';
 
@@ -9,6 +10,7 @@ interface AgentCharacterProps {
   x: number;
   y: number;
   isNew?: boolean;
+  projectInfo?: ProjectInfo;
 }
 
 /** Steam puff particles that rise and fade when agent is working */
@@ -201,8 +203,8 @@ function CelebrationParticles({ active }: { active: boolean }) {
   );
 }
 
-export function AgentCharacter({ agent, x, y, isNew }: AgentCharacterProps) {
-  const { AnimalComponent: AnimalSvg, accentColor: color } = resolveCharacter(agent);
+export function AgentCharacter({ agent, x, y, isNew, projectInfo }: AgentCharacterProps) {
+  const { AnimalComponent: AnimalSvg, accentColor: color } = resolveCharacter(agent, projectInfo);
   const stage = agent.isSubagent ? 1 : getEvolutionStage(agent.tasksCompleted);
   const isWorking = agent.status === 'working';
   const isCompacting = isWorking && !!(agent.currentAction && agent.currentAction.includes('Compacting'));

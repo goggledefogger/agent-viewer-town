@@ -32,8 +32,12 @@ export function useWebSocket(url: string): WebSocketState {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const hasConnectedOnce = useRef(false);
   const hasLockedSession = useRef(false);
+  /** Track the session ID the user is viewing, so we can re-send on reconnect */
+  const lockedSessionId = useRef<string | undefined>(undefined);
 
   const selectSession = useCallback((sessionId: string) => {
+    lockedSessionId.current = sessionId;
+    hasLockedSession.current = true;
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'select_session', sessionId }));
@@ -47,10 +51,14 @@ export function useWebSocket(url: string): WebSocketState {
     ws.onopen = () => {
       console.log('[ws] connected');
       setConnectionStatus('connected');
-      // Only reset session lock on first connection.
-      // On reconnection, keep the lock so the user stays on their chosen session.
       if (!hasConnectedOnce.current) {
+        // First connection: unlock so the first full_state locks us in
         hasLockedSession.current = false;
+      } else if (lockedSessionId.current) {
+        // Reconnection: immediately re-send our session selection.
+        // The server created a new clientState with its own pick — override it.
+        console.log(`[ws] reconnect: re-selecting session ${lockedSessionId.current.slice(0, 8)}`);
+        ws.send(JSON.stringify({ type: 'select_session', sessionId: lockedSessionId.current }));
       }
       hasConnectedOnce.current = true;
     };
@@ -93,7 +101,15 @@ export function useWebSocket(url: string): WebSocketState {
               // Lock into the initial session so server auto-selections don't change our view
               if (!hasLockedSession.current && msg.data.session?.sessionId && ws.readyState === WebSocket.OPEN) {
                 hasLockedSession.current = true;
+                lockedSessionId.current = msg.data.session.sessionId;
                 ws.send(JSON.stringify({ type: 'select_session', sessionId: msg.data.session.sessionId }));
+              }
+              // Reject full_state for a different session than what we're locked to.
+              // This prevents server-side broadcasts from switching our view.
+              if (hasLockedSession.current && lockedSessionId.current &&
+                  msg.data.session?.sessionId && msg.data.session.sessionId !== lockedSessionId.current) {
+                console.log(`[ws] ignoring full_state for ${msg.data.session.projectName} (locked to ${lockedSessionId.current.slice(0, 8)})`);
+                break;
               }
             }
             setState((prev) => applyMessage(prev, msg));

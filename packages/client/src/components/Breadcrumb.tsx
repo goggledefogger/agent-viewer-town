@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
-import type { BreadcrumbSegment, ZoomLevel } from '../hooks/useNavigation';
+import type { BreadcrumbSegment } from '../hooks/useNavigation';
 
 interface BreadcrumbProps {
   segments: BreadcrumbSegment[];
-  onNavigate: (level: ZoomLevel, projectKey?: string, branch?: string) => void;
   onToggleDropdown: () => void;
   waitingCount: number;
   isOpen: boolean;
@@ -12,7 +11,6 @@ interface BreadcrumbProps {
 
 export function Breadcrumb({
   segments,
-  onNavigate,
   onToggleDropdown,
   waitingCount,
   isOpen,
@@ -27,22 +25,9 @@ export function Breadcrumb({
         aria-haspopup="listbox"
       >
         <span className="nav-breadcrumb-segments">
-          {segments.map((seg, i) => (
-            <span key={`${seg.level}-${seg.label}`} className="nav-breadcrumb-segment-wrapper">
-              {i > 0 && <span className="nav-breadcrumb-sep"> &gt; </span>}
-              {seg.isCurrent ? (
-                <span className="nav-breadcrumb-current">{seg.label}</span>
-              ) : (
-                <button
-                  className="nav-breadcrumb-link"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onNavigate(seg.level, seg.projectKey, seg.branch);
-                  }}
-                >
-                  {seg.label}
-                </button>
-              )}
+          {segments.map((seg) => (
+            <span key={seg.label} className="nav-breadcrumb-segment-wrapper">
+              <span className="nav-breadcrumb-current">{seg.label}</span>
             </span>
           ))}
         </span>

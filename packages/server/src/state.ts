@@ -576,7 +576,9 @@ export class StateManager {
       : session.projectName;
     this.state.agents = this.getAgentsForSession(session);
     this.state.tasks = session.isTeam ? this.state.tasks : [];
-    this.broadcastFullState();
+    // Only broadcast sessions list update (navigation tree).
+    // Do NOT broadcast full_state — each client has their own selectedSessionId
+    // and gets per-client filtered state via getStateForSession().
     this.broadcastSessionsList();
   }
 
