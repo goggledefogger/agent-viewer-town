@@ -12,7 +12,8 @@ export function buildSessionsList(
   const entries: SessionListEntry[] = [];
   for (const session of sessions.values()) {
     const agents = getAgentsForSession(session);
-    const hasWaiting = agents.some((a) => a.waitingForInput === true);
+    const waitingAgent = agents.find((a) => a.waitingForInput === true);
+    const hasWaiting = !!waitingAgent;
     const resolvedPath = session.mainRepoPath || session.projectPath;
     entries.push({
       sessionId: session.sessionId,
@@ -25,6 +26,12 @@ export function buildSessionsList(
       lastActivity: session.lastActivity,
       active: activeSessionId === session.sessionId,
       hasWaitingAgent: hasWaiting,
+      waitingAgentInfo: waitingAgent ? {
+        agentId: waitingAgent.id,
+        agentName: waitingAgent.name,
+        action: waitingAgent.currentAction || 'Waiting for input',
+        waitingType: waitingAgent.waitingType,
+      } : undefined,
     });
   }
   // Most recently active first

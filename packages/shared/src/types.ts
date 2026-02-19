@@ -108,6 +108,13 @@ export interface SessionListEntry {
   active: boolean;
   /** Whether any agent in this session is waiting for input */
   hasWaitingAgent: boolean;
+  /** Info about the first waiting agent (for cross-tab notifications) */
+  waitingAgentInfo?: {
+    agentId: string;
+    agentName: string;
+    action: string;
+    waitingType?: string;
+  };
 }
 
 /** A branch within a project, containing one or more sessions */

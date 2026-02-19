@@ -349,10 +349,11 @@ export class StateManager {
     // Same pattern as updateAgentActivityById — ensures clients viewing
     // non-globally-selected sessions still receive updates.
     this.broadcast({ type: 'agent_update', data: displayed || agent });
-    // When an agent transitions from waiting to not-waiting, broadcast updated
-    // sessions list so ALL clients (even those viewing other sessions) learn that
-    // hasWaitingAgent changed. This enables cross-session notification resolution.
-    if (wasWaiting && !waiting) {
+    // When waiting state transitions (either direction), broadcast sessions list
+    // so ALL clients learn that hasWaitingAgent changed:
+    // - false→true: other tabs need to know an agent needs input (cross-tab notifications)
+    // - true→false: other tabs need to resolve their notifications
+    if (wasWaiting !== waiting) {
       this.broadcastSessionsList();
     }
   }

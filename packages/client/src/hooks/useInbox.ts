@@ -101,18 +101,55 @@ export function useInbox(agents: AgentState[], session?: SessionInfo, sessions?:
     prevWaiting.current = currentWaiting;
   }, [agents, session]);
 
-  // Cross-session notification resolution: when the sessions list updates and
-  // a session's hasWaitingAgent becomes false, resolve notifications for agents
-  // in that session. This handles the case where the user responds to Claude Code
-  // in a terminal for a session that isn't currently displayed in the viewer.
+  // Cross-session notifications: create notifications for waiting agents in OTHER
+  // sessions (not the one we're currently viewing), and resolve them when they stop waiting.
+  const prevCrossSessionWaiting = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!sessions || sessions.length === 0) return;
 
-    // Build a set of session IDs that still have waiting agents
-    const sessionsWithWaiting = new Set(
-      sessions.filter((s) => s.hasWaitingAgent).map((s) => s.sessionId)
-    );
+    const currentSessionId = session?.sessionId;
+    const currentCrossWaiting = new Set<string>();
 
+    // Build a set of session IDs that still have waiting agents
+    const sessionsWithWaiting = new Set<string>();
+
+    for (const s of sessions) {
+      if (s.hasWaitingAgent) {
+        sessionsWithWaiting.add(s.sessionId);
+      }
+
+      // Create notifications for OTHER sessions' waiting agents
+      if (s.hasWaitingAgent && s.waitingAgentInfo && s.sessionId !== currentSessionId) {
+        const key = `${s.sessionId}:${s.waitingAgentInfo.agentId}`;
+        currentCrossWaiting.add(key);
+
+        if (!prevCrossSessionWaiting.current.has(key)) {
+          const info = s.waitingAgentInfo;
+          const notif: InboxNotification = {
+            id: `cross-${info.agentId}-${Date.now()}`,
+            agentId: info.agentId,
+            agentName: info.agentName,
+            type: (info.waitingType as NotificationType) || 'permission_request',
+            title: `${info.agentName} needs input`,
+            body: info.action,
+            sessionId: s.sessionId,
+            projectName: s.projectName,
+            gitBranch: s.gitBranch,
+            timestamp: Date.now(),
+            read: false,
+            resolved: false,
+          };
+          setNotifications((prev) => {
+            const updated = [notif, ...prev];
+            return updated.length > MAX_NOTIFICATIONS ? updated.slice(0, MAX_NOTIFICATIONS) : updated;
+          });
+        }
+      }
+    }
+
+    prevCrossSessionWaiting.current = currentCrossWaiting;
+
+    // Resolve notifications for sessions that no longer have waiting agents
     setNotifications((prev) => {
       let changed = false;
       const updated = prev.map((n) => {
@@ -124,7 +161,7 @@ export function useInbox(agents: AgentState[], session?: SessionInfo, sessions?:
       });
       return changed ? updated : prev;
     });
-  }, [sessions]);
+  }, [sessions, session?.sessionId]);
 
   const markRead = useCallback((id: string) => {
     setNotifications((prev) =>
