@@ -10,7 +10,65 @@ export interface NotificationState {
 }
 
 const STORAGE_KEY = 'agent-viewer-notifications-enabled';
-const ORIGINAL_TITLE = 'Agent Viewer Town';
+const BASE_TITLE = 'Agent Viewer Town';
+
+/**
+ * Cross-tab notification deduplication via BroadcastChannel.
+ *
+ * When multiple tabs are open, each tab independently detects waiting agents
+ * and would fire its own browser notification + audio chime. The browser's
+ * Notification `tag` deduplicates the popup, but the chime plays in every tab.
+ *
+ * We use a BroadcastChannel to announce when a notification has been fired.
+ * Other tabs that receive the message within 5 seconds will skip their chime.
+ */
+const recentlyFiredNotifications = new Set<string>();
+let notificationChannel: BroadcastChannel | null = null;
+try {
+  notificationChannel = new BroadcastChannel('agent-viewer-notifications');
+  notificationChannel.onmessage = (e: MessageEvent) => {
+    if (e.data?.type === 'notification_fired' && typeof e.data.tag === 'string') {
+      recentlyFiredNotifications.add(e.data.tag);
+      setTimeout(() => recentlyFiredNotifications.delete(e.data.tag), 5000);
+    }
+  };
+} catch {
+  // BroadcastChannel not supported (e.g. SSR, older browsers)
+}
+
+/**
+ * Fire a browser notification and chime, deduplicating across tabs.
+ * Returns true if this tab was the one that fired.
+ */
+function fireNotification(title: string, body: string, tag: string): boolean {
+  if (recentlyFiredNotifications.has(tag)) {
+    // Another tab already fired this notification — skip chime
+    return false;
+  }
+
+  const notification = new Notification(title, {
+    body,
+    tag,
+    requireInteraction: false,
+  });
+  notification.onclick = () => {
+    window.focus();
+    notification.close();
+  };
+
+  playChime();
+
+  // Tell other tabs we handled it
+  recentlyFiredNotifications.add(tag);
+  setTimeout(() => recentlyFiredNotifications.delete(tag), 5000);
+  try {
+    notificationChannel?.postMessage({ type: 'notification_fired', tag });
+  } catch {
+    // Channel may be closed
+  }
+
+  return true;
+}
 
 function getStoredPreference(): boolean {
   try {
@@ -99,6 +157,13 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
     }
   }, [enabled, supported]);
 
+  // Dynamic tab title based on current session
+  const baseTitle = useMemo(() => {
+    if (!session) return BASE_TITLE;
+    const branchSuffix = session.gitBranch ? ` (${session.gitBranch})` : '';
+    return `${session.projectName}${branchSuffix} - ${BASE_TITLE}`;
+  }, [session?.projectName, session?.gitBranch]);
+
   // Compute currently waiting agents
   const waitingAgents = useMemo(
     () => agents.filter((a) => a.waitingForInput === true && a.status !== 'idle'),
@@ -116,21 +181,9 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
       const isWaiting = agent.waitingForInput === true && agent.status !== 'idle';
 
       if (isWaiting && !wasWaiting) {
-        // Fire browser notification regardless of tab visibility
         const action = agent.currentAction || 'Waiting for approval';
-        const notification = new Notification(`${agent.name} needs input`, {
-          body: action,
-          tag: `agent-waiting-${agent.id}`,
-          requireInteraction: false,
-        });
-
-        notification.onclick = () => {
-          window.focus();
-          notification.close();
-        };
-
-        // Play audio chime
-        playChime();
+        const tag = `agent-waiting-${agent.id}`;
+        fireNotification(`${agent.name} needs input`, action, tag);
       }
     }
 
@@ -159,16 +212,12 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
 
         if (!prevCrossWaitingRef.current.has(key)) {
           const info = s.waitingAgentInfo;
-          const notification = new Notification(`${info.agentName} needs input`, {
-            body: `[${s.projectName}] ${info.action}`,
-            tag: `agent-waiting-${info.agentId}`,
-            requireInteraction: false,
-          });
-          notification.onclick = () => {
-            window.focus();
-            notification.close();
-          };
-          playChime();
+          const tag = `agent-waiting-${info.agentId}`;
+          fireNotification(
+            `${info.agentName} needs input`,
+            `[${s.projectName}] ${info.action}`,
+            tag,
+          );
         }
       }
     }
@@ -176,15 +225,11 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
     prevCrossWaitingRef.current = currentCrossWaiting;
   }, [sessions, session?.sessionId, enabled, supported]);
 
-  // Count cross-session waiting agents for title flash
-  const crossSessionWaitingCount = useMemo(() => {
-    if (!sessions || !session) return 0;
-    return sessions.filter((s) => s.sessionId !== session.sessionId && s.hasWaitingAgent).length;
-  }, [sessions, session]);
+  // Title flash only reflects THIS tab's session (cross-session waiting is
+  // shown in the navigation tree and inbox instead).
+  const totalWaitingCount = waitingAgents.length;
 
-  const totalWaitingCount = waitingAgents.length + crossSessionWaitingCount;
-
-  // Flashing tab title when agents are waiting (same-session + cross-session)
+  // Flashing tab title when agents are waiting (same-session only)
   useEffect(() => {
     if (totalWaitingCount > 0) {
       let flash = true;
@@ -193,8 +238,8 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
 
       titleIntervalRef.current = setInterval(() => {
         document.title = flash
-          ? `[${totalWaitingCount}] Input needed - ${ORIGINAL_TITLE}`
-          : ORIGINAL_TITLE;
+          ? `[${totalWaitingCount}] Input needed - ${baseTitle}`
+          : baseTitle;
         flash = !flash;
       }, 1500);
     } else {
@@ -203,7 +248,7 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
         clearInterval(titleIntervalRef.current);
         titleIntervalRef.current = null;
       }
-      document.title = ORIGINAL_TITLE;
+      document.title = baseTitle;
     }
 
     return () => {
@@ -211,9 +256,9 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
         clearInterval(titleIntervalRef.current);
         titleIntervalRef.current = null;
       }
-      document.title = ORIGINAL_TITLE;
+      document.title = baseTitle;
     };
-  }, [totalWaitingCount]);
+  }, [totalWaitingCount, baseTitle]);
 
   return { enabled, permission, toggle, waitingAgents };
 }
