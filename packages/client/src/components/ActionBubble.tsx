@@ -1,8 +1,25 @@
 import type { AgentState } from '@agent-viewer/shared';
 
+/** Get waiting-type specific icon and color */
+function getWaitingStyle(waitingType?: 'permission' | 'question' | 'plan' | 'plan_approval') {
+  switch (waitingType) {
+    case 'permission':
+      return { icon: '\uD83D\uDD12', label: 'Permission needed', color: '#F97316' };
+    case 'question':
+      return { icon: '\u2753', label: 'Question for you', color: '#3B82F6' };
+    case 'plan':
+      return { icon: '\uD83D\uDCCB', label: 'Plan review', color: '#8B5CF6' };
+    case 'plan_approval':
+      return { icon: '\u2705', label: 'Approve plan', color: '#22C55E' };
+    default:
+      return { icon: '\u26A0', label: 'Needs your input!', color: '#EAB308' };
+  }
+}
+
 /** Prominent alert bubble when agent needs user input */
 function WaitingBubble({ agent, x, y }: { agent: AgentState; x: number; y: number }) {
-  const label = '\u26A0 Needs your input!';
+  const style = getWaitingStyle(agent.waitingType);
+  const label = `${style.icon} ${style.label}`;
   const subtext = agent.currentAction || 'Waiting for approval';
   const context = agent.actionContext;
   const maxLen = 30;
@@ -21,7 +38,7 @@ function WaitingBubble({ agent, x, y }: { agent: AgentState; x: number; y: numbe
         width={boxWidth + 6}
         height={bubbleHeight + 4}
         rx="8"
-        fill="#FFD700"
+        fill={style.color}
         opacity="0.15"
       >
         <animate attributeName="opacity" values="0.1;0.25;0.1" dur="1.5s" repeatCount="indefinite" />
@@ -34,14 +51,14 @@ function WaitingBubble({ agent, x, y }: { agent: AgentState; x: number; y: numbe
         height={bubbleHeight}
         rx="6"
         fill="#1a1a2e"
-        stroke="#FFD700"
+        stroke={style.color}
         strokeWidth="2"
         opacity="0.97"
       />
-      <polygon points={`-5,${bubbleHeight - 18} 5,${bubbleHeight - 18} 0,${bubbleHeight - 13}`} fill="#1a1a2e" stroke="#FFD700" strokeWidth="2" />
+      <polygon points={`-5,${bubbleHeight - 18} 5,${bubbleHeight - 18} 0,${bubbleHeight - 13}`} fill="#1a1a2e" stroke={style.color} strokeWidth="2" />
       <rect x="-6" y={bubbleHeight - 20} width="12" height="4" fill="#1a1a2e" />
       {/* Alert text */}
-      <text x="0" y="-4" textAnchor="middle" fill="#FFD700" fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold">
+      <text x="0" y="-4" textAnchor="middle" fill={style.color} fontSize="8" fontFamily="'Courier New', monospace" fontWeight="bold">
         {label}
         <animate attributeName="opacity" values="1;0.6;1" dur="1.2s" repeatCount="indefinite" />
       </text>
