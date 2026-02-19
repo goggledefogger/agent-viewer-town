@@ -46,8 +46,37 @@ export function runStalenessCheck(ctx: WatcherContext) {
       continue;
     }
 
-    // Mark as idle after inactivity
+    // Mark as idle after inactivity — but first check if a compaction subagent
+    // is still running. During compaction, the parent JSONL and hooks are quiet
+    // (all activity is on the acompact subagent file), so the parent looks stale.
+    // Check tracked acompact entries and their file mtime before marking idle.
     if (idleSeconds >= IDLE_THRESHOLD_S) {
+      let hasActiveCompaction = false;
+      for (const t of trackedSessions.values()) {
+        if (!t.isInternalSubagent) continue;
+        if (!t.filePath.includes(`/${tracked.sessionId}/`)) continue;
+        // Check the acompact file's mtime — if it's recent, compaction is ongoing
+        try {
+          const acompactStats = statSync(t.filePath);
+          const acompactAgeS = (now - acompactStats.mtimeMs) / 1000;
+          if (acompactAgeS < IDLE_THRESHOLD_S) {
+            hasActiveCompaction = true;
+            break;
+          }
+        } catch {
+          // File gone, not active
+        }
+      }
+
+      if (hasActiveCompaction) {
+        // Keep the agent in "Compacting" state — don't mark idle
+        const agent = stateManager.getAgentById(tracked.sessionId);
+        if (agent && agent.status === 'working' && agent.currentAction !== 'Compacting conversation...') {
+          stateManager.updateAgentActivityById(tracked.sessionId, 'working', 'Compacting conversation...');
+        }
+        continue;
+      }
+
       stateManager.setAgentWaitingById(tracked.sessionId, false);
 
       const agent = stateManager.getAgentById(tracked.sessionId);
