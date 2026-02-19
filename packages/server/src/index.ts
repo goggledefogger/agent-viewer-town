@@ -152,10 +152,17 @@ wss.on('connection', (ws: WebSocket) => {
     const client = clientStates.get(ws);
     const clientSessionId = client?.selectedSessionId;
 
-    if (msg.type === 'full_state' || msg.type === 'sessions_list' || msg.type === 'sessions_grouped') {
-      // For full_state and sessions_list, always send the client-specific view
+    if (msg.type === 'full_state') {
+      // Full state reset: send complete per-client filtered view
       const id = getClientActiveSessionId(ws);
       ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
+      ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
+      ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(id) }));
+    } else if (msg.type === 'sessions_update' || msg.type === 'sessions_list' || msg.type === 'sessions_grouped') {
+      // Sessions list changed (agent status transition, session added/removed).
+      // Only update navigation tree — do NOT send full_state here.
+      // Agent data is already kept current via agent_update messages.
+      const id = getClientActiveSessionId(ws);
       ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
       ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(id) }));
     } else if (msg.type === 'session_started' || msg.type === 'session_ended') {

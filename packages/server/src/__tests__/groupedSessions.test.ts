@@ -372,17 +372,19 @@ describe('getGroupedSessionsList', () => {
     expect(grouped2.projects[0].projectName).toBe('project-a');
   });
 
-  it('broadcasts sessions_grouped alongside sessions_list', () => {
-    const messages: Array<{ type: string }> = [];
+  it('broadcasts sessions_update with both list and grouped data', () => {
+    const messages: Array<{ type: string; data?: any }> = [];
     sm.subscribe((msg) => messages.push(msg));
 
     sm.registerAgent(makeAgent('s1', 'agent-a'));
     sm.addSession(makeSession('s1', 'project', { lastActivity: 1000 }));
 
-    const groupedMsgs = messages.filter(m => m.type === 'sessions_grouped');
-    const listMsgs = messages.filter(m => m.type === 'sessions_list');
-    expect(groupedMsgs.length).toBeGreaterThan(0);
-    expect(listMsgs.length).toBeGreaterThan(0);
+    const updateMsgs = messages.filter(m => m.type === 'sessions_update');
+    expect(updateMsgs.length).toBeGreaterThan(0);
+    // Combined message includes both list and grouped
+    const last = updateMsgs[updateMsgs.length - 1];
+    expect(last.data.list).toBeDefined();
+    expect(last.data.grouped).toBeDefined();
   });
 
   it('lastActivity is the max across all sessions in a branch', () => {

@@ -120,6 +120,12 @@ export class StateManager {
   }
 
   removeAgent(id: string) {
+    // Cancel any pending debounce timer to prevent broadcasting a removed agent
+    const pendingTimer = this.activityDebounceTimers.get(id);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      this.activityDebounceTimers.delete(id);
+    }
     this.allAgents.delete(id);
     this.state.agents = this.state.agents.filter((a) => a.id !== id);
     this.guards.markRemoved(id);
@@ -270,12 +276,17 @@ export class StateManager {
       }
       this.broadcast({ type: 'agent_update', data: broadcastAgent });
     } else {
-      // Debounce working updates — cancel previous and schedule new
+      // Debounce working updates — cancel previous and schedule new.
+      // Re-fetch from allAgents inside the timer to avoid broadcasting stale state
+      // (the agent's properties may change during the 200ms debounce window).
       const existing = this.activityDebounceTimers.get(agentId);
       if (existing) clearTimeout(existing);
       this.activityDebounceTimers.set(agentId, setTimeout(() => {
         this.activityDebounceTimers.delete(agentId);
-        this.broadcast({ type: 'agent_update', data: broadcastAgent });
+        const current = this.allAgents.get(agentId);
+        if (current) {
+          this.broadcast({ type: 'agent_update', data: current });
+        }
       }, this.activityDebounceMs));
     }
 
@@ -376,7 +387,7 @@ export class StateManager {
       if (gitBranch !== undefined) session.gitBranch = gitBranch;
       if (gitWorktree !== undefined) session.gitWorktree = gitWorktree;
     }
-    // Broadcast if the agent is displayed
+    // Also update displayed state if agent is shown globally
     const displayed = this.state.agents.find((a) => a.id === agentId);
     if (displayed) {
       if (gitBranch !== undefined) displayed.gitBranch = gitBranch;
@@ -387,7 +398,10 @@ export class StateManager {
         if (gitStatus.hasUpstream !== undefined) displayed.gitHasUpstream = gitStatus.hasUpstream;
         if (gitStatus.isDirty !== undefined) displayed.gitDirty = gitStatus.isDirty;
       }
-      this.broadcast({ type: 'agent_update', data: displayed });
+    }
+    // Broadcast using displayed or allAgents entry (same pattern as updateAgentActivityById)
+    if (agent) {
+      this.broadcast({ type: 'agent_update', data: displayed || agent });
     }
   }
 
@@ -399,8 +413,8 @@ export class StateManager {
     const displayed = this.state.agents.find((a) => a.id === agentId);
     if (displayed) {
       displayed.currentTaskId = taskId;
-      this.broadcast({ type: 'agent_update', data: displayed });
     }
+    this.broadcast({ type: 'agent_update', data: displayed || agent });
   }
 
   reconcileAgentStatuses() {
@@ -715,8 +729,16 @@ export class StateManager {
   }
 
   broadcastSessionsList() {
-    this.broadcast({ type: 'sessions_list', data: this.getSessionsList() });
-    this.broadcast({ type: 'sessions_grouped', data: this.getGroupedSessionsList() });
+    // Send as a single combined broadcast to avoid the subscription handler
+    // firing twice (each broadcast triggers full_state + sessions_list + sessions_grouped,
+    // so two separate broadcasts would send 9 messages per client instead of 3).
+    this.broadcast({
+      type: 'sessions_update',
+      data: {
+        list: this.getSessionsList(),
+        grouped: this.getGroupedSessionsList(),
+      },
+    });
   }
 
   broadcastFullState() {
@@ -744,6 +766,11 @@ export class StateManager {
   }
 
   reset() {
+    // Cancel all pending debounce timers before clearing state
+    for (const timer of this.activityDebounceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.activityDebounceTimers.clear();
     this.state = { name: '', agents: [], tasks: [], messages: [] };
     this.sessions.clear();
     this.allAgents.clear();

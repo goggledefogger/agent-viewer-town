@@ -132,22 +132,19 @@ describe('StateManager', () => {
       expect(sm.getSessionsList()).toHaveLength(3);
     });
 
-    it('broadcasts sessions_list with all sessions on addSession', () => {
+    it('broadcasts sessions_update with all sessions on addSession', () => {
       sm.registerAgent(makeAgent('s1', 'agent-a'));
       sm.registerAgent(makeAgent('s2', 'agent-b'));
 
       sm.addSession(makeSession('s1', 'project-a', { lastActivity: 1000 }));
       sm.addSession(makeSession('s2', 'project-b', { lastActivity: 2000 }));
 
-      // Find the last sessions_list broadcast
-      const sessionsListMsgs = messages.filter((m) => m.type === 'sessions_list');
-      expect(sessionsListMsgs.length).toBeGreaterThan(0);
+      // Find the last sessions_update broadcast (combined sessions_list + sessions_grouped)
+      const sessionsUpdateMsgs = messages.filter((m) => m.type === 'sessions_update');
+      expect(sessionsUpdateMsgs.length).toBeGreaterThan(0);
 
-      const lastList = sessionsListMsgs[sessionsListMsgs.length - 1];
-      expect(lastList.type).toBe('sessions_list');
-      if (lastList.type === 'sessions_list') {
-        expect(lastList.data).toHaveLength(2);
-      }
+      const lastUpdate = sessionsUpdateMsgs[sessionsUpdateMsgs.length - 1];
+      expect(lastUpdate.data.list).toHaveLength(2);
     });
   });
 
@@ -373,22 +370,19 @@ describe('StateManager', () => {
   });
 
   describe('sessions list broadcast completeness', () => {
-    it('sessions_list always includes all registered sessions', () => {
+    it('sessions_update always includes all registered sessions', () => {
       // Register 5 sessions
       for (let i = 1; i <= 5; i++) {
         sm.registerAgent(makeAgent(`s${i}`, `agent-${i}`));
         sm.addSession(makeSession(`s${i}`, `project-${i}`, { lastActivity: i * 1000 }));
       }
 
-      // Verify the LAST sessions_list message has all 5
-      const sessionsListMsgs = messages.filter((m) => m.type === 'sessions_list');
-      const last = sessionsListMsgs[sessionsListMsgs.length - 1];
-      expect(last.type).toBe('sessions_list');
-      if (last.type === 'sessions_list') {
-        expect(last.data).toHaveLength(5);
-        const ids = last.data.map((s) => s.sessionId).sort();
-        expect(ids).toEqual(['s1', 's2', 's3', 's4', 's5']);
-      }
+      // Verify the LAST sessions_update message has all 5
+      const sessionsUpdateMsgs = messages.filter((m) => m.type === 'sessions_update');
+      const last = sessionsUpdateMsgs[sessionsUpdateMsgs.length - 1];
+      expect(last.data.list).toHaveLength(5);
+      const ids = last.data.list.map((s: any) => s.sessionId).sort();
+      expect(ids).toEqual(['s1', 's2', 's3', 's4', 's5']);
     });
 
     it('sessions_list marks exactly one session as active', () => {
@@ -840,7 +834,7 @@ describe('StateManager', () => {
       expect(sessionStarted).toHaveLength(1);
     });
 
-    it('broadcasts sessions_list when older session is added without switching', () => {
+    it('broadcasts sessions_update when older session is added without switching', () => {
       sm.registerAgent(makeAgent('s1', 'agent-a'));
       sm.registerAgent(makeAgent('s2', 'agent-b'));
 
@@ -848,8 +842,8 @@ describe('StateManager', () => {
       messages = [];
       sm.addSession(makeSession('s2', 'project-b', { lastActivity: 1000 }));
 
-      const sessionsLists = messages.filter((m) => m.type === 'sessions_list');
-      expect(sessionsLists.length).toBeGreaterThan(0);
+      const sessionsUpdates = messages.filter((m) => m.type === 'sessions_update');
+      expect(sessionsUpdates.length).toBeGreaterThan(0);
     });
   });
 
@@ -1388,10 +1382,13 @@ describe('StateManager', () => {
 
       sm.updateAgentGitInfo('s1', 'feature/hidden');
 
+      // Now broadcasts even when agent is not in global display,
+      // using the allAgents entry so per-client filtering can route it
       const updates = messages.filter((m) => m.type === 'agent_update');
-      expect(updates).toHaveLength(0);
+      expect(updates).toHaveLength(1);
+      expect(updates[0].data.gitBranch).toBe('feature/hidden');
 
-      // But registry was updated
+      // Registry was also updated
       expect(sm.getAgentById('s1')?.gitBranch).toBe('feature/hidden');
     });
 

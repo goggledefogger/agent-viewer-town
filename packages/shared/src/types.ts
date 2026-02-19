@@ -182,5 +182,6 @@ export type WSMessage =
   | { type: 'agent_removed'; data: { id: string } }
   | { type: 'sessions_list'; data: SessionListEntry[] }
   | { type: 'sessions_grouped'; data: GroupedSessionsList }
+  | { type: 'sessions_update'; data: { list: SessionListEntry[]; grouped: GroupedSessionsList } }
   | { type: 'session_started'; data: SessionInfo }
   | { type: 'session_ended'; data: { sessionId: string } };

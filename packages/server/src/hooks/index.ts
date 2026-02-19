@@ -172,7 +172,7 @@ export function createHookHandler(stateManager: StateManager) {
         handleSubagentStop(stateManager, event as SubagentStopEvent, agentId);
         break;
       case 'PreCompact':
-        handlePreCompact(agentId);
+        handlePreCompact(sessionId, agentId);
         break;
       case 'Stop':
         handleStop(sessionId, agentId);
@@ -289,7 +289,9 @@ export function createHookHandler(stateManager: StateManager) {
     stateManager.setAgentWaitingById(agentId, true, action, context, 'permission');
   }
 
-  function handlePreCompact(agentId: string) {
+  function handlePreCompact(sessionId: string, agentId: string) {
+    // Clear stopped flag — compaction is new activity after a Stop
+    stateManager.clearSessionStopped(sessionId);
     stateManager.setAgentWaitingById(agentId, false);
     stateManager.updateAgentActivityById(agentId, 'working', 'Compacting conversation...');
     console.log(`[hooks] PreCompact: ${agentId.slice(0, 8)}`);

@@ -47,8 +47,12 @@ export function useWebSocket(url: string): WebSocketState {
     ws.onopen = () => {
       console.log('[ws] connected');
       setConnectionStatus('connected');
+      // Only reset session lock on first connection.
+      // On reconnection, keep the lock so the user stays on their chosen session.
+      if (!hasConnectedOnce.current) {
+        hasLockedSession.current = false;
+      }
       hasConnectedOnce.current = true;
-      hasLockedSession.current = false;
     };
 
     ws.onmessage = (event) => {
