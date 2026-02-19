@@ -7,6 +7,7 @@ import { AgentDetail } from './AgentDetail';
 import { SceneBackground, SubagentTethers, BranchTethers } from './SceneBackground';
 import { BranchSidebar } from './BranchSidebar';
 import { computeAllPositions, computeBranchLanes, computeBranchZones } from './sceneLayout';
+import type { ProjectInfo } from '../svg/characters';
 
 interface SceneProps {
   state: TeamState;
@@ -110,6 +111,16 @@ export function Scene({ state, className, focusAgentId, onFocusTask, groupedSess
     if (!groupedSessions || !state.session?.projectPath) return null;
     return groupedSessions.projects.find(p => p.projectPath === state.session!.projectPath) || null;
   }, [groupedSessions, state.session]);
+
+  // Build project info for character resolution (solo agents get project-based animals)
+  const projectInfo: ProjectInfo | undefined = useMemo(() => {
+    if (!state.session) return undefined;
+    return {
+      projectPath: state.session.projectPath,
+      projectName: state.session.projectName,
+      gitBranch: state.session.gitBranch,
+    };
+  }, [state.session]);
 
   if (!state.name && state.agents.length === 0) {
     return (
@@ -235,7 +246,7 @@ export function Scene({ state, className, focusAgentId, onFocusTask, groupedSess
                   </g>
                 );
               })()}
-              <AgentCharacter agent={agent} x={pos.x} y={pos.y} />
+              <AgentCharacter agent={agent} x={pos.x} y={pos.y} projectInfo={projectInfo} />
               <ActionBubble agent={agent} x={pos.x} y={pos.y} />
             </g>
           );

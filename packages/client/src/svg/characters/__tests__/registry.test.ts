@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { resolveCharacter, getEvolutionStage } from '../registry';
+import { resolveCharacter, getEvolutionStage, hashString } from '../registry';
+import type { ProjectInfo } from '../registry';
 import { Beaver, Owl, Fox, Bear, Rabbit, Squirrel, Chipmunk, Woodpecker, Mouse } from '../animals';
 import type { AgentState } from '@agent-viewer/shared';
 
@@ -141,6 +142,80 @@ describe('resolveCharacter', () => {
       expect(result.AnimalComponent).toBe(Bear);
       expect(result.accentColor).toBe('#28A745');
     });
+  });
+
+  describe('project-based character assignment for solo agents', () => {
+    const projectA: ProjectInfo = { projectPath: '/Users/Danny/Source/project-alpha', projectName: 'project-alpha' };
+    const projectB: ProjectInfo = { projectPath: '/Users/Danny/Source/project-beta', projectName: 'project-beta' };
+    const SOLO_POOL = [Fox, Bear, Beaver, Owl, Rabbit, Squirrel, Chipmunk, Woodpecker, Mouse];
+
+    it('is deterministic — same project path always gives the same animal', () => {
+      const agent = makeAgent({ role: 'implementer' });
+      const result1 = resolveCharacter(agent, projectA);
+      const result2 = resolveCharacter(agent, projectA);
+      expect(result1.AnimalComponent).toBe(result2.AnimalComponent);
+      expect(result1.accentColor).toBe(result2.accentColor);
+    });
+
+    it('different project paths produce different animals for enough variety', () => {
+      const agent = makeAgent({ role: 'implementer' });
+      const paths = Array.from({ length: 20 }, (_, i) => `/projects/project-${i}`);
+      const animals = new Set(paths.map(p =>
+        resolveCharacter(agent, { projectPath: p, projectName: `project-${p}` }).AnimalComponent
+      ));
+      // With 20 paths and 9 animals, we should see at least 4 distinct animals
+      expect(animals.size).toBeGreaterThanOrEqual(4);
+    });
+
+    it('selects from the solo animal pool', () => {
+      const agent = makeAgent({ role: 'implementer' });
+      const result = resolveCharacter(agent, projectA);
+      expect(SOLO_POOL).toContain(result.AnimalComponent);
+    });
+
+    it('falls back to Fox when no projectInfo is provided', () => {
+      const result = resolveCharacter(makeAgent({ role: 'implementer' }));
+      expect(result.AnimalComponent).toBe(Fox);
+      expect(result.accentColor).toBe('#DC3545');
+    });
+
+    it('does NOT use project-based assignment for non-implementer roles', () => {
+      const result = resolveCharacter(makeAgent({ role: 'lead' }), projectA);
+      expect(result.AnimalComponent).toBe(Beaver);
+    });
+
+    it('does NOT use project-based assignment for subagents', () => {
+      const result = resolveCharacter(
+        makeAgent({ isSubagent: true, subagentType: 'Explore' }),
+        projectA,
+      );
+      expect(result.AnimalComponent).toBe(Squirrel);
+    });
+
+    it('accent color matches the animal pool index', () => {
+      const agent = makeAgent({ role: 'implementer' });
+      const SOLO_COLORS = ['#DC3545', '#28A745', '#FFD700', '#4169E1', '#F8F9FA', '#26C6DA', '#FFCA28', '#FF7043', '#94a3b8'];
+      const result = resolveCharacter(agent, projectA);
+      const idx = SOLO_POOL.indexOf(result.AnimalComponent);
+      expect(idx).toBeGreaterThanOrEqual(0);
+      expect(result.accentColor).toBe(SOLO_COLORS[idx]);
+    });
+  });
+});
+
+describe('hashString', () => {
+  it('is deterministic', () => {
+    expect(hashString('test')).toBe(hashString('test'));
+  });
+
+  it('returns non-negative values', () => {
+    expect(hashString('test')).toBeGreaterThanOrEqual(0);
+    expect(hashString('')).toBeGreaterThanOrEqual(0);
+    expect(hashString('a very long path /Users/Danny/Source/my-project')).toBeGreaterThanOrEqual(0);
+  });
+
+  it('produces different values for different strings', () => {
+    expect(hashString('project-a')).not.toBe(hashString('project-b'));
   });
 });
 
