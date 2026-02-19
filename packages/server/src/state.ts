@@ -181,6 +181,7 @@ export class StateManager {
 
   updateAgentActivity(agentName: string, status: 'idle' | 'working' | 'done', action?: string, actionContext?: string) {
     // Update in the full registry
+    let registryAgent: AgentState | undefined;
     for (const agent of this.allAgents.values()) {
       if (agent.name === agentName) {
         agent.status = status;
@@ -195,6 +196,7 @@ export class StateManager {
         if (action && status === 'working') {
           this.pushRecentAction(agent, action);
         }
+        registryAgent = agent;
         break;
       }
     }
@@ -208,7 +210,11 @@ export class StateManager {
         agent.waitingForInput = false;
         agent.waitingType = undefined;
       }
-      this.broadcast({ type: 'agent_update', data: agent });
+    }
+    // Broadcast using displayed entry or allAgents entry
+    const broadcastAgent = agent || registryAgent;
+    if (broadcastAgent) {
+      this.broadcast({ type: 'agent_update', data: broadcastAgent });
     }
   }
 
@@ -245,26 +251,32 @@ export class StateManager {
         displayed.waitingForInput = false;
         displayed.waitingType = undefined;
       }
+    }
 
-      // For status transitions (idle, done) broadcast immediately.
-      // For rapid working updates, debounce to reduce UI flicker.
-      if (status !== 'working') {
-        // Cancel any pending debounce and broadcast immediately
-        const existing = this.activityDebounceTimers.get(agentId);
-        if (existing) {
-          clearTimeout(existing);
-          this.activityDebounceTimers.delete(agentId);
-        }
-        this.broadcast({ type: 'agent_update', data: displayed });
-      } else {
-        // Debounce working updates — cancel previous and schedule new
-        const existing = this.activityDebounceTimers.get(agentId);
-        if (existing) clearTimeout(existing);
-        this.activityDebounceTimers.set(agentId, setTimeout(() => {
-          this.activityDebounceTimers.delete(agentId);
-          this.broadcast({ type: 'agent_update', data: displayed });
-        }, this.activityDebounceMs));
+    // Broadcast agent_update using the allAgents entry (not just the displayed one).
+    // The agent may not be in state.agents (global display) if a different session is
+    // globally selected, but per-client WebSocket filtering uses getStateForSession()
+    // which reads from allAgents — so clients viewing this agent's session will receive it.
+    const broadcastAgent = displayed || agent;
+
+    // For status transitions (idle, done) broadcast immediately.
+    // For rapid working updates, debounce to reduce UI flicker.
+    if (status !== 'working') {
+      // Cancel any pending debounce and broadcast immediately
+      const existing = this.activityDebounceTimers.get(agentId);
+      if (existing) {
+        clearTimeout(existing);
+        this.activityDebounceTimers.delete(agentId);
       }
+      this.broadcast({ type: 'agent_update', data: broadcastAgent });
+    } else {
+      // Debounce working updates — cancel previous and schedule new
+      const existing = this.activityDebounceTimers.get(agentId);
+      if (existing) clearTimeout(existing);
+      this.activityDebounceTimers.set(agentId, setTimeout(() => {
+        this.activityDebounceTimers.delete(agentId);
+        this.broadcast({ type: 'agent_update', data: broadcastAgent });
+      }, this.activityDebounceMs));
     }
 
     // When status transitions between idle/working/done, broadcast updated
@@ -277,11 +289,13 @@ export class StateManager {
 
   setAgentWaiting(agentName: string, waiting: boolean, action?: string, actionContext?: string) {
     // Update in the full registry
+    let registryAgent: AgentState | undefined;
     for (const agent of this.allAgents.values()) {
       if (agent.name === agentName) {
         agent.waitingForInput = waiting;
         if (action) agent.currentAction = action;
         if (actionContext !== undefined) agent.actionContext = actionContext;
+        registryAgent = agent;
         break;
       }
     }
@@ -291,7 +305,11 @@ export class StateManager {
       agent.waitingForInput = waiting;
       if (action) agent.currentAction = action;
       if (actionContext !== undefined) agent.actionContext = actionContext;
-      this.broadcast({ type: 'agent_update', data: agent });
+    }
+    // Broadcast using displayed entry or allAgents entry
+    const broadcastAgent = agent || registryAgent;
+    if (broadcastAgent) {
+      this.broadcast({ type: 'agent_update', data: broadcastAgent });
     }
   }
 
@@ -315,8 +333,11 @@ export class StateManager {
       displayed.waitingType = waiting ? waitingType : undefined;
       if (action) displayed.currentAction = action;
       if (actionContext !== undefined) displayed.actionContext = actionContext;
-      this.broadcast({ type: 'agent_update', data: displayed });
     }
+    // Broadcast using displayed (if in global view) or allAgents entry.
+    // Same pattern as updateAgentActivityById — ensures clients viewing
+    // non-globally-selected sessions still receive updates.
+    this.broadcast({ type: 'agent_update', data: displayed || agent });
     // When an agent transitions from waiting to not-waiting, broadcast updated
     // sessions list so ALL clients (even those viewing other sessions) learn that
     // hasWaitingAgent changed. This enables cross-session notification resolution.
