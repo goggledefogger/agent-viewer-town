@@ -1,5 +1,6 @@
 import express from 'express';
 import { createServer } from 'http';
+import path from 'path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
@@ -71,8 +72,17 @@ function validateHookEvent(event: any): string | null {
     return 'session_id must be a string';
   }
 
-  if (event.cwd !== undefined && typeof event.cwd !== 'string') {
-    return 'cwd must be a string';
+  if (event.session_id && event.session_id.length > 256) {
+    return 'session_id is too long (max 256 chars)';
+  }
+
+  if (event.cwd !== undefined) {
+    if (typeof event.cwd !== 'string') {
+      return 'cwd must be a string';
+    }
+    if (!path.isAbsolute(event.cwd)) {
+      return 'cwd must be an absolute path';
+    }
   }
 
   return null;
