@@ -19,11 +19,18 @@
 PORT="${AGENT_VIEWER_PORT:-3001}"
 INPUT=$(cat)
 
+# Prepare curl arguments
+ARGS=(-sS -X POST "http://localhost:${PORT}/api/hook" -H "Content-Type: application/json")
+
+# Add auth header if token is present
+if [ -n "$AGENT_VIEWER_TOKEN" ]; then
+  ARGS+=(-H "Authorization: Bearer $AGENT_VIEWER_TOKEN")
+fi
+
+# Add data and timeout
+ARGS+=(-d "$INPUT" --max-time 1)
+
 # Fire-and-forget POST to the server
-curl -sS -X POST "http://localhost:${PORT}/api/hook" \
-  -H "Content-Type: application/json" \
-  -d "$INPUT" \
-  --max-time 1 \
-  >/dev/null 2>&1 || true
+curl "${ARGS[@]}" >/dev/null 2>&1 || true
 
 exit 0

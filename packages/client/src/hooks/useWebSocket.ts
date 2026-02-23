@@ -41,7 +41,21 @@ export function useWebSocket(url: string): WebSocketState {
   }, []);
 
   const connect = useCallback(() => {
-    const ws = new WebSocket(url);
+    let wsUrl = url;
+    const token = import.meta.env.VITE_AUTH_TOKEN;
+    if (token) {
+      try {
+        const u = new URL(url);
+        u.searchParams.set('token', token);
+        wsUrl = u.toString();
+      } catch {
+        // Fallback for relative URLs
+        const separator = url.includes('?') ? '&' : '?';
+        wsUrl = `${url}${separator}token=${token}`;
+      }
+    }
+
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {

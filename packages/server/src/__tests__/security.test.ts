@@ -6,12 +6,12 @@ let serverProcess: ChildProcess;
 const PORT = 3098;
 
 beforeAll(async () => {
-  const serverDir = path.resolve(__dirname, '../../');
+  const rootDir = path.resolve(__dirname, '../../../../');
 
   // Spawn the actual server process using tsx
   // We use 'npx tsx' to ensure we use the local tsx version
-  serverProcess = spawn('npx', ['tsx', 'src/index.ts'], {
-    cwd: serverDir,
+  serverProcess = spawn('npx', ['tsx', 'packages/server/src/index.ts'], {
+    cwd: rootDir,
     env: { ...process.env, PORT: PORT.toString() },
     stdio: 'pipe',
   });
