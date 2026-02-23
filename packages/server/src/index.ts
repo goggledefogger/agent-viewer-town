@@ -5,6 +5,7 @@ import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
+import { requireAuth, validateToken } from './auth';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -33,12 +34,12 @@ app.use(express.json({ limit: '1mb' }));
 const stateManager = new StateManager();
 const hookHandler = createHookHandler(stateManager);
 
-app.get('/api/state', (_req, res) => {
+app.get('/api/state', requireAuth, (_req, res) => {
   res.json(stateManager.getState());
 });
 
 // Hook event endpoint — receives events from Claude Code lifecycle hooks
-app.post('/api/hook', (req, res) => {
+app.post('/api/hook', requireAuth, (req, res) => {
   try {
     const event = req.body;
 
@@ -60,7 +61,7 @@ app.post('/api/hook', (req, res) => {
 });
 
 // Sessions list endpoint
-app.get('/api/sessions', (_req, res) => {
+app.get('/api/sessions', requireAuth, (_req, res) => {
   res.json(stateManager.getSessionsList());
 });
 
@@ -94,7 +95,26 @@ function getClientActiveSessionId(ws: WebSocket): string | undefined {
   return clientStates.get(ws)?.selectedSessionId || stateManager.getDefaultSessionId();
 }
 
-wss.on('connection', (ws: WebSocket) => {
+wss.on('connection', (ws: WebSocket, req) => {
+  // Auth check
+  let token: string | undefined;
+  if (req.url) {
+    const url = new URL(req.url, 'http://localhost');
+    token = url.searchParams.get('token') || undefined;
+  }
+  if (!token && req.headers['authorization']) {
+    const parts = req.headers['authorization'].split(' ');
+    if (parts.length === 2 && parts[0] === 'Bearer') {
+      token = parts[1];
+    }
+  }
+
+  if (!validateToken(token)) {
+    console.log('[ws] Connection rejected: Unauthorized');
+    ws.close(1008, 'Unauthorized');
+    return;
+  }
+
   console.log('[ws] client connected');
   // Pick the most interesting session for this new client, rather than using
   // the global default (which may be stale from a previous client's navigation).
