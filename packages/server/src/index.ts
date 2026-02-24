@@ -5,6 +5,7 @@ import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
+import { validateRequest } from './auth';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -24,6 +25,15 @@ app.use((_req, res, next) => {
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
+});
+
+// Auth Middleware
+app.use('/api', (req, res, next) => {
+  if (validateRequest(req)) {
+    next();
+  } else {
+    res.status(401).json({ error: 'Unauthorized' });
+  }
 });
 
 // JSON body parsing for hook events
@@ -65,7 +75,24 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  const { pathname } = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`);
+
+  if (pathname === '/ws') {
+    if (validateRequest(request)) {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    } else {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+    }
+  } else {
+    socket.destroy();
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
