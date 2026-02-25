@@ -1,10 +1,11 @@
 import express from 'express';
-import { createServer } from 'http';
+import { createServer, IncomingMessage } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
+import { requireAuth, validateWebSocketAuth } from './auth';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -25,6 +26,9 @@ app.use((_req, res, next) => {
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
 });
+
+// Protect all other API routes
+app.use('/api', requireAuth);
 
 // JSON body parsing for hook events
 app.use(express.json({ limit: '1mb' }));
@@ -94,7 +98,13 @@ function getClientActiveSessionId(ws: WebSocket): string | undefined {
   return clientStates.get(ws)?.selectedSessionId || stateManager.getDefaultSessionId();
 }
 
-wss.on('connection', (ws: WebSocket) => {
+wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+  if (!validateWebSocketAuth(req)) {
+    console.warn('[ws] unauthorized connection attempt');
+    ws.close(1008, 'Unauthorized');
+    return;
+  }
+
   console.log('[ws] client connected');
   // Pick the most interesting session for this new client, rather than using
   // the global default (which may be stale from a previous client's navigation).
