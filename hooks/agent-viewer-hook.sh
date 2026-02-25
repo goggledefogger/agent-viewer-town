@@ -17,13 +17,23 @@
 # - Fast (1s timeout for HTTP request)
 
 PORT="${AGENT_VIEWER_PORT:-3001}"
+TOKEN="${AGENT_VIEWER_TOKEN}"
 INPUT=$(cat)
 
 # Fire-and-forget POST to the server
-curl -sS -X POST "http://localhost:${PORT}/api/hook" \
-  -H "Content-Type: application/json" \
-  -d "$INPUT" \
-  --max-time 1 \
-  >/dev/null 2>&1 || true
+if [ -n "$TOKEN" ]; then
+  curl -sS -X POST "http://localhost:${PORT}/api/hook" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d "$INPUT" \
+    --max-time 1 \
+    >/dev/null 2>&1 || true
+else
+  curl -sS -X POST "http://localhost:${PORT}/api/hook" \
+    -H "Content-Type: application/json" \
+    -d "$INPUT" \
+    --max-time 1 \
+    >/dev/null 2>&1 || true
+fi
 
 exit 0
