@@ -5,6 +5,7 @@ import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
+import { requireAuth, validateToken, getTokenFromRequest } from './auth';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -33,12 +34,12 @@ app.use(express.json({ limit: '1mb' }));
 const stateManager = new StateManager();
 const hookHandler = createHookHandler(stateManager);
 
-app.get('/api/state', (_req, res) => {
+app.get('/api/state', requireAuth, (_req, res) => {
   res.json(stateManager.getState());
 });
 
 // Hook event endpoint — receives events from Claude Code lifecycle hooks
-app.post('/api/hook', (req, res) => {
+app.post('/api/hook', requireAuth, (req, res) => {
   try {
     const event = req.body;
 
@@ -60,12 +61,23 @@ app.post('/api/hook', (req, res) => {
 });
 
 // Sessions list endpoint
-app.get('/api/sessions', (_req, res) => {
+app.get('/api/sessions', requireAuth, (_req, res) => {
   res.json(stateManager.getSessionsList());
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, cb) => {
+    const token = getTokenFromRequest(info.req);
+    if (validateToken(token)) {
+      cb(true);
+    } else {
+      cb(false, 401, 'Unauthorized');
+    }
+  },
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
