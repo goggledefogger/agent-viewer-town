@@ -82,4 +82,12 @@ describe('validateHookEvent', () => {
     });
     expect(error).toMatch(/cwd is too long/);
   });
+
+  it('validates cwd path traversal', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/absolute/path/../to/traversal',
+    });
+    expect(error).toMatch(/cwd must be a normalized path/);
+  });
 });
