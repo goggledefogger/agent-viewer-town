@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
@@ -13,6 +14,15 @@ const server = createServer(app);
 
 // Security headers
 app.disable('x-powered-by');
+
+// CORS protection
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:5173', 'http://127.0.0.1:5173'];
+app.use(cors({
+  origin: ALLOWED_ORIGINS,
+  methods: ['GET', 'POST'],
+}));
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -65,7 +75,32 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, cb) => {
+    const origin = info.origin;
+    if (origin) {
+      try {
+        const url = new URL(origin);
+
+        // If ALLOWED_ORIGINS is set, check against it.
+        // Otherwise default to allowing localhost/127.0.0.1.
+        const isAllowed = process.env.ALLOWED_ORIGINS
+            ? ALLOWED_ORIGINS.includes(origin)
+            : (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
+
+        if (!isAllowed) {
+          console.warn(`[ws] Rejected cross-origin connection from: ${origin}`);
+          return cb(false, 403, 'Forbidden');
+        }
+      } catch {
+        return cb(false, 400, 'Bad Origin');
+      }
+    }
+    cb(true);
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
