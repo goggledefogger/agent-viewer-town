@@ -46,10 +46,14 @@ function fireNotification(title: string, body: string, tag: string): boolean {
     return false;
   }
 
+  // Use a unique tag per occurrence so repeated waiting->resolved->waiting
+  // cycles on the same agent always produce a visible notification popup on screen.
+  const notificationTag = `${tag}-${Date.now()}`;
+
   const notification = new Notification(title, {
     body,
-    tag,
-    requireInteraction: false,
+    tag: notificationTag,
+    requireInteraction: true,
   });
   notification.onclick = () => {
     window.focus();
