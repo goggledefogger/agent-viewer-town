@@ -59,7 +59,7 @@ if ! command -v npm &> /dev/null; then
 fi
 
 cd "$APP_DIR"
-npm run dev > /tmp/agent-viewer-dev.log 2>&1 &
+npm run dev </dev/null > /tmp/agent-viewer-dev.log 2>&1 &
 echo $! > /tmp/agent-viewer-dev.pid
 EOF
 chmod +x "$START_SCRIPT_PATH"

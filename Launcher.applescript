@@ -1,5 +1,5 @@
 on run
-	do shell script "bash \"REPLACE_WITH_START_SCRIPT\""
+	do shell script "bash \"REPLACE_WITH_START_SCRIPT\" > /dev/null 2>&1 &"
 	delay 2
 	do shell script "open http://localhost:5173"
 end run
