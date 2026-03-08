@@ -1,0 +1,35 @@
+{
+  "BTTPresetName": "Minimal Touch Bar",
+  "BTTPresetUUID": "TB-MINIMAL-0001",
+  "BTTPresetContent": [
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-MIN-ESC",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Esc",
+      "BTTTouchBarItemIconType": 1,
+      "BTTOrder": 0
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-MIN-BRIGHT",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Brightness",
+      "BTTTouchBarItemIconType": 1,
+      "BTTTouchBarWidgetType": 3,
+      "BTTOrder": 1
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-MIN-VOL",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Volume",
+      "BTTTouchBarItemIconType": 1,
+      "BTTTouchBarWidgetType": 4,
+      "BTTOrder": 2
+    }
+  ]
+}

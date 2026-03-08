@@ -1,0 +1,31 @@
+[
+  {
+    "type": "escape",
+    "width": 64,
+    "align": "left"
+  },
+  {
+    "type": "brightnessUp",
+    "width": 36,
+    "bordered": false
+  },
+  {
+    "type": "brightnessDown",
+    "width": 36,
+    "bordered": false
+  },
+  {
+    "type": "volume",
+    "align": "right"
+  },
+  {
+    "type": "battery",
+    "align": "right"
+  },
+  {
+    "type": "timeButton",
+    "formatTemplate": "HH:mm",
+    "align": "right",
+    "width": 64
+  }
+]

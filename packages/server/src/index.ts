@@ -5,6 +5,7 @@ import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
+import { clearTouchBarStatus } from './touchbar';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -190,6 +191,7 @@ const watcher = startWatcher(stateManager);
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\n[server] shutting down...');
+  clearTouchBarStatus();
   watcher.close();
   wss.close();
   server.close();

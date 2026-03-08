@@ -1,0 +1,43 @@
+[
+  {
+    "type": "escape",
+    "width": 64,
+    "align": "left"
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "source": {
+      "filePath": "{{SCRIPTS_DIR}}/cpu_usage.sh",
+      "refreshInterval": 2
+    },
+    "title": "CPU",
+    "width": 80,
+    "bordered": false,
+    "background": "#0F3460"
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "source": {
+      "inline": "memory_pressure | head -1 | awk '{print $NF}'"
+    },
+    "title": "MEM",
+    "width": 80,
+    "bordered": false,
+    "background": "#533483"
+  },
+  {
+    "type": "battery",
+    "width": 80
+  },
+  {
+    "type": "network",
+    "flip": true,
+    "width": 120
+  },
+  {
+    "type": "timeButton",
+    "formatTemplate": "HH:mm",
+    "align": "right",
+    "width": 64
+  }
+]

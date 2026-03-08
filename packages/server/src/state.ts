@@ -1,6 +1,7 @@
 import type { TeamState, AgentState, TaskState, MessageState, SessionInfo, SessionListEntry, GroupedSessionsList, WSMessage } from '@agent-viewer/shared';
 import { GuardManager } from './guards';
 import { buildSessionsList, buildGroupedSessionsList } from './state/sessionListBuilder';
+import { updateTouchBarStatus } from './touchbar';
 
 type Listener = (msg: WSMessage) => void;
 
@@ -355,6 +356,8 @@ export class StateManager {
     // - true→false: other tabs need to resolve their notifications
     if (wasWaiting !== waiting) {
       this.broadcastSessionsList();
+      // Update Touch Bar status file for MTMR/BTT integration
+      updateTouchBarStatus(this.allAgents);
     }
   }
 

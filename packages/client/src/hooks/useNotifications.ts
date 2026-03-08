@@ -118,12 +118,14 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
       const isWaiting = agent.waitingForInput === true;
 
       if (isWaiting && !wasWaiting) {
-        // Fire browser notification regardless of tab visibility
+        // Fire browser notification regardless of tab visibility.
+        // Use a unique tag per occurrence so repeated waiting→resolved→waiting
+        // cycles on the same agent always produce a visible notification.
         const action = agent.currentAction || 'Waiting for approval';
         const notification = new Notification(`${agent.name} needs input`, {
           body: action,
-          tag: `agent-waiting-${agent.id}`,
-          requireInteraction: false,
+          tag: `agent-waiting-${agent.id}-${Date.now()}`,
+          requireInteraction: true,
         });
 
         notification.onclick = () => {
@@ -163,8 +165,8 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
           const info = s.waitingAgentInfo;
           const notification = new Notification(`${info.agentName} needs input`, {
             body: `[${s.projectName}] ${info.action}`,
-            tag: `agent-waiting-${info.agentId}`,
-            requireInteraction: false,
+            tag: `agent-waiting-${info.agentId}-${Date.now()}`,
+            requireInteraction: true,
           });
           notification.onclick = () => {
             window.focus();

@@ -1,0 +1,39 @@
+{
+  "BTTPresetName": "System Monitor",
+  "BTTPresetUUID": "TB-SYSMON-0001",
+  "BTTPresetContent": [
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-SYS-CPU",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "CPU",
+      "BTTTouchBarShellScriptString": "{{SCRIPTS_DIR}}/cpu_usage.sh",
+      "BTTTouchBarScriptUpdateInterval": 2,
+      "BTTTouchBarItemWidth": 80,
+      "BTTOrder": 0
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-SYS-MEM",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "MEM",
+      "BTTTouchBarShellScriptString": "memory_pressure | head -1 | awk '{print $NF}'",
+      "BTTTouchBarScriptUpdateInterval": 3,
+      "BTTTouchBarItemWidth": 80,
+      "BTTOrder": 1
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-SYS-BAT",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Battery",
+      "BTTTouchBarShellScriptString": "pmset -g batt | grep -oE '[0-9]+%'",
+      "BTTTouchBarScriptUpdateInterval": 30,
+      "BTTTouchBarItemWidth": 80,
+      "BTTOrder": 2
+    }
+  ]
+}
