@@ -5,6 +5,7 @@ import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
+import { checkOrigin, verifyClient } from './origin';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -18,6 +19,29 @@ app.use((_req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
+// CORS middleware
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (origin) {
+    if (!checkOrigin(origin)) {
+      console.warn(`[http] Rejected request from unauthorized origin: ${origin}`);
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+
   next();
 });
 
@@ -65,7 +89,7 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ server, path: '/ws', verifyClient });
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
