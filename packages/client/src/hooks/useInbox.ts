@@ -24,13 +24,19 @@ const PRIORITY_ORDER: Record<NotificationType, number> = {
 const MAX_NOTIFICATIONS = 50;
 
 function getNotificationType(agent: AgentState): NotificationType {
-  if (!agent.waitingForInput) return 'permission_request';
-  const action = (agent.currentAction || '').toLowerCase();
-  // Check for specific waiting types in order of specificity
-  if (action.includes('plan') && (action.includes('approv') || action.includes('review'))) return 'plan_approval';
-  if (action.includes('question') || action.includes('ask')) return 'ask_user_question';
-  if (action.includes('permission') || action.includes('approve') || action.includes('allow')) return 'permission_request';
-  // Default: permission_request is the most common waiting type
+  // Use the server-provided waitingType for precise classification
+  switch (agent.waitingType) {
+    case 'question': return 'ask_user_question';
+    case 'plan': return 'plan_approval';
+    case 'plan_approval': return 'plan_approval';
+    case 'permission': return 'permission_request';
+  }
+  // Fallback: string match on currentAction for sessions without hooks
+  if (agent.waitingForInput) {
+    const action = (agent.currentAction || '').toLowerCase();
+    if (action.includes('plan')) return 'plan_approval';
+    if (action.includes('question') || action.includes('ask')) return 'ask_user_question';
+  }
   return 'permission_request';
 }
 

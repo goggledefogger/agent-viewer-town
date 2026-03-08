@@ -286,6 +286,9 @@ export function createHookHandler(stateManager: StateManager) {
 
   function handlePermissionRequest(event: PermissionRequestEvent, agentId: string) {
     const { action, context } = describeToolAction(event.tool_name, event.tool_input);
+    // Ensure agent shows as working — PermissionRequest can fire without a
+    // preceding PreToolUse (e.g., on retries or when hooks arrive out of order).
+    stateManager.updateAgentActivityById(agentId, 'working', action, context);
     stateManager.setAgentWaitingById(agentId, true, action, context, 'permission');
   }
 
