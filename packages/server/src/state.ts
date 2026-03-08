@@ -296,6 +296,8 @@ export class StateManager {
     // (e.g., openclaw-setup becoming active while viewing agent-viewer-town).
     if (prevStatus !== status) {
       this.broadcastSessionsList();
+      // Update Touch Bar on status transitions (working→idle shows green)
+      updateTouchBarStatus(this.allAgents);
     }
   }
 
