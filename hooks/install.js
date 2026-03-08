@@ -19,7 +19,9 @@ const SETTINGS_FILE = path.join(os.homedir(), '.claude', 'settings.json');
 const HOOK_EVENTS = [
   'PreToolUse',
   'PostToolUse',
+  'PostToolUseFailure',
   'PermissionRequest',
+  'Notification',
   'SubagentStart',
   'SubagentStop',
   'PreCompact',
