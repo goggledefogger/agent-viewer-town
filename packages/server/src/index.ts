@@ -189,14 +189,17 @@ wss.on('connection', (ws: WebSocket) => {
 const watcher = startWatcher(stateManager);
 
 // Graceful shutdown
-process.on('SIGINT', () => {
+const handleShutdown = () => {
   console.log('\n[server] shutting down...');
   clearTouchBarStatus();
   watcher.close();
   wss.close();
   server.close();
   process.exit(0);
-});
+};
+
+process.on('SIGINT', handleShutdown);
+process.on('SIGTERM', handleShutdown);
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[server] listening on http://127.0.0.1:${PORT}`);
