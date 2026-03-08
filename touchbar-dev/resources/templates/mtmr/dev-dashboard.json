@@ -1,0 +1,53 @@
+[
+  {
+    "type": "escape",
+    "width": 64,
+    "align": "left"
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "source": {
+      "filePath": "{{SCRIPTS_DIR}}/git_branch.sh",
+      "refreshInterval": 5
+    },
+    "title": "branch",
+    "width": 120,
+    "align": "left",
+    "bordered": false,
+    "background": "#1A1A2E",
+    "alternativeImages": {
+      "base64": ""
+    }
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "source": {
+      "filePath": "{{SCRIPTS_DIR}}/git_dirty.sh",
+      "refreshInterval": 5
+    },
+    "title": "status",
+    "width": 40,
+    "bordered": false
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "source": {
+      "filePath": "{{SCRIPTS_DIR}}/cpu_usage.sh",
+      "refreshInterval": 3
+    },
+    "title": "CPU",
+    "width": 80,
+    "bordered": false,
+    "background": "#16213E"
+  },
+  {
+    "type": "battery",
+    "align": "right"
+  },
+  {
+    "type": "timeButton",
+    "formatTemplate": "HH:mm",
+    "align": "right",
+    "width": 64
+  }
+]

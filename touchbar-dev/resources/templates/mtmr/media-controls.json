@@ -1,0 +1,33 @@
+[
+  {
+    "type": "escape",
+    "width": 64,
+    "align": "left"
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "source": {
+      "filePath": "{{SCRIPTS_DIR}}/now_playing.sh",
+      "refreshInterval": 3
+    },
+    "title": "now playing",
+    "width": 200,
+    "bordered": false,
+    "background": "#2D132C"
+  },
+  {
+    "type": "music",
+    "align": "center",
+    "width": 200
+  },
+  {
+    "type": "volume",
+    "align": "right"
+  },
+  {
+    "type": "timeButton",
+    "formatTemplate": "HH:mm",
+    "align": "right",
+    "width": 64
+  }
+]

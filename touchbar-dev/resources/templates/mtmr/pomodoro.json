@@ -1,0 +1,54 @@
+[
+  {
+    "type": "escape",
+    "width": 64,
+    "align": "left"
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "source": {
+      "filePath": "{{SCRIPTS_DIR}}/pomodoro_tick.sh",
+      "refreshInterval": 1
+    },
+    "title": "pomodoro",
+    "width": 120,
+    "bordered": false,
+    "background": "#E94560"
+  },
+  {
+    "type": "staticButton",
+    "title": "Start",
+    "action": "shellScript",
+    "executablePath": "/bin/bash",
+    "shellArguments": ["-c", "echo 'start' > /tmp/touchbar-pomodoro-state.cmd"],
+    "width": 60,
+    "bordered": true,
+    "background": "#00FF00"
+  },
+  {
+    "type": "staticButton",
+    "title": "Pause",
+    "action": "shellScript",
+    "executablePath": "/bin/bash",
+    "shellArguments": ["-c", "echo 'pause' > /tmp/touchbar-pomodoro-state.cmd"],
+    "width": 60,
+    "bordered": true,
+    "background": "#FFAA00"
+  },
+  {
+    "type": "staticButton",
+    "title": "Reset",
+    "action": "shellScript",
+    "executablePath": "/bin/bash",
+    "shellArguments": ["-c", "rm -f /tmp/touchbar-pomodoro-state /tmp/touchbar-pomodoro-state.cmd"],
+    "width": 60,
+    "bordered": true,
+    "background": "#FF0000"
+  },
+  {
+    "type": "timeButton",
+    "formatTemplate": "HH:mm",
+    "align": "right",
+    "width": 64
+  }
+]

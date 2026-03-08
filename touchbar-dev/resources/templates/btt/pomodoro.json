@@ -1,0 +1,47 @@
+{
+  "BTTPresetName": "Pomodoro Timer",
+  "BTTPresetUUID": "TB-POMO-0001",
+  "BTTPresetContent": [
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-POMO-TIMER",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Pomodoro",
+      "BTTTouchBarShellScriptString": "{{SCRIPTS_DIR}}/pomodoro_tick.sh",
+      "BTTTouchBarScriptUpdateInterval": 1,
+      "BTTTouchBarItemWidth": 120,
+      "BTTOrder": 0
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-POMO-START",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Start",
+      "BTTTouchBarShellScriptString": "echo 'start' > /tmp/touchbar-pomodoro-state.cmd",
+      "BTTTouchBarItemWidth": 60,
+      "BTTOrder": 1
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-POMO-PAUSE",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Pause",
+      "BTTTouchBarShellScriptString": "echo 'pause' > /tmp/touchbar-pomodoro-state.cmd",
+      "BTTTouchBarItemWidth": 60,
+      "BTTOrder": 2
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-POMO-RESET",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Reset",
+      "BTTTouchBarShellScriptString": "rm -f /tmp/touchbar-pomodoro-state /tmp/touchbar-pomodoro-state.cmd",
+      "BTTTouchBarItemWidth": 60,
+      "BTTOrder": 3
+    }
+  ]
+}
