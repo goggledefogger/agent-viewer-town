@@ -42,6 +42,18 @@ let userBackupConfig: string | null = null;
 let mtmrChecked = false;
 let mtmrEnabled = false;
 
+const FOCUS_APPLESCRIPT = `if application "Google Antigravity" is running then
+  tell application "Google Antigravity" to activate
+else if application "Cursor" is running then
+  tell application "Cursor" to activate
+else if application "iTerm" is running then
+  tell application "iTerm" to activate
+else if application "iTerm2" is running then
+  tell application "iTerm2" to activate
+else if application "Terminal" is running then
+  tell application "Terminal" to activate
+end if`;
+
 function buildMtmrConfig(background: string, title: string, titleColor = '#FFFFFF'): object[] {
   return [
     {
@@ -52,6 +64,8 @@ function buildMtmrConfig(background: string, title: string, titleColor = '#FFFFF
       bordered: false,
       background,
       titleColor,
+      action: 'appleScript',
+      actionAppleScript: { inline: FOCUS_APPLESCRIPT },
       [AVT_MARKER]: true,
     },
   ];
