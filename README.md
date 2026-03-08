@@ -57,19 +57,21 @@ Then open **http://localhost:5173** in your browser.
 
 The viewer will automatically detect active Claude Code sessions from `~/.claude/`.
 
-### macOS Dock App
+## macOS Dock Integration
 
-If you are on a Mac, you can create a standalone app that lives in your Dock to easily start and stop the viewer in the background:
+For a more integrated experience on macOS, you can create a dedicated application launcher in your Dock:
 
 ```bash
-# Compile the AppleScript into a Mac App on your Desktop
-osacompile -o "$HOME/Desktop/Agent Viewer Servers.app" Launcher.applescript
-
-# Ensure the app stays open while running to allow quitting from the Dock
-defaults write "$HOME/Desktop/Agent Viewer Servers.app/Contents/Info.plist" OSAAppletStayOpen -bool YES
+# Create the Mac App and add it to your Dock
+bash scripts/install-mac-app.sh
 ```
 
-Once created, just open the app to start the servers in the background. Right-click the icon in your Dock and select "Quit" to stop them.
+This will:
+1. Compile a native macOS app in `/Applications/Agent Viewer Town.app`.
+2. Add a shortcut to your Dock.
+3. Allow you to start the development environment with a single click.
+
+To uninstall, simply move the app to the Trash and remove the icon from your Dock.
 
 ## How It Works
 
