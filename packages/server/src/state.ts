@@ -131,6 +131,9 @@ export class StateManager {
     this.state.agents = this.state.agents.filter((a) => a.id !== id);
     this.guards.markRemoved(id);
     this.broadcast({ type: 'agent_removed', data: { id } });
+
+    // Ensure Touch Bar updates so it stops flashing if all waiting agents were removed
+    updateTouchBarStatus(this.allAgents);
   }
 
   updateTask(task: TaskState) {
@@ -771,6 +774,7 @@ export class StateManager {
     this.state.tasks = [];
     this.state.name = '';
     this.broadcastFullState();
+    updateTouchBarStatus(this.allAgents);
   }
 
   reset() {
@@ -784,5 +788,6 @@ export class StateManager {
     this.allAgents.clear();
     this.guards.reset();
     this.broadcastFullState();
+    updateTouchBarStatus(this.allAgents);
   }
 }
