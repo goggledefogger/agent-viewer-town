@@ -164,9 +164,11 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
     return `${session.projectName}${branchSuffix} - ${BASE_TITLE}`;
   }, [session?.projectName, session?.gitBranch]);
 
-  // Compute currently waiting agents
+  // Compute currently waiting agents — waitingForInput is the authoritative signal,
+  // regardless of status. An agent can be 'idle' but still waiting for input
+  // (e.g., idle_prompt notification after 60s, or PermissionRequest without PreToolUse).
   const waitingAgents = useMemo(
-    () => agents.filter((a) => a.waitingForInput === true && a.status !== 'idle'),
+    () => agents.filter((a) => a.waitingForInput === true),
     [agents]
   );
 
@@ -178,11 +180,12 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
 
     for (const agent of agents) {
       const wasWaiting = prevMap.get(agent.id) || false;
-      const isWaiting = agent.waitingForInput === true && agent.status !== 'idle';
+      const isWaiting = agent.waitingForInput === true;
 
       if (isWaiting && !wasWaiting) {
         const action = agent.currentAction || 'Waiting for approval';
         const tag = `agent-waiting-${agent.id}`;
+        // Fire browser notification regardless of tab visibility using the deduplicating helper.
         fireNotification(`${agent.name} needs input`, action, tag);
       }
     }
@@ -190,7 +193,7 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
     // Update the tracking map for next render
     const newMap = new Map<string, boolean>();
     for (const agent of agents) {
-      newMap.set(agent.id, agent.waitingForInput === true && agent.status !== 'idle');
+      newMap.set(agent.id, agent.waitingForInput === true);
     }
     prevWaitingRef.current = newMap;
   }, [agents, enabled, supported]);

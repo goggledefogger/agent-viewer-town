@@ -1,0 +1,50 @@
+{
+  "BTTPresetName": "Git Status",
+  "BTTPresetUUID": "TB-GITST-0001",
+  "BTTPresetContent": [
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-GIT-BRANCH",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Branch",
+      "BTTTouchBarShellScriptString": "{{SCRIPTS_DIR}}/git_branch.sh",
+      "BTTTouchBarScriptUpdateInterval": 5,
+      "BTTTouchBarItemWidth": 140,
+      "BTTOrder": 0
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-GIT-DIRTY",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Dirty",
+      "BTTTouchBarShellScriptString": "{{SCRIPTS_DIR}}/git_dirty.sh",
+      "BTTTouchBarScriptUpdateInterval": 5,
+      "BTTTouchBarItemWidth": 50,
+      "BTTOrder": 1
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-GIT-SYNC",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Sync",
+      "BTTTouchBarShellScriptString": "git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null | awk '{printf \"%s up %s dn\", $1, $2}' || echo '-'",
+      "BTTTouchBarScriptUpdateInterval": 10,
+      "BTTTouchBarItemWidth": 80,
+      "BTTOrder": 2
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-GIT-STASH",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Stash",
+      "BTTTouchBarShellScriptString": "count=$(git stash list 2>/dev/null | wc -l | tr -d ' '); [ \"$count\" -gt 0 ] && echo \"stash:$count\" || echo '-'",
+      "BTTTouchBarScriptUpdateInterval": 10,
+      "BTTTouchBarItemWidth": 70,
+      "BTTOrder": 3
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "BTTPresetName": "Media Controls",
+  "BTTPresetUUID": "TB-MEDIA-0001",
+  "BTTPresetContent": [
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-MED-NOW",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Now Playing",
+      "BTTTouchBarShellScriptString": "{{SCRIPTS_DIR}}/now_playing.sh",
+      "BTTTouchBarScriptUpdateInterval": 3,
+      "BTTTouchBarItemWidth": 200,
+      "BTTOrder": 0
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-MED-PREV",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "<<",
+      "BTTTouchBarAppleScriptString": "tell application \"Music\" to previous track",
+      "BTTTouchBarItemWidth": 40,
+      "BTTOrder": 1
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-MED-PLAY",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "||>",
+      "BTTTouchBarAppleScriptString": "tell application \"Music\" to playpause",
+      "BTTTouchBarItemWidth": 40,
+      "BTTOrder": 2
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-MED-NEXT",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": ">>",
+      "BTTTouchBarAppleScriptString": "tell application \"Music\" to next track",
+      "BTTTouchBarItemWidth": 40,
+      "BTTOrder": 3
+    }
+  ]
+}

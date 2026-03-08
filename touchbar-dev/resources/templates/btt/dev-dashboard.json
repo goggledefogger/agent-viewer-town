@@ -1,0 +1,40 @@
+{
+  "BTTPresetName": "Dev Dashboard",
+  "BTTPresetUUID": "TB-DEVDASH-0001",
+  "BTTPresetContent": [
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-DEV-BRANCH",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Branch",
+      "BTTTouchBarItemIconType": 1,
+      "BTTTouchBarShellScriptString": "{{SCRIPTS_DIR}}/git_branch.sh",
+      "BTTTouchBarScriptUpdateInterval": 5,
+      "BTTTouchBarItemWidth": 120,
+      "BTTOrder": 0
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-DEV-DIRTY",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "Status",
+      "BTTTouchBarShellScriptString": "{{SCRIPTS_DIR}}/git_dirty.sh",
+      "BTTTouchBarScriptUpdateInterval": 5,
+      "BTTTouchBarItemWidth": 50,
+      "BTTOrder": 1
+    },
+    {
+      "BTTTriggerType": 630,
+      "BTTTriggerClass": "BTTTriggerTypeTouchBar",
+      "BTTUUID": "TB-DEV-CPU",
+      "BTTEnabled": 1,
+      "BTTTouchBarButtonName": "CPU",
+      "BTTTouchBarShellScriptString": "{{SCRIPTS_DIR}}/cpu_usage.sh",
+      "BTTTouchBarScriptUpdateInterval": 3,
+      "BTTTouchBarItemWidth": 80,
+      "BTTOrder": 2
+    }
+  ]
+}

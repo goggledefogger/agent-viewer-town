@@ -15,7 +15,10 @@
     "test:e2e": "npx playwright test",
     "test:all": "npm run test:unit && npm run test:build && npm run test:e2e",
     "hooks:install": "node hooks/install.js",
-    "hooks:uninstall": "node hooks/install.js --uninstall"
+    "hooks:uninstall": "node hooks/install.js --uninstall",
+    "touchbar:detect": "bash touchbar-dev/run.sh detect",
+    "touchbar:install": "bash touchbar-dev/run.sh agent-notify",
+    "touchbar:restore": "bash touchbar-dev/run.sh restore"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

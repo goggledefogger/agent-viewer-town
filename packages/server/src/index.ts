@@ -4,6 +4,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
+import { validateHookEvent } from './validation';
+import { clearTouchBarStatus } from './touchbar';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -35,48 +37,6 @@ const hookHandler = createHookHandler(stateManager);
 app.get('/api/state', (_req, res) => {
   res.json(stateManager.getState());
 });
-
-// Allowed hook event names for validation
-const VALID_HOOK_EVENTS = new Set([
-  'PreToolUse',
-  'PostToolUse',
-  'PostToolUseFailure',
-  'PermissionRequest',
-  'SubagentStart',
-  'SubagentStop',
-  'PreCompact',
-  'Stop',
-  'SessionStart',
-  'SessionEnd',
-  'TeammateIdle',
-  'TaskCompleted',
-  'UserPromptSubmit',
-  'Notification',
-]);
-
-function validateHookEvent(event: any): string | null {
-  if (!event || typeof event !== 'object') {
-    return 'Event must be a JSON object';
-  }
-
-  if (typeof event.hook_event_name !== 'string') {
-    return 'hook_event_name is required and must be a string';
-  }
-
-  if (!VALID_HOOK_EVENTS.has(event.hook_event_name)) {
-    return `Unknown hook_event_name: ${event.hook_event_name}`;
-  }
-
-  if (event.session_id !== undefined && typeof event.session_id !== 'string') {
-    return 'session_id must be a string';
-  }
-
-  if (event.cwd !== undefined && typeof event.cwd !== 'string') {
-    return 'cwd must be a string';
-  }
-
-  return null;
-}
 
 // Hook event endpoint — receives events from Claude Code lifecycle hooks
 app.post('/api/hook', (req, res) => {
@@ -231,6 +191,7 @@ const watcher = startWatcher(stateManager);
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\n[server] shutting down...');
+  clearTouchBarStatus();
   watcher.close();
   wss.close();
   server.close();

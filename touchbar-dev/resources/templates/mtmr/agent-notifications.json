@@ -1,0 +1,43 @@
+[
+  {
+    "type": "escape",
+    "width": 64,
+    "align": "left"
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "source": {
+      "filePath": "{{SCRIPTS_DIR}}/agent_status.sh",
+      "refreshInterval": 2
+    },
+    "width": 140,
+    "align": "center",
+    "bordered": false,
+    "background": "#1a1a2e",
+    "title": "🤖 —",
+    "action": "shellScript",
+    "actionAppleScript": {
+      "inline": "tell application \"System Events\" to tell process \"Agent Viewer Town\" to set frontmost to true"
+    }
+  },
+  {
+    "type": "brightnessUp",
+    "width": 36,
+    "align": "right"
+  },
+  {
+    "type": "brightnessDown",
+    "width": 36,
+    "align": "right"
+  },
+  {
+    "type": "volumeUp",
+    "width": 36,
+    "align": "right"
+  },
+  {
+    "type": "volumeDown",
+    "width": 36,
+    "align": "right"
+  }
+]

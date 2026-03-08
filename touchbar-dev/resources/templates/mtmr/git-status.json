@@ -1,0 +1,53 @@
+[
+  {
+    "type": "escape",
+    "width": 64,
+    "align": "left"
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "source": {
+      "filePath": "{{SCRIPTS_DIR}}/git_branch.sh",
+      "refreshInterval": 5
+    },
+    "title": "branch",
+    "width": 140,
+    "bordered": false,
+    "background": "#0D1117"
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "source": {
+      "filePath": "{{SCRIPTS_DIR}}/git_dirty.sh",
+      "refreshInterval": 5
+    },
+    "title": "dirty",
+    "width": 50,
+    "bordered": false
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "source": {
+      "inline": "git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null | awk '{printf \"%s↑ %s↓\", $1, $2}' || echo '-'"
+    },
+    "title": "sync",
+    "width": 80,
+    "bordered": false,
+    "background": "#161B22"
+  },
+  {
+    "type": "shellScriptTitledButton",
+    "source": {
+      "inline": "count=$(git stash list 2>/dev/null | wc -l | tr -d ' '); [ \"$count\" -gt 0 ] && echo \"stash:$count\" || echo '-'"
+    },
+    "title": "stash",
+    "width": 70,
+    "bordered": false
+  },
+  {
+    "type": "timeButton",
+    "formatTemplate": "HH:mm",
+    "align": "right",
+    "width": 64
+  }
+]
