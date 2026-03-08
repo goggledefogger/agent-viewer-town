@@ -1,5 +1,7 @@
 on run
 	do shell script "zsh -l -c 'cd /Users/Danny/Source/agent-viewer-town && npm run dev > /tmp/agent-viewer-dev.log 2>&1 & echo $! > /tmp/agent-viewer-dev.pid'"
+	delay 2
+	do shell script "open http://localhost:5173"
 end run
 
 on quit
