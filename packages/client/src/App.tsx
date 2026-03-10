@@ -4,10 +4,12 @@ import { Sidebar } from './components/Sidebar';
 import { AlertBar } from './components/AlertBar';
 import { Breadcrumb } from './components/Breadcrumb';
 import { NavigationTree } from './components/NavigationTree';
+import { DashboardGrid } from './components/DashboardGrid';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useNotifications } from './hooks/useNotifications';
 import { useNavigation } from './hooks/useNavigation';
 import { useInbox } from './hooks/useInbox';
+import { useDashboard } from './hooks/useDashboard';
 import type { ConnectionStatus } from './hooks/useWebSocket';
 
 type MobileTab = 'scene' | 'inbox' | 'tasks' | 'messages';
@@ -65,13 +67,37 @@ function LiveIndicator({ lastActivity }: { lastActivity?: number }) {
 }
 
 export default function App() {
-  const { team: state, sessions, groupedSessions, connectionStatus, selectSession } = useWebSocket('ws://localhost:3001/ws');
+  const { team: state, sessions, groupedSessions, connectionStatus, selectSession, setDashboard, setDashboardCallbacks } = useWebSocket('ws://localhost:3001/ws');
   const notifications = useNotifications(state.agents, state.session, sessions);
   const navigation = useNavigation(groupedSessions, state.session);
   const inbox = useInbox(state.agents, state.session, sessions);
+  const dashboard = useDashboard();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileTab, setMobileTab] = useState<MobileTab>('scene');
   const isMobile = useIsMobile();
+
+  // Wire dashboard callbacks to useWebSocket
+  useEffect(() => {
+    if (dashboard.active) {
+      setDashboardCallbacks({
+        onDashboardStates: dashboard.applyDashboardStates,
+        onDashboardUpdate: dashboard.applyDashboardUpdate,
+      });
+    } else {
+      setDashboardCallbacks(null);
+    }
+  }, [dashboard.active, dashboard.applyDashboardStates, dashboard.applyDashboardUpdate, setDashboardCallbacks]);
+
+  // Handle dashboard focus (double-click a panel to enter single-view)
+  useEffect(() => {
+    if (dashboard.focusedSessionId) {
+      selectSession(dashboard.focusedSessionId);
+      dashboard.clearFocus();
+      // Turn off dashboard mode
+      const ids = dashboard.toggle(sessions);
+      if (ids) setDashboard(ids);
+    }
+  }, [dashboard.focusedSessionId, selectSession, dashboard, sessions, setDashboard]);
 
   const session = state.session;
   const isSolo = session ? !session.isTeam : state.agents.length <= 1;
@@ -111,33 +137,68 @@ export default function App() {
     setTimeout(() => setHighlightTaskId(null), 2200);
   }, [isMobile]);
 
+  // Toggle dashboard mode
+  const handleToggleDashboard = useCallback(() => {
+    const sessionIds = dashboard.toggle(sessions);
+    if (sessionIds) {
+      // Turned on: subscribe to all sessions
+      setDashboard(sessionIds);
+    } else {
+      // Turned off: clear dashboard subscription, back to single-view
+      setDashboard([]);
+    }
+  }, [dashboard, sessions, setDashboard]);
+
+  // Remove a panel from the dashboard
+  const handleRemovePanel = useCallback((sessionId: string) => {
+    const remaining = dashboard.removePanel(sessionId);
+    if (remaining) {
+      setDashboard(remaining);
+    } else {
+      // All panels removed — exit dashboard mode
+      setDashboard([]);
+    }
+  }, [dashboard, setDashboard]);
+
   // Always show navigation breadcrumb when there are sessions
   const showNavigation = sessions.length >= 1;
+  // Show dashboard toggle when there are 2+ sessions
+  const showDashboardToggle = sessions.length >= 2;
 
   return (
     <div className="app-wrapper">
-      <AlertBar
-        waitingAgents={notifications.waitingAgents}
-        onFocusAgent={handleFocusAgent}
-      />
+      {!dashboard.active && (
+        <AlertBar
+          waitingAgents={notifications.waitingAgents}
+          onFocusAgent={handleFocusAgent}
+        />
+      )}
       <header className="app-header">
         <div className="header-left">
           <ConnectionDot status={connectionStatus} />
-          <span className="header-team-name">
-            {state.name || 'Agent Viewer Town'}
-          </span>
-          {session && (
+          {dashboard.active ? (
+            <span className="header-team-name">
+              All Sessions ({dashboard.panels.length})
+            </span>
+          ) : (
             <>
-              <LiveIndicator lastActivity={session.lastActivity} />
-              <span className={`badge ${isSolo ? 'badge-solo' : 'badge-team'}`}>
-                {isSolo ? 'Solo' : `Team (${state.agents.length})`}
+              <span className="header-team-name">
+                {state.name || 'Agent Viewer Town'}
               </span>
-              {session.gitBranch && (
-                <span className="badge badge-branch">{session.gitBranch}</span>
+              {session && (
+                <>
+                  <LiveIndicator lastActivity={session.lastActivity} />
+                  <span className={`badge ${isSolo ? 'badge-solo' : 'badge-team'}`}>
+                    {isSolo ? 'Solo' : `Team (${state.agents.length})`}
+                  </span>
+                  {session.gitBranch && (
+                    <span className="badge badge-branch">{session.gitBranch}</span>
+                  )}
+                </>
               )}
             </>
           )}
-          {showNavigation ? (
+          {showNavigation && !dashboard.active ? (
             <Breadcrumb
               segments={navigation.breadcrumbs}
               onToggleDropdown={navigation.toggleOpen}
@@ -159,7 +220,7 @@ export default function App() {
           ) : null}
         </div>
         <div className="header-stats">
-          {(() => {
+          {!dashboard.active && (() => {
             const mainAgents = state.agents.filter((a) => !a.isSubagent);
             const subs = state.agents.filter((a) => a.isSubagent);
             const workingSubs = subs.filter((a) => a.status === 'working').length;
@@ -186,100 +247,134 @@ export default function App() {
               </>
             );
           })()}
-          <span className="header-stat-divider" />
-          <span className="header-stat">
-            <span className="header-stat-value">{tasksByStatus.in_progress}</span> active
-          </span>
-          <span className="header-stat-divider" />
-          <span className="header-stat">
-            <span className="header-stat-value">{tasksByStatus.completed}</span>
-            <span className="header-stat-total">/{state.tasks.length}</span> done
-          </span>
-          {notifications.waitingAgents.length > 0 && (
+          {!dashboard.active && (
             <>
               <span className="header-stat-divider" />
-              <span className="header-waiting-badge">
-                {notifications.waitingAgents.length} waiting
+              <span className="header-stat">
+                <span className="header-stat-value">{tasksByStatus.in_progress}</span> active
               </span>
+              <span className="header-stat-divider" />
+              <span className="header-stat">
+                <span className="header-stat-value">{tasksByStatus.completed}</span>
+                <span className="header-stat-total">/{state.tasks.length}</span> done
+              </span>
+              {notifications.waitingAgents.length > 0 && (
+                <>
+                  <span className="header-stat-divider" />
+                  <span className="header-waiting-badge">
+                    {notifications.waitingAgents.length} waiting
+                  </span>
+                </>
+              )}
             </>
           )}
         </div>
-        {notifications.permission !== 'unsupported' && (
-          <button
-            className={`notification-toggle ${notifications.enabled ? 'active' : ''}`}
-            onClick={notifications.toggle}
-            title={
-              notifications.permission === 'denied'
-                ? 'Notifications blocked by browser'
-                : notifications.enabled
-                  ? 'Disable notifications'
-                  : 'Enable notifications for agent alerts'
-            }
-            disabled={notifications.permission === 'denied'}
-          >
-            {notifications.enabled ? '\uD83D\uDD14' : '\uD83D\uDD15'}
-          </button>
-        )}
-        <button
-          className="sidebar-toggle"
-          onClick={() => setSidebarOpen((v) => !v)}
-          title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-        >
-          {sidebarOpen ? '\u25B6' : '\u25C0'}
-        </button>
-      </header>
-      <nav className="mobile-tabs">
-        <button
-          className={`mobile-tab ${mobileTab === 'scene' ? 'active' : ''}`}
-          onClick={() => setMobileTab('scene')}
-        >
-          Scene
-        </button>
-        <button
-          className={`mobile-tab ${mobileTab === 'inbox' ? 'active' : ''}`}
-          onClick={() => setMobileTab('inbox')}
-        >
-          Inbox
-          {inbox.unreadCount > 0 && (
-            <span className="inbox-badge">{inbox.unreadCount}</span>
+        <div className="header-actions">
+          {showDashboardToggle && (
+            <button
+              className={`dashboard-toggle ${dashboard.active ? 'active' : ''}`}
+              onClick={handleToggleDashboard}
+              title={dashboard.active ? 'Exit multi-panel view' : 'View all sessions as panels'}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" fill={dashboard.active ? 'currentColor' : 'none'} />
+                <rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" fill={dashboard.active ? 'currentColor' : 'none'} />
+                <rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" fill={dashboard.active ? 'currentColor' : 'none'} />
+                <rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" fill={dashboard.active ? 'currentColor' : 'none'} />
+              </svg>
+            </button>
           )}
-        </button>
-        <button
-          className={`mobile-tab ${mobileTab === 'tasks' ? 'active' : ''}`}
-          onClick={() => setMobileTab('tasks')}
-        >
-          Tasks ({state.tasks.length})
-        </button>
-        <button
-          className={`mobile-tab ${mobileTab === 'messages' ? 'active' : ''}`}
-          onClick={() => setMobileTab('messages')}
-        >
-          Messages ({state.messages.length})
-        </button>
-      </nav>
+          {notifications.permission !== 'unsupported' && (
+            <button
+              className={`notification-toggle ${notifications.enabled ? 'active' : ''}`}
+              onClick={notifications.toggle}
+              title={
+                notifications.permission === 'denied'
+                  ? 'Notifications blocked by browser'
+                  : notifications.enabled
+                    ? 'Disable notifications'
+                    : 'Enable notifications for agent alerts'
+              }
+              disabled={notifications.permission === 'denied'}
+            >
+              {notifications.enabled ? '\uD83D\uDD14' : '\uD83D\uDD15'}
+            </button>
+          )}
+          {!dashboard.active && (
+            <button
+              className="sidebar-toggle"
+              onClick={() => setSidebarOpen((v) => !v)}
+              title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+            >
+              {sidebarOpen ? '\u25B6' : '\u25C0'}
+            </button>
+          )}
+        </div>
+      </header>
+      {!dashboard.active && (
+        <nav className="mobile-tabs">
+          <button
+            className={`mobile-tab ${mobileTab === 'scene' ? 'active' : ''}`}
+            onClick={() => setMobileTab('scene')}
+          >
+            Scene
+          </button>
+          <button
+            className={`mobile-tab ${mobileTab === 'inbox' ? 'active' : ''}`}
+            onClick={() => setMobileTab('inbox')}
+          >
+            Inbox
+            {inbox.unreadCount > 0 && (
+              <span className="inbox-badge">{inbox.unreadCount}</span>
+            )}
+          </button>
+          <button
+            className={`mobile-tab ${mobileTab === 'tasks' ? 'active' : ''}`}
+            onClick={() => setMobileTab('tasks')}
+          >
+            Tasks ({state.tasks.length})
+          </button>
+          <button
+            className={`mobile-tab ${mobileTab === 'messages' ? 'active' : ''}`}
+            onClick={() => setMobileTab('messages')}
+          >
+            Messages ({state.messages.length})
+          </button>
+        </nav>
+      )}
       <div className="app-body">
-        <Scene
-          state={state}
-          className={isMobile && mobileTab !== 'scene' ? 'mobile-hidden' : undefined}
-          focusAgentId={focusAgentId}
-          onFocusTask={handleFocusTask}
-          groupedSessions={groupedSessions}
-          onSelectSession={handleSelectSession}
-        />
-        <Sidebar
-          state={state}
-          open={sidebarOpen}
-          className={isMobile && mobileTab === 'scene' ? 'mobile-hidden' : undefined}
-          forceTab={isMobile ? mobileSidebarTab : undefined}
-          onFocusAgent={handleFocusAgent}
-          onFocusTask={handleFocusTask}
-          highlightTaskId={highlightTaskId}
-          activeNotifications={inbox.activeNotifications}
-          historyNotifications={inbox.historyNotifications}
-          unreadCount={inbox.unreadCount}
-          onMarkRead={inbox.markRead}
-          onMarkAllRead={inbox.markAllRead}
-        />
+        {dashboard.active ? (
+          <DashboardGrid
+            panels={dashboard.panels}
+            onFocusPanel={dashboard.focusPanel}
+            onRemovePanel={handleRemovePanel}
+          />
+        ) : (
+          <>
+            <Scene
+              state={state}
+              className={isMobile && mobileTab !== 'scene' ? 'mobile-hidden' : undefined}
+              focusAgentId={focusAgentId}
+              onFocusTask={handleFocusTask}
+              groupedSessions={groupedSessions}
+              onSelectSession={handleSelectSession}
+            />
+            <Sidebar
+              state={state}
+              open={sidebarOpen}
+              className={isMobile && mobileTab === 'scene' ? 'mobile-hidden' : undefined}
+              forceTab={isMobile ? mobileSidebarTab : undefined}
+              onFocusAgent={handleFocusAgent}
+              onFocusTask={handleFocusTask}
+              highlightTaskId={highlightTaskId}
+              activeNotifications={inbox.activeNotifications}
+              historyNotifications={inbox.historyNotifications}
+              unreadCount={inbox.unreadCount}
+              onMarkRead={inbox.markRead}
+              onMarkAllRead={inbox.markAllRead}
+            />
+          </>
+        )}
       </div>
     </div>
   );
