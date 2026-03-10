@@ -180,6 +180,27 @@ export interface InboxState {
   activeCount: number;
 }
 
+// ============================================================================
+// DASHBOARD (multi-view) TYPES
+// ============================================================================
+
+/** State snapshot for a single dashboard cell */
+export interface DashboardSessionState {
+  sessionId: string;
+  team: TeamState;
+}
+
+/** Bulk initial state for all subscribed dashboard sessions */
+export interface DashboardStates {
+  states: DashboardSessionState[];
+}
+
+/** A per-session update wrapper used in dashboard mode */
+export interface DashboardUpdate {
+  sessionId: string;
+  inner: WSMessage;
+}
+
 export type WSMessage =
   | { type: 'full_state'; data: TeamState }
   | { type: 'agent_update'; data: AgentState }
@@ -191,4 +212,6 @@ export type WSMessage =
   | { type: 'sessions_grouped'; data: GroupedSessionsList }
   | { type: 'sessions_update'; data: { list: SessionListEntry[]; grouped: GroupedSessionsList } }
   | { type: 'session_started'; data: SessionInfo }
-  | { type: 'session_ended'; data: { sessionId: string } };
+  | { type: 'session_ended'; data: { sessionId: string } }
+  | { type: 'dashboard_states'; data: DashboardStates }
+  | { type: 'dashboard_update'; data: DashboardUpdate };
