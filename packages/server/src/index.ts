@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
@@ -9,8 +10,15 @@ import { clearTouchBarStatus } from './touchbar';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
 const app = express();
 const server = createServer(app);
+
+// CORS support
+app.use(cors({ origin: ALLOWED_ORIGINS }));
 
 // Security headers
 app.disable('x-powered-by');
@@ -66,7 +74,18 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, cb) => {
+    const origin = info.req.headers.origin;
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      cb(true);
+    } else {
+      cb(false, 403, 'Forbidden');
+    }
+  },
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
