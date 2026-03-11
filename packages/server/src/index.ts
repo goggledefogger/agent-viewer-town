@@ -1,5 +1,6 @@
 import express from 'express';
 import { createServer } from 'http';
+import cors from 'cors';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
@@ -8,12 +9,19 @@ import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : ['http://localhost:5173', 'http://127.0.0.1:5173'];
 
 const app = express();
 const server = createServer(app);
 
 // Security headers
 app.disable('x-powered-by');
+
+// CORS protection
+app.use(cors({ origin: ALLOWED_ORIGINS }));
+
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -66,7 +74,24 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, done) => {
+    const origin = info.req.headers.origin;
+    if (!origin) {
+      // Allow connections with no origin (e.g., tests, non-browser clients)
+      done(true);
+      return;
+    }
+    if (ALLOWED_ORIGINS.includes(origin)) {
+      done(true);
+    } else {
+      console.warn(`[ws] Rejected connection from unauthorized origin: ${origin}`);
+      done(false, 403, 'Forbidden');
+    }
+  },
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
