@@ -196,7 +196,7 @@ describe('resolveCharacter', () => {
       const agent = makeAgent({ role: 'implementer' });
       const SOLO_COLORS = ['#DC3545', '#28A745', '#FFD700', '#4169E1', '#F8F9FA', '#26C6DA', '#FFCA28', '#FF7043', '#94a3b8'];
       const result = resolveCharacter(agent, projectA);
-      const idx = SOLO_POOL.indexOf(result.AnimalComponent);
+      const idx = SOLO_POOL.indexOf(result.AnimalComponent as any);
       expect(idx).toBeGreaterThanOrEqual(0);
       expect(result.accentColor).toBe(SOLO_COLORS[idx]);
     });
