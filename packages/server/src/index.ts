@@ -1,19 +1,22 @@
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import cors from 'cors';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
+import { checkOrigin, corsOptions } from './origin';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 const app = express();
 const server = createServer(app);
 
-// Security headers
+// Security headers and CORS
 app.disable('x-powered-by');
+app.use(cors(corsOptions));
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -66,7 +69,20 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, cb) => {
+    // Protect against Cross-Site WebSocket Hijacking (CSWSH)
+    const origin = info.origin;
+    if (checkOrigin(origin)) {
+      cb(true);
+    } else {
+      console.warn(`[ws] Rejected unauthorized origin: ${origin}`);
+      cb(false, 403, 'Forbidden');
+    }
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
