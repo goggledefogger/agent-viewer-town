@@ -82,4 +82,20 @@ describe('validateHookEvent', () => {
     });
     expect(error).toMatch(/cwd is too long/);
   });
+
+  it('validates cwd path traversal components', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/absolute/path/../to/project',
+    });
+    expect(error).toMatch(/cwd must not contain traversal components/);
+  });
+
+  it('allows valid paths with redundant slashes', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/absolute//path/to/project',
+    });
+    expect(error).toBeNull();
+  });
 });
