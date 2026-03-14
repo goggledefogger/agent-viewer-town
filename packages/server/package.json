@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@agent-viewer/shared": "*",
+    "@types/cors": "^2.8.19",
     "chokidar": "^4.0.0",
+    "cors": "^2.8.6",
     "express": "^5.2.0",
     "ws": "^8.19.0"
   },
