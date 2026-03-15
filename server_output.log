@@ -1,0 +1,17 @@
+
+> @agent-viewer/server@0.1.0 dev
+> tsx watch src/index.ts
+
+[watcher] Watching /home/jules/.claude/teams
+[watcher] Watching /home/jules/.claude/tasks
+[watcher] Watching transcripts in /home/jules/.claude/projects
+[watcher] Task watcher ready
+[server] listening on http://127.0.0.1:3001
+[server] WebSocket on ws://127.0.0.1:3001/ws
+[watcher] Team watcher ready
+[watcher] Transcript watcher ready, waiting for pending detections...
+[watcher] Initial scan complete, broadcasting 0 sessions
+[ws] client connected
+[ws] client disconnected
+
+[server] shutting down...
