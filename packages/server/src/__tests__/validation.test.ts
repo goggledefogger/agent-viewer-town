@@ -75,6 +75,23 @@ describe('validateHookEvent', () => {
     expect(error).toMatch(/cwd must not contain null bytes/);
   });
 
+  it('validates path traversal (..) in cwd', () => {
+    const error1 = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/var/www/../app',
+    });
+    expect(error1).toMatch(/cwd must not contain path traversal segments/);
+
+    // Testing path validation requires matching the environment. When the server runs on Linux,
+    // path.isAbsolute('C:\\Windows') evaluates to false, so it triggers the absolute check.
+    // Testing purely the `..` validation using an absolute Unix path containing backslashes.
+    const error2 = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/var/www\\..\\app',
+    });
+    expect(error2).toMatch(/cwd must not contain path traversal segments/);
+  });
+
   it('validates cwd length', () => {
     const error = validateHookEvent({
       hook_event_name: 'SessionStart',
