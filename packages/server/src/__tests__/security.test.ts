@@ -114,3 +114,27 @@ describe('Security: /api/hook Input Validation', () => {
       expect(res.status).toBe(400);
     });
 });
+
+describe('Security: CORS and CSWSH Protection', () => {
+  it('accepts request from allowed origin', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+      method: 'GET',
+      headers: {
+        'Origin': 'http://localhost:5173'
+      }
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+  });
+
+  it('rejects request from disallowed origin via CORS', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+      method: 'GET',
+      headers: {
+        'Origin': 'https://malicious.com'
+      }
+    });
+    // Expected to not have CORS headers because the origin was rejected
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
