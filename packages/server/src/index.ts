@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
@@ -21,6 +22,33 @@ app.use((_req, res, next) => {
   res.setHeader('Referrer-Policy', 'no-referrer');
   next();
 });
+
+// CORS configuration
+// Only allow requests from local hostnames to prevent Cross-Origin requests
+// from potentially malicious websites accessing the local server.
+const allowedHostnames = ['localhost', '127.0.0.1'];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      try {
+        const url = new URL(origin);
+        if (allowedHostnames.includes(url.hostname)) {
+          return callback(null, true);
+        }
+      } catch (e) {
+        // Invalid URL
+      }
+
+      // Reject unauthorized origins gracefully (return false instead of Error to avoid 500)
+      return callback(null, false);
+    },
+    credentials: true,
+  })
+);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
@@ -66,7 +94,30 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, cb) => {
+    // ws handles origin in info.req.headers.origin or info.origin depending on client
+    const origin = info.origin || (info.req && info.req.headers && info.req.headers.origin);
+    if (!origin) {
+      // Allow connections without an origin header (e.g., direct WS clients)
+      return cb(true);
+    }
+
+    try {
+      const url = new URL(origin);
+      if (allowedHostnames.includes(url.hostname)) {
+        return cb(true);
+      }
+    } catch (e) {
+      // Invalid URL
+    }
+
+    // Reject connections from unauthorized origins (CSWSH protection)
+    cb(false, 403, 'Forbidden');
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
