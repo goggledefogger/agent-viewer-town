@@ -57,6 +57,9 @@ export function validateHookEvent(event: any): string | null {
     if (event.cwd.includes('\0')) {
         return 'cwd must not contain null bytes';
     }
+    if (event.cwd.split(/[/\\]/).includes('..')) {
+      return 'cwd must not contain path traversal segments';
+    }
   }
 
   return null;
