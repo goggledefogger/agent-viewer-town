@@ -51,11 +51,14 @@ export function validateHookEvent(event: any): string | null {
     if (event.cwd.length > 1024) {
       return 'cwd is too long (max 1024 chars)';
     }
-    if (!path.isAbsolute(event.cwd)) {
+    if (!path.isAbsolute(event.cwd) && !/^[a-zA-Z]:[/\\]/.test(event.cwd)) {
       return 'cwd must be an absolute path';
     }
     if (event.cwd.includes('\0')) {
         return 'cwd must not contain null bytes';
+    }
+    if (event.cwd.split(/[/\\]/).includes('..')) {
+      return 'cwd must not contain path traversal segments (..)';
     }
   }
 
