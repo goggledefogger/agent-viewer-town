@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
@@ -21,6 +22,25 @@ app.use((_req, res, next) => {
   res.setHeader('Referrer-Policy', 'no-referrer');
   next();
 });
+
+// CORS configuration
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      try {
+        const url = new URL(origin);
+        if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+          return callback(null, true);
+        }
+      } catch {
+        // Ignore invalid URLs
+      }
+      return callback(null, false);
+    },
+  })
+);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
@@ -66,7 +86,27 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, done) => {
+    const origin = info.origin;
+    // Allow requests without an origin (e.g., non-browser clients)
+    if (!origin) {
+      return done(true);
+    }
+    try {
+      const url = new URL(origin);
+      if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+        return done(true);
+      }
+    } catch {
+      // Ignore invalid URLs
+    }
+    console.warn(`[ws] Rejected unauthorized origin: ${origin}`);
+    return done(false, 403, 'Forbidden');
+  },
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
