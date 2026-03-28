@@ -82,4 +82,27 @@ describe('validateHookEvent', () => {
     });
     expect(error).toMatch(/cwd is too long/);
   });
+
+  it('rejects cwd with path traversal components', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/path/with/../../traversal',
+    });
+    expect(error).toMatch(/cwd must not contain path traversal components/);
+
+    const errorWin = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: 'C:\\path\\with\\..\\..\\traversal',
+    });
+    expect(errorWin).toMatch(/cwd must not contain path traversal components/);
+  });
+
+  it('accepts Windows absolute paths', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      session_id: 'win-session',
+      cwd: 'C:\\Users\\admin\\project',
+    });
+    expect(error).toBeNull();
+  });
 });
