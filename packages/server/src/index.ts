@@ -6,6 +6,7 @@ import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
+import { isValidOrigin } from './origin';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -19,6 +20,30 @@ app.use((_req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
+// CORS middleware
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!isValidOrigin(origin)) {
+    console.warn(`[security] Blocked request from unauthorized origin: ${origin}`);
+    res.status(403).json({ error: 'Unauthorized Origin' });
+    return;
+  }
+
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
+
+  // Handle preflight OPTIONS requests
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+
   next();
 });
 
@@ -66,7 +91,20 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, done) => {
+    // Defend against Cross-Site WebSocket Hijacking (CSWSH)
+    const origin = info.req.headers.origin;
+    if (!isValidOrigin(origin)) {
+      console.warn(`[security] Blocked WebSocket connection from unauthorized origin: ${origin}`);
+      done(false, 403, 'Unauthorized Origin');
+      return;
+    }
+    done(true);
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
