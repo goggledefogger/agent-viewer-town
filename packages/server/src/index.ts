@@ -6,6 +6,7 @@ import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
+import { corsMiddleware, verifyClient } from './origin';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -14,6 +15,7 @@ const server = createServer(app);
 
 // Security headers
 app.disable('x-powered-by');
+app.use(corsMiddleware);
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -66,7 +68,7 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ server, path: '/ws', verifyClient });
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
