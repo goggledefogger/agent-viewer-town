@@ -1,7 +1,9 @@
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import cors from 'cors';
 import { StateManager } from './state';
+import { corsOptions, verifyClient } from './origin';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
@@ -14,6 +16,7 @@ const server = createServer(app);
 
 // Security headers
 app.disable('x-powered-by');
+app.use(cors(corsOptions));
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -66,7 +69,7 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ server, path: '/ws', verifyClient });
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
