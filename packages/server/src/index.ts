@@ -6,19 +6,39 @@ import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
+import { isValidOrigin } from './origin';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 const app = express();
 const server = createServer(app);
 
-// Security headers
+// Security headers and CORS
 app.disable('x-powered-by');
-app.use((_req, res, next) => {
+app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('Referrer-Policy', 'no-referrer');
+
+  const origin = req.headers.origin;
+  if (!isValidOrigin(origin)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.status(204).end();
+    return;
+  }
+
   next();
 });
 
@@ -66,7 +86,17 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, callback) => {
+    if (!isValidOrigin(info.origin)) {
+      callback(false, 403, 'Forbidden');
+      return;
+    }
+    callback(true);
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
