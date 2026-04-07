@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import cors from 'cors';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
@@ -12,6 +13,17 @@ const PORT = parseInt(process.env.PORT || '3001', 10);
 const app = express();
 const server = createServer(app);
 
+// Helper to validate allowed origins
+const isAllowedOrigin = (origin: string | undefined): boolean => {
+  if (!origin) return false;
+  try {
+    const url = new URL(origin);
+    return url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+};
+
 // Security headers
 app.disable('x-powered-by');
 app.use((_req, res, next) => {
@@ -21,6 +33,20 @@ app.use((_req, res, next) => {
   res.setHeader('Referrer-Policy', 'no-referrer');
   next();
 });
+
+// Configure CORS for HTTP endpoints
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow local development origins
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      // Reject unauthorized origins gracefully as per guidelines
+      callback(null, false);
+    }
+  },
+  methods: ['GET', 'POST', 'OPTIONS']
+}));
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
@@ -66,7 +92,18 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, callback) => {
+    // Mitigate Cross-Site WebSocket Hijacking (CSWSH)
+    if (isAllowedOrigin(info.origin)) {
+      callback(true);
+    } else {
+      callback(false, 403, 'Forbidden');
+    }
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
