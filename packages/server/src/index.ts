@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
@@ -19,6 +20,33 @@ app.use((_req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
+const allowedOriginRegex = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin || allowedOriginRegex.test(origin)) {
+      callback(null, true);
+    } else {
+      // Memory check: returning an Error causes a 500. Return callback(null, false) for 403 or blocked CORS gracefully
+      callback(null, false);
+    }
+  }
+};
+// Use CORS but enforce status 403 when blocked
+app.use(cors({
+  ...corsOptions,
+  optionsSuccessStatus: 204
+}));
+// Explicitly block unauthorized requests
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !allowedOriginRegex.test(origin)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
   next();
 });
 
@@ -66,7 +94,20 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, callback) => {
+    const origin = info.req.headers.origin;
+    if (!origin || allowedOriginRegex.test(origin)) {
+      callback(true);
+    } else {
+      // Memory check: Rejecting connection with 403. Using 403 status code.
+      // To avoid bun bugs, we only run tests via bun test if there are bugs? Wait, the tests run on node tsx
+      callback(false, 403, 'Forbidden');
+    }
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {

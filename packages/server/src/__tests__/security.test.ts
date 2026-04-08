@@ -41,6 +41,61 @@ beforeAll(async () => {
   });
 });
 
+describe('Security: CORS and CSWSH Protection', () => {
+  it('rejects cross-origin API requests with 403', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+      method: 'GET',
+      headers: { 'Origin': 'http://evil.com' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('allows local-origin API requests', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+      method: 'GET',
+      headers: { 'Origin': 'http://localhost:5173' },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects cross-origin WebSocket connections', async () => {
+    const { WebSocket } = require('ws');
+    return new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, {
+        headers: { Origin: 'http://evil.com' },
+      });
+
+      ws.on('open', () => {
+        ws.close();
+        reject(new Error('WebSocket connection should have been rejected'));
+      });
+
+      ws.on('error', (err: any) => {
+        expect(err.message).toMatch(/403/);
+        resolve();
+      });
+    });
+  });
+
+  it('allows local-origin WebSocket connections', async () => {
+    const { WebSocket } = require('ws');
+    return new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, {
+        headers: { Origin: 'http://localhost:5173' },
+      });
+
+      ws.on('open', () => {
+        ws.close();
+        resolve();
+      });
+
+      ws.on('error', (err: any) => {
+        reject(new Error(`WebSocket connection should have been allowed, got error: ${err.message}`));
+      });
+    });
+  });
+});
+
 afterAll(() => {
   if (serverProcess) {
     serverProcess.kill();
