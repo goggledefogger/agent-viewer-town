@@ -4,13 +4,41 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
+import cors from 'cors';
 import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
+import { isAllowedOrigin } from './origin';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 const app = express();
 const server = createServer(app);
+
+// CORS configuration - only allow requests from localhost/127.0.0.1
+const corsOptions = {
+  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      // Return false to gracefully omit CORS headers instead of throwing 500 error
+      callback(null, false);
+    }
+  },
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type'],
+};
+
+app.use(cors(corsOptions));
+
+// Fallback middleware to actively reject unauthorized origins
+app.use((req, res, next) => {
+  if (!isAllowedOrigin(req.headers.origin)) {
+    console.warn(`[security] Rejected request from unauthorized origin: ${req.headers.origin}`);
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+});
 
 // Security headers
 app.disable('x-powered-by');
@@ -66,7 +94,20 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, callback) => {
+    // Validate WebSocket origin to prevent Cross-Site WebSocket Hijacking (CSWSH)
+    if (isAllowedOrigin(info.origin)) {
+      callback(true);
+    } else {
+      console.warn(`[security] Rejected WebSocket connection from unauthorized origin: ${info.origin}`);
+      // Returning false to reject. 403 status is optional in ws for verifyClient.
+      callback(false, 403, 'Forbidden');
+    }
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
