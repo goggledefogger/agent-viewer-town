@@ -1,11 +1,13 @@
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import cors from 'cors';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
+import { isAllowedOrigin } from './origin';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -25,6 +27,26 @@ app.use((_req, res, next) => {
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
+});
+
+// CORS Protection
+app.use(cors({
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
+  }
+}));
+
+// Fallback to forcefully reject unauthorized origins that cors() might just omit headers for
+app.use((req, res, next) => {
+  if (!isAllowedOrigin(req.headers.origin)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
 });
 
 // JSON body parsing for hook events
@@ -66,7 +88,18 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, callback) => {
+    const origin = info.origin;
+    if (isAllowedOrigin(origin)) {
+      callback(true);
+    } else {
+      callback(false, 403, 'Forbidden');
+    }
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
