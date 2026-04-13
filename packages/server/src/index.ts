@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
@@ -6,11 +7,43 @@ import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
+import { isAllowedOrigin, verifyClient } from './origin';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 const app = express();
 const server = createServer(app);
+
+// CORS configuration to prevent unauthorized sites from calling the API
+app.use(cors({
+  origin: (origin, callback) => {
+    // If no origin is provided (e.g., server-to-server or same-origin), allow it
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      // Return false instead of an Error to omit CORS headers instead of throwing 500
+      callback(null, false);
+    }
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Explicit 403 fallback to firmly reject unauthorized requests
+// that the CORS middleware only omits headers for.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !isAllowedOrigin(origin)) {
+    console.warn(`[server] Rejected unauthorized origin: ${origin}`);
+    res.status(403).json({ error: 'Forbidden: Unauthorized Origin' });
+    return;
+  }
+  next();
+});
 
 // Security headers
 app.disable('x-powered-by');
@@ -66,7 +99,7 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ server, path: '/ws', verifyClient });
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
