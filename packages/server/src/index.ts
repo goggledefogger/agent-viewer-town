@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
@@ -6,6 +7,7 @@ import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
+import { isAllowedOrigin } from './origin';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -14,6 +16,27 @@ const server = createServer(app);
 
 // Security headers
 app.disable('x-powered-by');
+
+// CORS middleware
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests without origin (e.g. some local server-to-server or initial page loads)
+    if (!origin) return callback(null, true);
+    if (isAllowedOrigin(origin)) return callback(null, true);
+    return callback(null, false); // Omits CORS headers, 403 fallback middleware catches it
+  },
+  credentials: true
+}));
+
+// Fallback to forcefully reject unauthorized origins
+app.use((req, res, next) => {
+  if (req.headers.origin && !isAllowedOrigin(req.headers.origin)) {
+    res.status(403).json({ error: 'Forbidden: Origin not allowed' });
+    return;
+  }
+  next();
+});
+
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -66,7 +89,19 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, callback) => {
+    const origin = info.origin;
+    if (origin && !isAllowedOrigin(origin)) {
+      console.warn(`[ws] Rejected unauthorized origin: ${origin}`);
+      callback(false, 403, 'Forbidden');
+      return;
+    }
+    callback(true);
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
