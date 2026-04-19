@@ -1,11 +1,13 @@
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import cors from 'cors';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
+import { isAllowedOrigin } from './origin';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -14,6 +16,26 @@ const server = createServer(app);
 
 // Security headers
 app.disable('x-powered-by');
+
+// CORS middleware
+app.use(cors({
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
+  }
+}));
+
+// Fallback to explicitly reject blocked origins with 403 Forbidden
+app.use((req, res, next) => {
+  if (!isAllowedOrigin(req.headers.origin)) {
+    return res.status(403).json({ error: 'Origin not allowed' });
+  }
+  next();
+});
+
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -66,7 +88,18 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, callback) => {
+    const origin = info.req.headers.origin;
+    if (!isAllowedOrigin(origin)) {
+      callback(false, 403, 'Forbidden');
+    } else {
+      callback(true);
+    }
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {

@@ -2,3 +2,7 @@
 **Vulnerability:** Potential for arbitrary command execution context if hook inputs are compromised.
 **Learning:** The server uses `cwd` provided in hook payloads to execute `git` commands via `execFile`. While `execFile` avoids shell injection, the `cwd` option controls the working directory, which could be abused if the input source wasn't trusted (Claude Code).
 **Prevention:** Always validate `cwd` against an allowlist or ensure it resides within expected project paths, even for trusted internal tools.
+## 2024-05-24 - [Local Server Cross-Site WebSocket Hijacking and CSRF]
+**Vulnerability:** The local development server on `127.0.0.1` had no origin checking. Any website opened in the same browser could use `fetch()` or establish a `WebSocket` connection to the local server port to read user data or send commands on behalf of the user (CSWSH and CSRF).
+**Learning:** Local servers are implicitly accessible by any website loaded on the local browser via explicit IP addresses (`127.0.0.1`, `localhost`) unless strict origin checks and CORS controls are put in place. Express default behavior allows all origins, and the `ws` WebSocketServer also accepts all connections unless `verifyClient` explicitly checks them.
+**Prevention:** Always implement explicit origin verification logic on HTTP routing (e.g. `cors` package and strict fallback) and on WebSocket handshakes (e.g. `verifyClient` checking `req.headers.origin`) that validate origins strictly to `localhost` and local loopback IPv4/IPv6 IPs and actively block malicious origins like `"null"`.
