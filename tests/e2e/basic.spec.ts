@@ -5,7 +5,7 @@ test('shows workshop waiting screen when no team is active', async ({ page }) =>
 
   // The app should show the "no team" state with the workshop title
   await expect(page.locator('text=Workshop in the Woods')).toBeVisible({ timeout: 10000 });
-  await expect(page.locator('text=Waiting for an agent team')).toBeVisible();
+  await expect(page.locator('text=Waiting for a session to start')).toBeVisible();
 });
 
 test('page loads without console errors', async ({ page }) => {

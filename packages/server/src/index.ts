@@ -6,6 +6,8 @@ import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
+import cors from 'cors';
+import { corsOriginFn, requireValidOrigin, verifyClient } from './origin';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -29,6 +31,10 @@ app.get('/api/health', (_req, res) => {
 
 // JSON body parsing for hook events
 app.use(express.json({ limit: '1mb' }));
+
+// CORS protection
+app.use(cors({ origin: corsOriginFn }));
+app.use(requireValidOrigin);
 
 // State snapshot endpoint
 const stateManager = new StateManager();
@@ -66,7 +72,7 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ server, path: '/ws', verifyClient });
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
