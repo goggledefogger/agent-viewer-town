@@ -21,7 +21,7 @@
     "touchbar:restore": "bash touchbar-dev/run.sh restore"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2",
+    "@playwright/test": "^1.59.1",
     "concurrently": "^9.1.0",
     "typescript": "^5.9.0",
     "vitest": "^4.0.18"

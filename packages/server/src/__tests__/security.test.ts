@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, type ChildProcess } from 'child_process';
 import path from 'path';
+import WebSocket from 'ws';
 
 let serverProcess: ChildProcess;
 const PORT = 3098;
@@ -113,4 +114,72 @@ describe('Security: /api/hook Input Validation', () => {
       });
       expect(res.status).toBe(400);
     });
+});
+
+describe('Security: CORS and WebSocket Origin Validation', () => {
+  it('allows API requests with allowed origin', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+      method: 'GET',
+      headers: { 'Origin': 'http://localhost:3000' },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('allows API requests with no origin (curl/scripts)', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+      method: 'GET',
+      // omitting Origin header
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects API requests with unauthorized origin', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+      method: 'GET',
+      headers: { 'Origin': 'https://malicious.com' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects API requests with null origin', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+      method: 'GET',
+      headers: { 'Origin': 'null' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('allows WebSocket connection with allowed origin', async () => {
+    return new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, {
+        origin: 'http://127.0.0.1:5173'
+      });
+      ws.on('open', () => {
+        ws.close();
+        resolve();
+      });
+      ws.on('error', (err) => {
+        reject(err);
+      });
+    });
+  });
+
+  it('rejects WebSocket connection with unauthorized origin', async () => {
+    return new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, {
+        origin: 'https://evil.com'
+      });
+      ws.on('error', (err: any) => {
+        if (err.message.includes('403')) {
+          resolve();
+        } else {
+          reject(err);
+        }
+      });
+      ws.on('open', () => {
+        ws.close();
+        reject(new Error('Expected WebSocket to reject unauthorized origin'));
+      });
+    });
+  });
 });
