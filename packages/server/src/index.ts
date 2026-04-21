@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
@@ -6,6 +7,7 @@ import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
 import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
+import { isAllowedOrigin } from './origin';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -19,6 +21,34 @@ app.use((_req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
+// CORS middleware
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+      } else {
+        // We return false here to omit CORS headers, but we also use a custom
+        // middleware right after to forcefully return 403.
+        callback(null, false);
+      }
+    },
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  })
+);
+
+// Explicit 403 Forbidden for unauthorized origins
+app.use((req, res, next) => {
+  if (!isAllowedOrigin(req.headers.origin)) {
+    console.warn(`[security] Blocked request from unauthorized origin: ${req.headers.origin}`);
+    res.status(403).json({ error: 'Forbidden: Unauthorized Origin' });
+    return;
+  }
   next();
 });
 
@@ -66,7 +96,20 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, callback) => {
+    const origin = info.origin;
+    if (!isAllowedOrigin(origin)) {
+      console.warn(`[security] Blocked WebSocket connection from unauthorized origin: ${origin}`);
+      // Returning false for rejection can cause Bun issues, but standard Node handles it
+      callback(false, 403, 'Forbidden: Unauthorized Origin');
+      return;
+    }
+    callback(true);
+  },
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
