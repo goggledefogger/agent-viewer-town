@@ -75,6 +75,22 @@ describe('validateHookEvent', () => {
     expect(error).toMatch(/cwd must not contain null bytes/);
   });
 
+  it('validates cwd path traversal', () => {
+    const error1 = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/path/to/../somewhere',
+    });
+    expect(error1).toMatch(/cwd must not contain path traversal components/);
+
+    // The previous `path.isAbsolute` check will also fail for `C:\\` on non-Windows
+    // so let's use an absolute path with the current platform path format, then add mixed separators.
+    const error2 = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/path\\to/../somewhere',
+    });
+    expect(error2).toMatch(/cwd must not contain path traversal components/);
+  });
+
   it('validates cwd length', () => {
     const error = validateHookEvent({
       hook_event_name: 'SessionStart',
