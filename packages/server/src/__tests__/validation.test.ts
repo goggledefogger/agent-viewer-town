@@ -75,6 +75,14 @@ describe('validateHookEvent', () => {
     expect(error).toMatch(/cwd must not contain null bytes/);
   });
 
+  it('validates cwd path traversal components', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/path/with/../traversal',
+    });
+    expect(error).toMatch(/cwd must not contain path traversal components/);
+  });
+
   it('validates cwd length', () => {
     const error = validateHookEvent({
       hook_event_name: 'SessionStart',
