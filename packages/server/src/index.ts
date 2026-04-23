@@ -22,6 +22,25 @@ app.use((_req, res, next) => {
   next();
 });
 
+// Optional token-based authentication
+const AUTH_TOKEN = process.env.AUTH_TOKEN;
+if (AUTH_TOKEN) {
+  app.use('/api', (req, res, next) => {
+    // Health check remains public
+    if (req.path === '/health') {
+      return next();
+    }
+    const authHeader = req.headers.authorization;
+    if (authHeader === `Bearer ${AUTH_TOKEN}`) {
+      return next();
+    }
+    if (req.query.token === AUTH_TOKEN) {
+      return next();
+    }
+    res.status(401).json({ error: 'Unauthorized' });
+  });
+}
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
@@ -66,7 +85,23 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, cb) => {
+    if (AUTH_TOKEN) {
+      try {
+        const url = new URL(info.req.url || '', `http://${info.req.headers.host}`);
+        if (url.searchParams.get('token') !== AUTH_TOKEN) {
+          return cb(false, 401, 'Unauthorized');
+        }
+      } catch (err) {
+        return cb(false, 400, 'Bad Request');
+      }
+    }
+    cb(true);
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
