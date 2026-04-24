@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import cors from 'cors';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
 import { createHookHandler } from './hooks';
@@ -19,6 +20,37 @@ app.use((_req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
+const ALLOWED_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // allow requests with no origin like server-to-server or curl requests
+    if (!origin) return callback(null, true);
+    // explicitly block string "null"
+    if (origin === 'null') return callback(null, false);
+    if (ALLOWED_ORIGINS.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
+  },
+};
+
+app.use(cors(corsOptions));
+// Fallback middleware to enforce 403
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && origin === 'null') {
+    res.status(403).json({ error: 'CORS policy violation' });
+    return;
+  }
+  if (origin && ALLOWED_ORIGINS.indexOf(origin) === -1) {
+    res.status(403).json({ error: 'CORS policy violation' });
+    return;
+  }
   next();
 });
 
@@ -66,7 +98,22 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, callback) => {
+    const origin = info.origin;
+    if (!origin) return callback(true);
+    if (origin === 'null') {
+      return callback(false, 403, 'Forbidden');
+    }
+    if (ALLOWED_ORIGINS.indexOf(origin) !== -1) {
+      callback(true);
+    } else {
+      callback(false, 403, 'Forbidden');
+    }
+  },
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
