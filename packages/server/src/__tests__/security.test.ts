@@ -114,3 +114,24 @@ describe('Security: /api/hook Input Validation', () => {
       expect(res.status).toBe(400);
     });
 });
+
+describe('Security: CORS and CSWSH Protection', () => {
+  it('allows valid origin', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/state`, {
+      headers: {
+        Origin: 'http://localhost:5173'
+      }
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+  });
+
+  it('rejects invalid origin', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/state`, {
+      headers: {
+        Origin: 'http://malicious.com'
+      }
+    });
+    expect(res.status).toBe(403);
+  });
+});
