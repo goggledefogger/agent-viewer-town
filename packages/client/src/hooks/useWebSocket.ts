@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { TeamState, SessionListEntry, GroupedSessionsList, WSMessage } from '@agent-viewer/shared';
+import type { TeamState, SessionListEntry, GroupedSessionsList, WSMessage, DashboardSessionState } from '@agent-viewer/shared';
 
 const EMPTY_STATE: TeamState = {
   name: '',
@@ -15,12 +15,22 @@ const EMPTY_GROUPED: GroupedSessionsList = {
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'reconnecting';
 
+/** Callbacks for routing dashboard messages to the dashboard hook */
+export interface DashboardCallbacks {
+  onDashboardStates: (states: DashboardSessionState[]) => void;
+  onDashboardUpdate: (sessionId: string, inner: WSMessage) => void;
+}
+
 export interface WebSocketState {
   team: TeamState;
   sessions: SessionListEntry[];
   groupedSessions: GroupedSessionsList;
   connectionStatus: ConnectionStatus;
   selectSession: (sessionId: string) => void;
+  /** Enter dashboard mode: subscribe to given session IDs */
+  setDashboard: (sessionIds: string[]) => void;
+  /** Register callbacks for dashboard messages */
+  setDashboardCallbacks: (cbs: DashboardCallbacks | null) => void;
 }
 
 export function useWebSocket(url: string): WebSocketState {
@@ -34,14 +44,32 @@ export function useWebSocket(url: string): WebSocketState {
   const hasLockedSession = useRef(false);
   /** Track the session ID the user is viewing, so we can re-send on reconnect */
   const lockedSessionId = useRef<string | undefined>(undefined);
+  /** Dashboard mode session IDs (for reconnection) */
+  const dashboardSessionIds = useRef<string[] | undefined>(undefined);
+  /** Ref to dashboard callbacks so the message handler can call them */
+  const dashboardCallbacksRef = useRef<DashboardCallbacks | null>(null);
 
   const selectSession = useCallback((sessionId: string) => {
     lockedSessionId.current = sessionId;
     hasLockedSession.current = true;
+    // Exit dashboard mode when selecting a single session
+    dashboardSessionIds.current = undefined;
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'select_session', sessionId }));
     }
+  }, []);
+
+  const setDashboard = useCallback((sessionIds: string[]) => {
+    dashboardSessionIds.current = sessionIds.length > 0 ? sessionIds : undefined;
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'set_dashboard', sessionIds }));
+    }
+  }, []);
+
+  const setDashboardCallbacks = useCallback((cbs: DashboardCallbacks | null) => {
+    dashboardCallbacksRef.current = cbs;
   }, []);
 
   const connect = useCallback(() => {
@@ -54,6 +82,10 @@ export function useWebSocket(url: string): WebSocketState {
       if (!hasConnectedOnce.current) {
         // First connection: unlock so the first full_state locks us in
         hasLockedSession.current = false;
+      } else if (dashboardSessionIds.current) {
+        // Reconnection in dashboard mode: re-subscribe to all panels
+        console.log(`[ws] reconnect: re-entering dashboard with ${dashboardSessionIds.current.length} panels`);
+        ws.send(JSON.stringify({ type: 'set_dashboard', sessionIds: dashboardSessionIds.current }));
       } else if (lockedSessionId.current) {
         // Reconnection: immediately re-send our session selection.
         // The server created a new clientState with its own pick — override it.
@@ -94,6 +126,12 @@ export function useWebSocket(url: string): WebSocketState {
             break;
           case 'session_ended':
             setSessions((prev) => prev.filter((s) => s.sessionId !== msg.data.sessionId));
+            break;
+          case 'dashboard_states':
+            dashboardCallbacksRef.current?.onDashboardStates(msg.data.states);
+            break;
+          case 'dashboard_update':
+            dashboardCallbacksRef.current?.onDashboardUpdate(msg.data.sessionId, msg.data.inner);
             break;
           default:
             if (msg.type === 'full_state') {
@@ -139,7 +177,7 @@ export function useWebSocket(url: string): WebSocketState {
     };
   }, [connect]);
 
-  return { team: state, sessions, groupedSessions, connectionStatus, selectSession };
+  return { team: state, sessions, groupedSessions, connectionStatus, selectSession, setDashboard, setDashboardCallbacks };
 }
 
 export function applyMessage(state: TeamState, msg: WSMessage): TeamState {

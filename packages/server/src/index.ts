@@ -71,6 +71,8 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
   selectedSessionId?: string;
+  /** Dashboard mode: client is subscribed to multiple sessions at once */
+  dashboardSessionIds?: string[];
 }
 const clientStates = new Map<WebSocket, ClientState>();
 
@@ -105,13 +107,69 @@ wss.on('connection', (ws: WebSocket) => {
   ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
   ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(activeId) }));
 
+  /** Send dashboard_states for all subscribed sessions */
+  function sendDashboardStates(client: ClientState) {
+    const ids = client.dashboardSessionIds;
+    if (!ids || ids.length === 0) return;
+    const states = ids.map((sid) => ({
+      sessionId: sid,
+      team: stateManager.getStateForSession(sid),
+    }));
+    ws.send(JSON.stringify({ type: 'dashboard_states', data: { states } }));
+  }
+
+  /** Determine which dashboard session(s) an agent belongs to, for routing updates */
+  function getDashboardSessionsForAgent(client: ClientState, agentId: string): string[] {
+    const ids = client.dashboardSessionIds;
+    if (!ids) return [];
+    return ids.filter((sid) => stateManager.agentBelongsToSession(agentId, sid));
+  }
+
   // Subscribe to state changes — send per-client filtered views
   const unsubscribe = stateManager.subscribe((msg) => {
     if (ws.readyState !== WebSocket.OPEN) return;
 
     const client = clientStates.get(ws);
-    const clientSessionId = client?.selectedSessionId;
+    if (!client) return;
+    const clientSessionId = client.selectedSessionId;
+    const isDashboard = client.dashboardSessionIds && client.dashboardSessionIds.length > 0;
 
+    // --- Dashboard mode: wrap updates per-session ---
+    if (isDashboard) {
+      if (msg.type === 'full_state') {
+        sendDashboardStates(client);
+        const id = getClientActiveSessionId(ws);
+        ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
+        ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(id) }));
+      } else if (msg.type === 'sessions_update' || msg.type === 'sessions_list' || msg.type === 'sessions_grouped') {
+        const id = getClientActiveSessionId(ws);
+        ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
+        ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(id) }));
+      } else if (msg.type === 'session_started' || msg.type === 'session_ended') {
+        const id = getClientActiveSessionId(ws);
+        ws.send(JSON.stringify(msg));
+        ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
+        ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(id) }));
+      } else if (msg.type === 'agent_removed') {
+        // Send removal wrapped for each dashboard session that might have had this agent
+        for (const sid of client.dashboardSessionIds!) {
+          ws.send(JSON.stringify({ type: 'dashboard_update', data: { sessionId: sid, inner: msg } }));
+        }
+      } else if (msg.type === 'agent_update' || msg.type === 'agent_added') {
+        const matchingSessions = getDashboardSessionsForAgent(client, msg.data.id);
+        for (const sid of matchingSessions) {
+          ws.send(JSON.stringify({ type: 'dashboard_update', data: { sessionId: sid, inner: msg } }));
+        }
+      } else {
+        // task_update, new_message — send to all dashboard sessions
+        for (const sid of client.dashboardSessionIds!) {
+          ws.send(JSON.stringify({ type: 'dashboard_update', data: { sessionId: sid, inner: msg } }));
+        }
+      }
+      return;
+    }
+
+    // --- Single-view mode (existing behavior) ---
     if (msg.type === 'full_state') {
       // Full state reset: send complete per-client filtered view
       const id = getClientActiveSessionId(ws);
@@ -161,10 +219,31 @@ wss.on('connection', (ws: WebSocket) => {
         const client = clientStates.get(ws);
         if (client) {
           client.selectedSessionId = msg.sessionId;
+          // If in dashboard mode, selecting a session exits dashboard
+          client.dashboardSessionIds = undefined;
         }
         // Send filtered state to only this client
         const id = getClientActiveSessionId(ws);
         ws.send(JSON.stringify({ type: 'full_state', data: getClientState(ws) }));
+        ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
+        ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(id) }));
+      } else if (msg.type === 'set_dashboard' && Array.isArray(msg.sessionIds)) {
+        const sessionIds = msg.sessionIds.filter((id: unknown) => typeof id === 'string') as string[];
+        console.log(`[ws] Client entered dashboard mode: ${sessionIds.length} panels`);
+        const client = clientStates.get(ws);
+        if (client) {
+          client.dashboardSessionIds = sessionIds.length > 0 ? sessionIds : undefined;
+        }
+        if (sessionIds.length > 0) {
+          // Send bulk initial states for all panels
+          const states = sessionIds.map((sid) => ({
+            sessionId: sid,
+            team: stateManager.getStateForSession(sid),
+          }));
+          ws.send(JSON.stringify({ type: 'dashboard_states', data: { states } }));
+        }
+        // Always send updated sessions/grouped
+        const id = getClientActiveSessionId(ws);
         ws.send(JSON.stringify({ type: 'sessions_list', data: getClientSessionsList(ws) }));
         ws.send(JSON.stringify({ type: 'sessions_grouped', data: stateManager.getGroupedSessionsList(id) }));
       }
