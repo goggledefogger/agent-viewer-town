@@ -18,6 +18,31 @@ export const VALID_HOOK_EVENTS = new Set([
   'Notification',
 ]);
 
+/**
+ * Validates a cross-platform absolute path, blocking traversal, null bytes,
+ * and dangerous shell metacharacters.
+ */
+export function isSafePath(p: string): boolean {
+  if (typeof p !== 'string') return false;
+
+  // Block null bytes
+  if (p.includes('\0')) return false;
+
+  // Block path traversal
+  if (p.includes('..')) return false;
+
+  // Block dangerous shell metacharacters
+  if (/[;&|$><*?!\n\r]/.test(p)) return false;
+
+  // Must be an absolute path (POSIX or Windows)
+  const isPosixAbsolute = p.startsWith('/');
+  const isWindowsAbsolute = /^[a-zA-Z]:[\\/]/.test(p);
+
+  if (!isPosixAbsolute && !isWindowsAbsolute) return false;
+
+  return true;
+}
+
 export function validateHookEvent(event: any): string | null {
   if (!event || typeof event !== 'object') {
     return 'Event must be a JSON object';
@@ -51,11 +76,8 @@ export function validateHookEvent(event: any): string | null {
     if (event.cwd.length > 1024) {
       return 'cwd is too long (max 1024 chars)';
     }
-    if (!path.isAbsolute(event.cwd)) {
-      return 'cwd must be an absolute path';
-    }
-    if (event.cwd.includes('\0')) {
-        return 'cwd must not contain null bytes';
+    if (!isSafePath(event.cwd)) {
+      return 'cwd must be a safe absolute path';
     }
   }
 
