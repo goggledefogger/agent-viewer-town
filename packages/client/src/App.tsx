@@ -65,7 +65,7 @@ function LiveIndicator({ lastActivity }: { lastActivity?: number }) {
 }
 
 export default function App() {
-  const { team: state, sessions, groupedSessions, connectionStatus, selectSession } = useWebSocket('ws://localhost:3001/ws');
+  const { team: state, sessions, groupedSessions, connectionStatus, selectSession } = useWebSocket('ws://127.0.0.1:3001/ws');
   const notifications = useNotifications(state.agents, state.session, sessions);
   const navigation = useNavigation(groupedSessions, state.session);
   const inbox = useInbox(state.agents, state.session, sessions);

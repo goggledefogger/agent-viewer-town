@@ -199,6 +199,17 @@ export function parseTranscriptLine(line: string): ParsedTranscriptLine | null {
     return { type: 'agent_activity', agentName };
   }
 
+  // New format: tool_result nested inside user message
+  if (data.type === 'user' && data.message && typeof data.message === 'object') {
+    const msg = data.message as Record<string, unknown>;
+    if (Array.isArray(msg.content)) {
+      const hasToolResult = msg.content.some((block) => block && typeof block === 'object' && block.type === 'tool_result');
+      if (hasToolResult) {
+        return { type: 'agent_activity', agentName };
+      }
+    }
+  }
+
   // Detect progress entries (bash_progress, hook_progress, etc.)
   // These indicate the tool is actively running — NOT waiting for user input
   if (data.type === 'progress') {
