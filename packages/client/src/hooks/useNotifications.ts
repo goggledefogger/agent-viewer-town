@@ -50,11 +50,21 @@ function fireNotification(title: string, body: string, tag: string): boolean {
   // cycles on the same agent always produce a visible notification popup on screen.
   const notificationTag = `${tag}-${Date.now()}`;
 
-  const notification = new Notification(title, {
-    body,
-    tag: notificationTag,
-    requireInteraction: true,
-  });
+  let notification: Notification;
+  try {
+    notification = new Notification(title, {
+      body,
+      tag: notificationTag,
+      requireInteraction: true,
+    });
+  } catch (err) {
+    // Safari throws TypeError if requireInteraction is provided
+    notification = new Notification(title, {
+      body,
+      tag: notificationTag,
+    });
+  }
+
   notification.onclick = () => {
     window.focus();
     notification.close();
