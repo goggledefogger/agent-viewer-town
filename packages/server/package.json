@@ -11,12 +11,10 @@
   "dependencies": {
     "@agent-viewer/shared": "*",
     "chokidar": "^4.0.0",
-    "cors": "^2.8.6",
     "express": "^5.2.0",
     "ws": "^8.19.0"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.0",
     "@types/ws": "^8.5.0",
     "tsx": "^4.21.0",
