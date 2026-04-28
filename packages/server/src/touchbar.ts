@@ -10,7 +10,7 @@ import { writeFile, readFile, access } from 'fs/promises';
 import { constants } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import type { AgentState } from '@agent-viewer/shared';
 
 const STATUS_FILE = '/tmp/agent-viewer-touchbar.json';
@@ -72,11 +72,10 @@ function buildMtmrConfig(background: string, title: string, titleColor = '#FFFFF
 }
 
 function ensureMtmrRunning(): void {
-  exec('pgrep -x MTMR', (err, stdout) => {
+  execFile('pgrep', ['-x', 'MTMR'], { env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } }, (err, stdout) => {
     if (!stdout.trim()) {
       // MTMR is not running — launch it
-      console.log('[touchbar] Launching MTMR...');
-      exec('open -a MTMR', (launchErr) => {
+      execFile('open', ['-a', 'MTMR'], { env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } }, (launchErr) => {
         if (launchErr) {
           console.warn('[touchbar] Failed to launch MTMR:', launchErr.message);
         }
@@ -185,7 +184,6 @@ export async function updateTouchBarStatus(allAgents: Map<string, AgentState>): 
     mtmrChecked = true;
     mtmrEnabled = await isMtmrAvailable();
     if (mtmrEnabled) {
-      console.log('[touchbar] MTMR detected — Touch Bar notifications enabled');
       // Auto-launch MTMR if installed but not running
       ensureMtmrRunning();
     }
