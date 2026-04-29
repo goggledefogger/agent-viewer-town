@@ -75,6 +75,38 @@ describe('validateHookEvent', () => {
     expect(error).toMatch(/cwd must not contain null bytes/);
   });
 
+  it('validates cwd path traversal', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/path/with/../traversal',
+    });
+    expect(error).toMatch(/cwd must not contain traversal segments/);
+  });
+
+  it('validates cwd unsafe characters', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/path/with/;/injection',
+    });
+    expect(error).toMatch(/cwd contains unsafe characters/);
+  });
+
+  it('validates cwd unsafe characters (newline)', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/path/with/\n/injection',
+    });
+    expect(error).toMatch(/cwd contains unsafe characters/);
+  });
+
+  it('accepts valid windows absolute paths', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: 'C:\\valid\\windows\\path',
+    });
+    expect(error).toBeNull();
+  });
+
   it('validates cwd length', () => {
     const error = validateHookEvent({
       hook_event_name: 'SessionStart',

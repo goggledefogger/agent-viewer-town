@@ -18,6 +18,23 @@ export const VALID_HOOK_EVENTS = new Set([
   'Notification',
 ]);
 
+export function isSafePath(filepath: string): string | null {
+  if (filepath.includes('..')) {
+    return 'cwd must not contain traversal segments';
+  }
+  if (filepath.includes('\0')) {
+    return 'cwd must not contain null bytes';
+  }
+  if (/[;&|$><*?!\n\r]/.test(filepath)) {
+    return 'cwd contains unsafe characters';
+  }
+  // Cross-platform absolute path check
+  if (!filepath.startsWith('/') && !/^[a-zA-Z]:[\\/]/.test(filepath)) {
+    return 'cwd must be an absolute path';
+  }
+  return null;
+}
+
 export function validateHookEvent(event: any): string | null {
   if (!event || typeof event !== 'object') {
     return 'Event must be a JSON object';
@@ -51,11 +68,9 @@ export function validateHookEvent(event: any): string | null {
     if (event.cwd.length > 1024) {
       return 'cwd is too long (max 1024 chars)';
     }
-    if (!path.isAbsolute(event.cwd)) {
-      return 'cwd must be an absolute path';
-    }
-    if (event.cwd.includes('\0')) {
-        return 'cwd must not contain null bytes';
+    const safePathError = isSafePath(event.cwd);
+    if (safePathError) {
+      return safePathError;
     }
   }
 
