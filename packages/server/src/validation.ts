@@ -54,10 +54,27 @@ export function validateHookEvent(event: any): string | null {
     if (!path.isAbsolute(event.cwd)) {
       return 'cwd must be an absolute path';
     }
-    if (event.cwd.includes('\0')) {
-        return 'cwd must not contain null bytes';
+    if (!isSafePath(event.cwd)) {
+      if (event.cwd.includes('\0')) return 'cwd must not contain null bytes';
+      return 'cwd is invalid or unsafe';
     }
   }
 
   return null;
+}
+
+export function isSafePath(p: string): boolean {
+  if (typeof p !== 'string') return false;
+  if (p.includes('\0')) return false;
+
+  const parts = p.split(/[/\\]/);
+  if (parts.includes('..')) {
+    return false;
+  }
+
+  if (/[;&|$><*?!\n\r]/.test(p)) {
+    return false;
+  }
+
+  return true;
 }

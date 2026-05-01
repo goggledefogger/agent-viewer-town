@@ -82,4 +82,28 @@ describe('validateHookEvent', () => {
     });
     expect(error).toMatch(/cwd is too long/);
   });
+
+  it('rejects path traversal in cwd', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/var/www/../app',
+    });
+    expect(error).toMatch(/cwd is invalid or unsafe/);
+  });
+
+  it('rejects dangerous shell metacharacters in cwd', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/var/www/app&echo 1',
+    });
+    expect(error).toMatch(/cwd is invalid or unsafe/);
+  });
+
+  it('rejects newlines in cwd', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/var/www/app\necho 1',
+    });
+    expect(error).toMatch(/cwd is invalid or unsafe/);
+  });
 });
