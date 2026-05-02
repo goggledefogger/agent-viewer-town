@@ -34,7 +34,7 @@ A real-time animated visualization for Claude Code sessions and agent teams. Wat
 - **Session auto-detection** - Works with solo sessions and multi-agent teams
 - **Git branch visibility** - Branch badges with push/pull status indicators per agent
 - **Branch grouping** - Visual zones grouping agents that share the same branch
-- **Browser notifications** - Desktop alerts when an agent needs your input (tab-hidden only)
+- **Browser notifications** - Desktop alerts + audio chime when any agent needs input, even from other projects
 - **Multi-tab support** - Each browser tab can watch a different session independently
 - **Responsive design** - Mobile-friendly with collapsible sidebar
 - **Extensible theme system** - Swappable visual themes with palette, background, and environment components
@@ -87,6 +87,8 @@ To uninstall, simply move the app to the Trash and remove the icon from your Doc
 
 Install hooks with `npm run hooks:install` (adds to `~/.claude/settings.json`).
 
+> **Note**: The hook script POSTs to `http://127.0.0.1:3001`. If you have another process on that port via `localhost`, events may be silently dropped since `localhost` and `127.0.0.1` can resolve differently on some systems.
+
 **2. JSONL transcript parsing (fallback)** - Scans `~/.claude/projects/` for session transcripts. Provides session discovery and initial state on startup, and serves as a portable fallback for non-hook environments.
 
 **Guard mechanisms** prevent stale agents:
@@ -110,6 +112,19 @@ The branch badge on each agent shows:
 - Orange border when the working tree is dirty
 
 Click an agent to see the full detail popover with push/pull status.
+
+### Notifications
+
+When an agent finishes a turn and is waiting for user input, the viewer fires:
+
+1. **Browser notification** — a desktop popup via the Notifications API (requires permission grant for the origin)
+2. **Audio chime** — a two-tone Web Audio beep (C5 → E5) that plays even when the tab is in the background
+3. **AlertBar** — a gold banner at the top of the viewport showing which agent needs input
+4. **Tab title flash** — the browser tab title alternates with "Input needed" text
+
+Notifications work **cross-session**: if you're viewing Project A and an agent in Project B finishes, you'll still get the popup, chime, and a secondary AlertBar row showing the external project name. Clicking the project name in the AlertBar switches the viewer to that session.
+
+Enable notifications with the 🔔 toggle in the header. On macOS, ensure your browser is not suppressed by Focus/Do Not Disturb mode.
 
 ## Architecture
 
