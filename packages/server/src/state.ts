@@ -263,44 +263,12 @@ export class StateManager {
   }
 
   updateAgentActivity(agentName: string, status: 'idle' | 'working' | 'done', action?: string, actionContext?: string) {
-    // Update in the full registry
-    let registryAgent: AgentState | undefined;
     const ids = this.agentsByName.get(agentName);
-    if (ids) {
-      for (const id of ids) {
-        const agent = this.allAgents.get(id);
-        if (!agent) continue;
-        agent.status = status;
-        agent.currentAction = action;
-        agent.actionContext = actionContext;
-        // Clear waiting flag when going idle or done
-        if (status === 'idle' || status === 'done') {
-          agent.waitingForInput = false;
-          agent.waitingType = undefined;
-        }
-        // Push to recent actions ring buffer
-        if (action && status === 'working') {
-          this.pushRecentAction(agent, action);
-        }
-        registryAgent = agent;
-        break;
+    if (ids && ids.size > 0) {
+      const id = ids.values().next().value;
+      if (id) {
+        this.updateAgentActivityById(id, status, action, actionContext);
       }
-    }
-    // Update in the displayed state
-    const agent = this.state.agents.find((a) => a.name === agentName);
-    if (agent) {
-      agent.status = status;
-      agent.currentAction = action;
-      agent.actionContext = actionContext;
-      if (status === 'idle' || status === 'done') {
-        agent.waitingForInput = false;
-        agent.waitingType = undefined;
-      }
-    }
-    // Broadcast using displayed entry or allAgents entry
-    const broadcastAgent = agent || registryAgent;
-    if (broadcastAgent) {
-      this.broadcast({ type: 'agent_update', data: broadcastAgent });
     }
   }
 
@@ -381,31 +349,12 @@ export class StateManager {
   }
 
   setAgentWaiting(agentName: string, waiting: boolean, action?: string, actionContext?: string) {
-    // Update in the full registry
-    let registryAgent: AgentState | undefined;
     const ids = this.agentsByName.get(agentName);
-    if (ids) {
-      for (const id of ids) {
-        const agent = this.allAgents.get(id);
-        if (!agent) continue;
-        agent.waitingForInput = waiting;
-        if (action) agent.currentAction = action;
-        if (actionContext !== undefined) agent.actionContext = actionContext;
-        registryAgent = agent;
-        break; // Current behavior: only update the first matching agent found
+    if (ids && ids.size > 0) {
+      const id = ids.values().next().value;
+      if (id) {
+        this.setAgentWaitingById(id, waiting, action, actionContext);
       }
-    }
-    // Update in the displayed state
-    const agent = this.state.agents.find((a) => a.name === agentName);
-    if (agent) {
-      agent.waitingForInput = waiting;
-      if (action) agent.currentAction = action;
-      if (actionContext !== undefined) agent.actionContext = actionContext;
-    }
-    // Broadcast using displayed entry or allAgents entry
-    const broadcastAgent = agent || registryAgent;
-    if (broadcastAgent) {
-      this.broadcast({ type: 'agent_update', data: broadcastAgent });
     }
   }
 
