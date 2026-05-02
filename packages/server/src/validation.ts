@@ -78,6 +78,9 @@ export function validateHookEvent(event: any): string | null {
     if (!isSafePath(event.cwd)) {
       return 'cwd must be a safe, absolute path without traversal or dangerous characters';
     }
+    if (path.normalize(event.cwd) !== event.cwd) {
+      return 'cwd must be a normalized path';
+    }
   }
 
   return null;
