@@ -68,7 +68,7 @@ function fireNotification(title: string, body: string, tag: string): boolean {
         tag: notificationTag,
       });
     } catch (innerErr) {
-      console.warn('Failed to create browser notification:', innerErr);
+      console.warn('[notify] Failed to create browser notification:', innerErr);
     }
   }
 
