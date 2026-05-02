@@ -1,5 +1,5 @@
 import express from 'express';
-import { createServer } from 'http';
+import { createServer, IncomingMessage } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
@@ -8,7 +8,7 @@ import { validateHookEvent } from './validation';
 import cors from 'cors';
 import { isAllowedOrigin } from './origin';
 import { clearTouchBarStatus } from './touchbar';
-import { requireAuth, validateToken, getTokenFromRequest } from './auth';
+import { requireAuth, validateWebSocketAuth } from './auth';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -41,6 +41,9 @@ app.use(cors({
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
 });
+
+// Protect all other API routes
+app.use('/api', requireAuth);
 
 // JSON body parsing for hook events
 app.use(express.json({ limit: '1mb' }));
@@ -93,8 +96,7 @@ const wss = new WebSocketServer({
     }
 
     // 2. Optional token-based authentication
-    const token = getTokenFromRequest(info.req);
-    if (!validateToken(token)) {
+    if (!validateWebSocketAuth(info.req)) {
       console.warn('[ws] Rejected connection: Invalid or missing authentication token');
       return cb(false, 401, 'Unauthorized');
     }
@@ -130,7 +132,7 @@ function getClientActiveSessionId(ws: WebSocket): string | undefined {
   return clientStates.get(ws)?.selectedSessionId || stateManager.getDefaultSessionId();
 }
 
-wss.on('connection', (ws: WebSocket) => {
+wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
   console.log('[ws] client connected');
   // Pick the most interesting session for this new client, rather than using
   // the global default (which may be stale from a previous client's navigation).

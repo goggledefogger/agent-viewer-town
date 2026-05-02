@@ -20,19 +20,12 @@ export function validateToken(token?: string): boolean {
  * Checks for Bearer token in Authorization header or 'token' query parameter.
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const serverToken = process.env.AUTH_TOKEN;
-  if (!serverToken) {
+  if (!process.env.AUTH_TOKEN) {
     return next();
   }
 
-  let token = req.query.token as string;
-
-  if (!token) {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7);
-    }
-  }
+  const authHeader = req.headers.authorization;
+  const token = (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : req.query.token) as string;
 
   if (validateToken(token)) {
     next();
@@ -49,9 +42,24 @@ export function getTokenFromRequest(req: IncomingMessage): string | undefined {
 
   try {
     // Parse URL relative to a dummy base since req.url is just the path
-    const url = new URL(req.url, 'http://localhost');
-    return url.searchParams.get('token') || undefined;
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const queryToken = url.searchParams.get('token');
+    
+    // Also check for Bearer token in headers (though browser WS API doesn't support custom headers easily)
+    const authHeader = req.headers['authorization'];
+    const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    
+    return queryToken || headerToken || undefined;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Validator for WebSocket upgrade requests.
+ * Returns true if authorized, false otherwise.
+ */
+export function validateWebSocketAuth(req: IncomingMessage): boolean {
+  const token = getTokenFromRequest(req);
+  return validateToken(token);
 }

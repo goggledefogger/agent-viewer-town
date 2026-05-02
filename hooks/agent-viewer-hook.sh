@@ -17,6 +17,7 @@
 # - Fast (1s timeout for HTTP request)
 
 PORT="${AGENT_VIEWER_PORT:-3001}"
+TOKEN="${AGENT_VIEWER_TOKEN}"
 INPUT=$(cat)
 
 # Build curl arguments

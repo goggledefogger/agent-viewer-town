@@ -64,8 +64,12 @@ function LiveIndicator({ lastActivity }: { lastActivity?: number }) {
   );
 }
 
+const WS_URL = 'ws://127.0.0.1:3001/ws';
+const TOKEN = import.meta.env.VITE_AUTH_TOKEN;
+const url = TOKEN ? `${WS_URL}?token=${TOKEN}` : WS_URL;
+
 export default function App() {
-  const { team: state, sessions, groupedSessions, connectionStatus, selectSession } = useWebSocket('ws://127.0.0.1:3001/ws');
+  const { team: state, sessions, groupedSessions, connectionStatus, selectSession } = useWebSocket(url);
   const notifications = useNotifications(state.agents, state.session, sessions);
   const navigation = useNavigation(groupedSessions, state.session);
   const inbox = useInbox(state.agents, state.session, sessions);
