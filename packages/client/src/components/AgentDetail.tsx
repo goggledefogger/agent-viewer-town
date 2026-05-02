@@ -1,13 +1,6 @@
 import type { AgentState, TaskState } from '@agent-viewer/shared';
 import { getBranchColor } from '../constants/colors';
-
-/** Format a relative time string from a timestamp */
-function relativeTime(ts: number): string {
-  const diff = Math.floor((Date.now() - ts) / 1000);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  return `${Math.floor(diff / 3600)}h ago`;
-}
+import { relativeTime } from './RelativeTime';
 
 /** Word-wrap text into lines of maxLen chars */
 function wrapText(text: string, maxLen: number): string[] {

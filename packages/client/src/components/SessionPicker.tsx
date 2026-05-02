@@ -1,32 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import type { SessionListEntry } from '@agent-viewer/shared';
+import { RelativeTime } from './RelativeTime';
 
 interface SessionPickerProps {
   sessions: SessionListEntry[];
   onSelect: (sessionId: string) => void;
 }
 
-function relativeTime(timestamp: number): string {
-  const delta = Math.floor((Date.now() - timestamp) / 1000);
-  if (delta < 5) return 'just now';
-  if (delta < 60) return `${delta}s ago`;
-  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
-  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
-  return `${Math.floor(delta / 86400)}d ago`;
-}
-
 export function SessionPicker({ sessions, onSelect }: SessionPickerProps) {
   const [open, setOpen] = useState(false);
-  const [, setTick] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const active = sessions.find((s) => s.active);
-
-  // Update relative timestamps every 5 seconds
-  useEffect(() => {
-    const interval = setInterval(() => setTick((t) => t + 1), 5000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -94,7 +79,7 @@ export function SessionPicker({ sessions, onSelect }: SessionPickerProps) {
                 {s.gitBranch && (
                   <span className="badge badge-branch">{s.gitBranch}</span>
                 )}
-                <span className="session-picker-time">{relativeTime(s.lastActivity)}</span>
+                <RelativeTime timestamp={s.lastActivity} className="session-picker-time" />
               </div>
             </button>
           ))}
