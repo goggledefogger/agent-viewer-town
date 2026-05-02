@@ -8,6 +8,7 @@ import { validateHookEvent } from './validation';
 import cors from 'cors';
 import { isAllowedOrigin } from './origin';
 import { clearTouchBarStatus } from './touchbar';
+import { requireAuth, validateToken, getTokenFromRequest } from './auth';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -48,12 +49,12 @@ app.use(express.json({ limit: '1mb' }));
 const stateManager = new StateManager();
 const hookHandler = createHookHandler(stateManager);
 
-app.get('/api/state', (_req, res) => {
+app.get('/api/state', requireAuth, (_req, res) => {
   res.json(stateManager.getState());
 });
 
 // Hook event endpoint — receives events from Claude Code lifecycle hooks
-app.post('/api/hook', (req, res) => {
+app.post('/api/hook', requireAuth, (req, res) => {
   try {
     const event = req.body;
 
@@ -75,7 +76,7 @@ app.post('/api/hook', (req, res) => {
 });
 
 // Sessions list endpoint
-app.get('/api/sessions', (_req, res) => {
+app.get('/api/sessions', requireAuth, (_req, res) => {
   res.json(stateManager.getSessionsList());
 });
 
@@ -84,14 +85,21 @@ const wss = new WebSocketServer({
   server,
   path: '/ws',
   verifyClient: (info, cb) => {
-    // Protect against Cross-Site WebSocket Hijacking (CSWSH)
+    // 1. Protect against Cross-Site WebSocket Hijacking (CSWSH)
     const origin = info.origin;
-    if (isAllowedOrigin(origin)) {
-      cb(true);
-    } else {
+    if (!isAllowedOrigin(origin)) {
       console.warn(`[ws] Rejected connection from unauthorized origin: ${origin}`);
-      cb(false, 403, 'Forbidden');
+      return cb(false, 403, 'Forbidden');
     }
+
+    // 2. Optional token-based authentication
+    const token = getTokenFromRequest(info.req);
+    if (!validateToken(token)) {
+      console.warn('[ws] Rejected connection: Invalid or missing authentication token');
+      return cb(false, 401, 'Unauthorized');
+    }
+
+    cb(true);
   }
 });
 
