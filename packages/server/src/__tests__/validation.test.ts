@@ -64,7 +64,7 @@ describe('validateHookEvent', () => {
       hook_event_name: 'SessionStart',
       cwd: 'relative/path',
     });
-    expect(error).toMatch(/cwd must be an absolute path/);
+    expect(error).toMatch(/cwd must be a safe, absolute path/);
   });
 
   it('validates cwd null bytes', () => {
@@ -72,7 +72,7 @@ describe('validateHookEvent', () => {
       hook_event_name: 'SessionStart',
       cwd: '/path/with/\0/byte',
     });
-    expect(error).toMatch(/cwd must not contain null bytes/);
+    expect(error).toMatch(/cwd must be a safe, absolute path/);
   });
 
   it('validates cwd length', () => {
@@ -81,5 +81,29 @@ describe('validateHookEvent', () => {
       cwd: '/' + 'a'.repeat(1025),
     });
     expect(error).toMatch(/cwd is too long/);
+  });
+
+  it('rejects cwd path traversal', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/var/www/../app',
+    });
+    expect(error).toMatch(/cwd must be a safe, absolute path/);
+  });
+
+  it('rejects cwd dangerous shell metacharacters', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/app/dir;ls',
+    });
+    expect(error).toMatch(/cwd must be a safe, absolute path/);
+  });
+
+  it('accepts valid Windows absolute paths', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: 'C:\\Users\\Admin\\project',
+    });
+    expect(error).toBeNull();
   });
 });
