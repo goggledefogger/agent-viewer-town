@@ -75,6 +75,7 @@ function ensureMtmrRunning(): void {
   execFile('pgrep', ['-x', 'MTMR'], { env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } }, (err, stdout) => {
     if (!stdout.trim()) {
       // MTMR is not running — launch it
+      console.log('[touchbar] Launching MTMR...');
       execFile('open', ['-a', 'MTMR'], { env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } }, (launchErr) => {
         if (launchErr) {
           console.warn('[touchbar] Failed to launch MTMR:', launchErr.message);

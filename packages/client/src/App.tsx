@@ -148,16 +148,21 @@ export default function App() {
             <Breadcrumb
               segments={navigation.breadcrumbs}
               onToggleDropdown={navigation.toggleOpen}
+              onZoomTo={navigation.zoomTo}
               waitingCount={navigation.waitingCount}
               isOpen={navigation.isOpen}
             >
               <NavigationTree
+                zoomLevel={navigation.zoomLevel}
                 visibleProjects={navigation.visibleProjects}
+                currentProject={navigation.currentProject}
+                currentBranch={navigation.currentBranch}
                 searchFilter={navigation.searchFilter}
                 hideIdle={navigation.hideIdle}
                 isOpen={navigation.isOpen}
                 activeSessionId={session?.sessionId}
                 onSelectSession={handleSelectSession}
+                onZoomTo={navigation.zoomTo}
                 onSearchChange={navigation.setSearchFilter}
                 onToggleHideIdle={navigation.toggleHideIdle}
                 onClose={navigation.close}

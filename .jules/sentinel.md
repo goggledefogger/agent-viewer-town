@@ -22,3 +22,4 @@
 **Vulnerability:** Process vulnerability. Integration tests spawning server processes failed due to `ERR_MODULE_NOT_FOUND` in restricted environment.
 **Learning:** `spawn`ing `tsx` requires full `node_modules` resolution which can be flaky in restricted envs.
 **Prevention:** Prefer unit tests that mock Express/HTTP objects over integration tests that spawn processes, especially for logic like middleware.
+

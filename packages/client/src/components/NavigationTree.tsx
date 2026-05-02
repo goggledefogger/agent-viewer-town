@@ -42,13 +42,13 @@ export function NavigationTree({
   const searchRef = useRef<HTMLInputElement>(null);
   const [focusIndex, setFocusIndex] = useState(-1);
 
-  // Focus search on open
+  // Focus search on open or zoom change
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => searchRef.current?.focus(), 50);
       setFocusIndex(-1);
     }
-  }, [isOpen]);
+  }, [isOpen, zoomLevel]);
 
   // Close on outside click
   useEffect(() => {
@@ -108,12 +108,12 @@ export function NavigationTree({
 
   if (!isOpen) return null;
 
-  // ---- Level 0: Project list (drill-down, no inline expansion) ----
+  // ---- Level 0: Project list ----
   const renderLevel0 = () => (
     <div className="nav-level-content">
       {visibleProjects.length === 0 ? (
         <div className="nav-empty">
-          {searchFilter ? `No sessions matching "${searchFilter}"` : 'No active sessions'}
+          {searchFilter ? 'No matches found' : 'No active sessions'}
         </div>
       ) : (
         visibleProjects.map((project, pIdx) => {
@@ -127,15 +127,12 @@ export function NavigationTree({
               className={`nav-project-row ${isFocused ? 'focused' : ''} ${isActive ? 'active' : ''}`}
               data-nav-row
               onClick={() => {
-                // Select best session for scene, then drill into project
                 const allSessions = project.branches.flatMap((b) => b.sessions);
                 const best = allSessions[0];
                 if (best) onSelectSession(best.sessionId);
-                // If only one branch, skip to level 2
                 if (project.branches.length === 1) {
                   const branch = project.branches[0];
                   if (branch.sessions.length === 1) {
-                    // Single branch, single session: just select and close
                     onClose();
                   } else {
                     onZoomTo(2, project.projectKey, branch.branch);
@@ -166,7 +163,7 @@ export function NavigationTree({
     return (
       <div className="nav-level-content">
         <button
-          className="nav-back-button"
+          className={`nav-back-button ${focusIndex === 0 ? 'focused' : ''}`}
           data-nav-row
           onClick={() => onZoomTo(0)}
         >
@@ -178,34 +175,33 @@ export function NavigationTree({
             {currentProject.totalSessions} session{currentProject.totalSessions !== 1 ? 's' : ''}, {currentProject.totalAgents} agent{currentProject.totalAgents !== 1 ? 's' : ''}
           </span>
         </div>
-        {currentProject.branches.map((branch) => {
+        {currentProject.branches.map((branch, idx) => {
           const isBranchActive = activeSessionId != null && branch.sessions.some((s) => s.sessionId === activeSessionId);
+          const isFocused = focusIndex === idx + 1; // +1 because of back button
           return (
-          <button
-            key={branch.branch}
-            className={`nav-branch-row ${isBranchActive ? 'active' : ''}`}
-            data-nav-row
-            onClick={() => {
-              // Select best session for this branch
-              onSelectSession(branch.sessions[0].sessionId);
-              if (branch.sessions.length === 1) {
-                // Single session on this branch: select and close
-                onClose();
-              } else {
-                onZoomTo(2, currentProject.projectKey, branch.branch);
-              }
-            }}
-          >
-            <span className="nav-branch-name">{branch.branch}</span>
-            {branch.hasWaitingAgent && <WaitingDot />}
-            <span className="nav-project-meta">
-              <span>{branch.sessions.length} session{branch.sessions.length !== 1 ? 's' : ''}</span>
-              <span className="nav-meta-sep">/</span>
-              <span>{branch.totalAgents} agent{branch.totalAgents !== 1 ? 's' : ''}</span>
-            </span>
-            {branch.sessions.length > 1 && <span className="nav-row-arrow">&gt;</span>}
-          </button>
-        );
+            <button
+              key={branch.branch}
+              className={`nav-branch-row ${isBranchActive ? 'active' : ''} ${isFocused ? 'focused' : ''}`}
+              data-nav-row
+              onClick={() => {
+                onSelectSession(branch.sessions[0].sessionId);
+                if (branch.sessions.length === 1) {
+                  onClose();
+                } else {
+                  onZoomTo(2, currentProject.projectKey, branch.branch);
+                }
+              }}
+            >
+              <span className="nav-branch-name">{branch.branch}</span>
+              {branch.hasWaitingAgent && <WaitingDot />}
+              <span className="nav-project-meta">
+                <span>{branch.sessions.length} session{branch.sessions.length !== 1 ? 's' : ''}</span>
+                <span className="nav-meta-sep">/</span>
+                <span>{branch.totalAgents} agent{branch.totalAgents !== 1 ? 's' : ''}</span>
+              </span>
+              {branch.sessions.length > 1 && <span className="nav-row-arrow">&gt;</span>}
+            </button>
+          );
         })}
       </div>
     );
@@ -217,7 +213,7 @@ export function NavigationTree({
     return (
       <div className="nav-level-content">
         <button
-          className="nav-back-button"
+          className={`nav-back-button ${focusIndex === 0 ? 'focused' : ''}`}
           data-nav-row
           onClick={() => onZoomTo(1, currentProject.projectKey)}
         >
@@ -229,33 +225,36 @@ export function NavigationTree({
             {currentBranch.sessions.length} session{currentBranch.sessions.length !== 1 ? 's' : ''}
           </span>
         </div>
-        {currentBranch.sessions.map((session) => (
-          <button
-            key={session.sessionId}
-            className={`nav-session-row ${session.sessionId === activeSessionId ? 'active' : ''}`}
-            data-nav-row
-            onClick={() => {
-              onSelectSession(session.sessionId);
-              onClose();
-            }}
-          >
-            <div className="nav-session-top">
-              <span className="nav-session-slug">{session.slug || session.projectName}</span>
-              <span className={`badge ${session.isTeam ? 'badge-team' : 'badge-solo'}`}>
-                {session.isTeam ? `Team (${session.agentCount})` : 'Solo'}
-              </span>
-            </div>
-            <div className="nav-session-bottom">
-              {session.hasWaitingAgent && (
-                <>
-                  <WaitingDot />
-                  <span className="nav-session-waiting-label">Waiting</span>
-                </>
-              )}
-              <RelativeTime timestamp={session.lastActivity} className="nav-session-time" />
-            </div>
-          </button>
-        ))}
+        {currentBranch.sessions.map((session, idx) => {
+          const isFocused = focusIndex === idx + 1; // +1 because of back button
+          return (
+            <button
+              key={session.sessionId}
+              className={`nav-session-row ${session.sessionId === activeSessionId ? 'active' : ''} ${isFocused ? 'focused' : ''}`}
+              data-nav-row
+              onClick={() => {
+                onSelectSession(session.sessionId);
+                onClose();
+              }}
+            >
+              <div className="nav-session-top">
+                <span className="nav-session-slug">{session.slug || session.projectName}</span>
+                <span className={`badge ${session.isTeam ? 'badge-team' : 'badge-solo'}`}>
+                  {session.isTeam ? `Team (${session.agentCount})` : 'Solo'}
+                </span>
+              </div>
+              <div className="nav-session-bottom">
+                {session.hasWaitingAgent && (
+                  <>
+                    <WaitingDot />
+                    <span className="nav-session-waiting-label">Waiting</span>
+                  </>
+                )}
+                <RelativeTime timestamp={session.lastActivity} className="nav-session-time" />
+              </div>
+            </button>
+          );
+        })}
       </div>
     );
   };
