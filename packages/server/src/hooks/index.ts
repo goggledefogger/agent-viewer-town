@@ -301,7 +301,9 @@ export function createHookHandler(stateManager: StateManager) {
   }
 
   function handleStop(sessionId: string, agentId: string) {
-    stateManager.setAgentWaitingById(agentId, false);
+    // When a Stop event fires, Claude has finished generating and returned control to the user's prompt.
+    // Setting waitingForInput to true ensures we notify the user immediately rather than waiting 60s for an idle_prompt.
+    stateManager.setAgentWaitingById(agentId, true, 'Waiting for input', undefined, 'question');
     stateManager.updateAgentActivityById(agentId, 'idle');
     // markSessionStopped uses the raw sessionId (JSONL-level flag)
     stateManager.markSessionStopped(sessionId);
