@@ -20,7 +20,7 @@ PORT="${AGENT_VIEWER_PORT:-3001}"
 INPUT=$(cat)
 
 # Fire-and-forget POST to the server
-curl -sS -X POST "http://localhost:${PORT}/api/hook" \
+curl -sS -X POST "http://127.0.0.1:${PORT}/api/hook" \
   -H "Content-Type: application/json" \
   -d "$INPUT" \
   --max-time 1 \
