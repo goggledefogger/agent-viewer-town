@@ -119,6 +119,9 @@ export default function App() {
       <AlertBar
         waitingAgents={notifications.waitingAgents}
         onFocusAgent={handleFocusAgent}
+        sessions={sessions}
+        activeSessionId={session?.sessionId}
+        onSelectSession={handleSelectSession}
       />
       <header className="app-header">
         <div className="header-left">

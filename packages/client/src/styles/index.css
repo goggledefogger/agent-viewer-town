@@ -81,16 +81,6 @@ html, body, #root {
   align-items: center;
 }
 
-.alert-bar-content {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-text);
-  font-size: 11px;
-}
-
 .alert-bar-agent {
   background: none;
   border: none;
@@ -132,6 +122,61 @@ html, body, #root {
 .alert-bar-critical .alert-bar-badge {
   background: var(--color-red);
   color: #fff;
+}
+
+/* Multi-row layout when both current and cross-session agents are waiting */
+.alert-bar-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.alert-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+  font-size: 11px;
+}
+
+/* Secondary row for cross-session items has a slightly dimmer appearance */
+.alert-bar-row-secondary {
+  font-size: 10px;
+  color: var(--color-text-dim);
+  border-top: 1px solid rgba(255, 215, 0, 0.15);
+  padding-top: 2px;
+  margin-top: 1px;
+}
+
+.alert-bar-cross-session {
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+
+/* External project link — distinct teal/cyan so it reads as "switch context" */
+.alert-bar-agent-external {
+  color: #38bdf8;
+  font-weight: bold;
+}
+
+.alert-bar-agent-external:hover {
+  color: #7dd3fc;
+}
+
+.alert-bar-separator {
+  color: var(--color-border);
+  margin: 0 2px;
+}
+
+.alert-bar-ext-action {
+  color: var(--color-text-dim);
+  font-size: 10px;
 }
 
 /* Waiting badge in header stats */
