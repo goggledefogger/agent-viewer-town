@@ -19,6 +19,9 @@ export class StateManager {
   /** All agents keyed by id — never destructively filtered */
   private allAgents = new Map<string, AgentState>();
 
+  /** All agents indexed by name for fast lookup (name -> Set of agent IDs) */
+  private agentsByName = new Map<string, Set<string>>();
+
   private listeners: Set<Listener> = new Set();
   private maxMessages = 200;
 
@@ -59,6 +62,17 @@ export class StateManager {
     for (const agent of agents) {
       const prev = this.allAgents.get(agent.id);
       if (prev) {
+        // If name is changing, update the name index
+        if (prev.name !== agent.name) {
+          const ids = this.agentsByName.get(prev.name);
+          if (ids) {
+            ids.delete(agent.id);
+            if (ids.size === 0) {
+              this.agentsByName.delete(prev.name);
+            }
+          }
+        }
+
         agent.tasksCompleted = prev.tasksCompleted;
         agent.status = prev.status;
         agent.currentAction = prev.currentAction;
@@ -74,6 +88,14 @@ export class StateManager {
         agent.teamName = prev.teamName;
       }
       this.allAgents.set(agent.id, agent);
+
+      // Update name index
+      let ids = this.agentsByName.get(agent.name);
+      if (!ids) {
+        ids = new Set();
+        this.agentsByName.set(agent.name, ids);
+      }
+      ids.add(agent.id);
     }
     this.state.agents = agents;
     this.broadcastFullState();
@@ -91,7 +113,24 @@ export class StateManager {
     if (this.wasRecentlyRemoved(agent.id)) {
       return;
     }
+    const prev = this.allAgents.get(agent.id);
+    if (prev && prev.name !== agent.name) {
+      const ids = this.agentsByName.get(prev.name);
+      if (ids) {
+        ids.delete(agent.id);
+        if (ids.size === 0) this.agentsByName.delete(prev.name);
+      }
+    }
+
     this.allAgents.set(agent.id, agent);
+
+    // Update name index
+    let ids = this.agentsByName.get(agent.name);
+    if (!ids) {
+      ids = new Set();
+      this.agentsByName.set(agent.name, ids);
+    }
+    ids.add(agent.id);
   }
 
   /** Add/update agent in both registry and displayed state.
@@ -101,7 +140,28 @@ export class StateManager {
     if (this.wasRecentlyRemoved(agent.id)) {
       return;
     }
+
+    const prev = this.allAgents.get(agent.id);
+    if (prev && prev.name !== agent.name) {
+      const ids = this.agentsByName.get(prev.name);
+      if (ids) {
+        ids.delete(agent.id);
+        if (ids.size === 0) {
+          this.agentsByName.delete(prev.name);
+        }
+      }
+    }
+
     this.allAgents.set(agent.id, agent);
+
+    // Update name index
+    let ids = this.agentsByName.get(agent.name);
+    if (!ids) {
+      ids = new Set();
+      this.agentsByName.set(agent.name, ids);
+    }
+    ids.add(agent.id);
+
     const idx = this.state.agents.findIndex((a) => a.id === agent.id);
     if (idx >= 0) {
       this.state.agents[idx] = agent;
@@ -127,6 +187,19 @@ export class StateManager {
       clearTimeout(pendingTimer);
       this.activityDebounceTimers.delete(id);
     }
+
+    const agent = this.allAgents.get(id);
+    if (agent) {
+      // Update name index
+      const ids = this.agentsByName.get(agent.name);
+      if (ids) {
+        ids.delete(id);
+        if (ids.size === 0) {
+          this.agentsByName.delete(agent.name);
+        }
+      }
+    }
+
     this.allAgents.delete(id);
     this.state.agents = this.state.agents.filter((a) => a.id !== id);
     this.guards.markRemoved(id);
@@ -192,8 +265,11 @@ export class StateManager {
   updateAgentActivity(agentName: string, status: 'idle' | 'working' | 'done', action?: string, actionContext?: string) {
     // Update in the full registry
     let registryAgent: AgentState | undefined;
-    for (const agent of this.allAgents.values()) {
-      if (agent.name === agentName) {
+    const ids = this.agentsByName.get(agentName);
+    if (ids) {
+      for (const id of ids) {
+        const agent = this.allAgents.get(id);
+        if (!agent) continue;
         agent.status = status;
         agent.currentAction = action;
         agent.actionContext = actionContext;
@@ -307,13 +383,16 @@ export class StateManager {
   setAgentWaiting(agentName: string, waiting: boolean, action?: string, actionContext?: string) {
     // Update in the full registry
     let registryAgent: AgentState | undefined;
-    for (const agent of this.allAgents.values()) {
-      if (agent.name === agentName) {
+    const ids = this.agentsByName.get(agentName);
+    if (ids) {
+      for (const id of ids) {
+        const agent = this.allAgents.get(id);
+        if (!agent) continue;
         agent.waitingForInput = waiting;
         if (action) agent.currentAction = action;
         if (actionContext !== undefined) agent.actionContext = actionContext;
         registryAgent = agent;
-        break;
+        break; // Current behavior: only update the first matching agent found
       }
     }
     // Update in the displayed state
@@ -786,6 +865,7 @@ export class StateManager {
     this.state = { name: '', agents: [], tasks: [], messages: [] };
     this.sessions.clear();
     this.allAgents.clear();
+    this.agentsByName.clear();
     this.guards.reset();
     this.broadcastFullState();
     updateTouchBarStatus(this.allAgents);
