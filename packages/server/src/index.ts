@@ -1,4 +1,3 @@
-import express from 'express';
 import { createServer, IncomingMessage } from 'http';
 import path from 'path';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -12,6 +11,9 @@ import { clearTouchBarStatus } from './touchbar';
 import { requireAuth, validateWebSocketAuth } from './auth';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://127.0.0.1:5173', 'http://localhost:5173'];
 
 const app = express();
 const server = createServer(app);
@@ -29,15 +31,29 @@ app.use((_req, res, next) => {
 // CORS configuration to prevent unauthorized cross-origin requests
 app.use(cors({
   origin: (origin, callback) => {
-    if (isAllowedOrigin(origin)) {
+    if (isAllowedOrigin(origin, ALLOWED_ORIGINS)) {
       callback(null, true);
     } else {
       callback(null, false); // Return false instead of Error to avoid 500s on rejected origins
     }
   },
   methods: ['GET', 'POST'],
+  credentials: true
 }));
 
+// Explicit origin validation middleware to block unauthorized cross-origin requests
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin === 'null') {
+    res.status(403).json({ error: 'Forbidden: null origin not allowed' });
+    return;
+  }
+  if (origin && !isAllowedOrigin(origin, ALLOWED_ORIGINS)) {
+    res.status(403).json({ error: 'Forbidden: origin not allowed' });
+    return;
+  }
+  next();
+});
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
@@ -92,12 +108,12 @@ const wss = new WebSocketServer({
   verifyClient: (info, cb) => {
     // 1. Protect against Cross-Site WebSocket Hijacking (CSWSH)
     const origin = info.origin;
-    if (!isAllowedOrigin(origin)) {
+    if (!isAllowedOrigin(origin, ALLOWED_ORIGINS)) {
       console.warn(`[ws] Rejected connection from unauthorized origin: ${origin}`);
       return cb(false, 403, 'Forbidden');
     }
 
-    // 2. Optional token-based authentication
+    // 2. Token-based authentication
     if (!validateWebSocketAuth(info.req)) {
       console.warn('[ws] Rejected connection: Invalid or missing authentication token');
       return cb(false, 401, 'Unauthorized');
