@@ -1,5 +1,6 @@
 import express from 'express';
 import { createServer, IncomingMessage } from 'http';
+import path from 'path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
@@ -55,6 +56,7 @@ const hookHandler = createHookHandler(stateManager);
 app.get('/api/state', requireAuth, (_req, res) => {
   res.json(stateManager.getState());
 });
+
 
 // Hook event endpoint — receives events from Claude Code lifecycle hooks
 app.post('/api/hook', requireAuth, (req, res) => {
