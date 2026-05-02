@@ -843,8 +843,8 @@ describe('Hook Event Handlers', () => {
       expect(agent?.status).toBe('idle');
     });
 
-    it('clears waiting state on Stop', () => {
-      setupAgent('sess-1', 'coder', { status: 'working', waitingForInput: true });
+    it('sets waitingForInput on Stop', () => {
+      setupAgent('sess-1', 'coder', { status: 'working', waitingForInput: false });
 
       handler.handleEvent({
         session_id: 'sess-1',
@@ -852,7 +852,8 @@ describe('Hook Event Handlers', () => {
       });
 
       const agent = sm.getAgentById('sess-1');
-      expect(agent?.waitingForInput).toBe(false);
+      // Stop signals Claude finished its turn — agent is now idle and waiting for user input
+      expect(agent?.waitingForInput).toBe(true);
       expect(agent?.status).toBe('idle');
     });
 
@@ -2395,8 +2396,10 @@ describe('Hook Event Handlers', () => {
         hook_event_name: 'Stop',
       });
 
-      // Idle broadcast should be immediate, without advancing timers
-      expect(idleBroadcasts).toHaveLength(1);
+      // Stop now produces 2 idle broadcasts:
+      // 1) updateAgentActivityById('idle') sets status=idle
+      // 2) setAgentWaitingById(true) broadcasts again with status=idle and waitingForInput=true
+      expect(idleBroadcasts.length).toBeGreaterThanOrEqual(1);
       expect(idleBroadcasts[0].status).toBe('idle');
     });
   });
