@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
@@ -8,6 +9,9 @@ import { validateHookEvent } from './validation';
 import { clearTouchBarStatus } from './touchbar';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://127.0.0.1:5173', 'http://localhost:5173'];
 
 const app = express();
 const server = createServer(app);
@@ -19,6 +23,26 @@ app.use((_req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
+// CORS configuration
+app.use(cors({
+  origin: ALLOWED_ORIGINS,
+  credentials: true
+}));
+
+// Explicit origin validation middleware to block unauthorized cross-origin requests
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin === 'null') {
+    res.status(403).json({ error: 'Forbidden: null origin not allowed' });
+    return;
+  }
+  if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+    res.status(403).json({ error: 'Forbidden: origin not allowed' });
+    return;
+  }
   next();
 });
 
@@ -66,7 +90,26 @@ app.get('/api/sessions', (_req, res) => {
 });
 
 // WebSocket server — per-client session tracking for multi-tab support
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  verifyClient: (info, callback) => {
+    const origin = info.origin;
+    // Allow non-browser clients (no origin)
+    if (!origin) {
+      return callback(true);
+    }
+    // Block 'null' origin
+    if (origin === 'null') {
+      return callback(false, 403, 'Forbidden: null origin not allowed');
+    }
+    // Check against allowed origins
+    if (ALLOWED_ORIGINS.includes(origin)) {
+      return callback(true);
+    }
+    callback(false, 403, 'Forbidden: origin not allowed');
+  }
+});
 
 /** Per-client state: tracks which session each WebSocket client has selected */
 interface ClientState {
