@@ -1,5 +1,29 @@
 import path from 'path';
 
+/**
+ * Validates whether a file system path is safe to use as a working directory (cwd).
+ * Enforces absolute cross-platform paths and blocks dangerous shell characters and traversal.
+ */
+export function isSafePath(filepath: string): boolean {
+  if (typeof filepath !== 'string') return false;
+
+  // Block null bytes
+  if (filepath.includes('\0')) return false;
+
+  // Block path traversal
+  if (filepath.includes('..')) return false;
+
+  // Enforce absolute paths explicitly for cross-platform
+  const isPosixAbsolute = filepath.startsWith('/');
+  const isWindowsAbsolute = /^[a-zA-Z]:[\\/]/.test(filepath);
+  if (!isPosixAbsolute && !isWindowsAbsolute) return false;
+
+  // Block dangerous shell metacharacters
+  if (/[;&|$><*?!\n\r]/.test(filepath)) return false;
+
+  return true;
+}
+
 // Allowed hook event names for validation
 export const VALID_HOOK_EVENTS = new Set([
   'PreToolUse',
@@ -51,11 +75,8 @@ export function validateHookEvent(event: any): string | null {
     if (event.cwd.length > 1024) {
       return 'cwd is too long (max 1024 chars)';
     }
-    if (!path.isAbsolute(event.cwd)) {
-      return 'cwd must be an absolute path';
-    }
-    if (event.cwd.includes('\0')) {
-        return 'cwd must not contain null bytes';
+    if (!isSafePath(event.cwd)) {
+      return 'cwd must be a safe, absolute path without traversal or dangerous characters';
     }
   }
 
