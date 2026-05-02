@@ -50,7 +50,10 @@ function fireNotification(title: string, body: string, tag: string): boolean {
   // cycles on the same agent always produce a visible notification popup on screen.
   const notificationTag = `${tag}-${Date.now()}`;
 
-  let notification: Notification;
+  // Play chime first so that if Notification throws an unexpected error, we still get audio
+  playChime();
+
+  let notification: Notification | null = null;
   try {
     notification = new Notification(title, {
       body,
@@ -58,19 +61,23 @@ function fireNotification(title: string, body: string, tag: string): boolean {
       requireInteraction: true,
     });
   } catch (err) {
-    // Safari throws TypeError if requireInteraction is provided
-    notification = new Notification(title, {
-      body,
-      tag: notificationTag,
-    });
+    try {
+      // Safari throws TypeError if requireInteraction is provided
+      notification = new Notification(title, {
+        body,
+        tag: notificationTag,
+      });
+    } catch (innerErr) {
+      console.warn('Failed to create browser notification:', innerErr);
+    }
   }
 
-  notification.onclick = () => {
-    window.focus();
-    notification.close();
-  };
-
-  playChime();
+  if (notification) {
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
+  }
 
   // Tell other tabs we handled it
   recentlyFiredNotifications.add(tag);
@@ -137,7 +144,17 @@ export function useNotifications(agents: AgentState[], session?: SessionInfo, se
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
     supported ? Notification.permission : 'unsupported'
   );
-  const [enabled, setEnabled] = useState(() => supported && getStoredPreference());
+  // Ensure enabled is strictly false if permission isn't currently granted, 
+  // preventing a UI mismatch if origins changed or permissions were revoked.
+  const [enabled, setEnabled] = useState(() => supported && Notification.permission === 'granted' && getStoredPreference());
+
+  // Keep `enabled` in sync if `permission` is revoked externally
+  useEffect(() => {
+    if (enabled && permission !== 'granted') {
+      setEnabled(false);
+      setStoredPreference(false);
+    }
+  }, [enabled, permission]);
 
   // Track previous waitingForInput state per agent ID to detect transitions
   const prevWaitingRef = useRef<Map<string, boolean>>(new Map());
