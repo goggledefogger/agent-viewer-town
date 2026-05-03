@@ -1,4 +1,5 @@
 export function isAllowedOrigin(origin?: string): boolean {
+  if (origin === 'null') return false;
   if (!origin) return true;
   try {
     const url = new URL(origin);
