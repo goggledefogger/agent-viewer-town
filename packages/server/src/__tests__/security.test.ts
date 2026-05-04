@@ -134,7 +134,20 @@ describe('Security: CORS and CSWSH Protection', () => {
         'Origin': 'https://malicious.com'
       }
     });
-    // Expected to not have CORS headers because the origin was rejected
+    // Now expecting 403 due to explicit fallback middleware
+    expect(res.status).toBe(403);
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('rejects request from "null" origin via CORS', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+      method: 'GET',
+      headers: {
+        'Origin': 'null'
+      }
+    });
+    // Expecting 403 due to explicit fallback middleware blocking "null"
+    expect(res.status).toBe(403);
     expect(res.headers.get('access-control-allow-origin')).toBeNull();
   });
 });
