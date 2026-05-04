@@ -36,6 +36,20 @@ app.use(cors({
   methods: ['GET', 'POST'],
 }));
 
+// Explicit fallback middleware to enforce 403 Forbidden for unauthorized origins
+// The cors middleware will merely omit headers if origin is false, but we want to block the request.
+// We also allow requests where the Origin matches the Host header (same-origin).
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin !== undefined) {
+    const isSameOrigin = req.headers.host && origin.endsWith(`//${req.headers.host}`);
+    if (!isSameOrigin && !isAllowedOrigin(origin)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+  }
+  next();
+});
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
