@@ -11,19 +11,20 @@ export interface GitStatus {
  */
 export async function detectGitWorktree(
   cwd: string,
-  execFileAsync: (cmd: string, args: string[], opts: { cwd: string; timeout: number }) => Promise<{ stdout: string }>
+  execFileAsync: (cmd: string, args: string[], opts: { cwd: string; timeout: number; env?: any }) => Promise<{ stdout: string }>
 ): Promise<{ gitBranch?: string; gitWorktree?: string }> {
+  const env = { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' };
   try {
     // Get the current branch
     const { stdout: branchOut } = await execFileAsync('git', ['branch', '--show-current'], {
-      cwd, timeout: 3000,
+      cwd, timeout: 3000, env
     });
     const gitBranch = branchOut.trim() || undefined;
 
     // Check if this is a worktree (git rev-parse --git-common-dir differs from --git-dir)
     const [{ stdout: gitDirOut }, { stdout: commonDirOut }] = await Promise.all([
-      execFileAsync('git', ['rev-parse', '--git-dir'], { cwd, timeout: 3000 }),
-      execFileAsync('git', ['rev-parse', '--git-common-dir'], { cwd, timeout: 3000 }),
+      execFileAsync('git', ['rev-parse', '--git-dir'], { cwd, timeout: 3000, env }),
+      execFileAsync('git', ['rev-parse', '--git-common-dir'], { cwd, timeout: 3000, env }),
     ]);
     const gitDir = gitDirOut.trim();
     const commonDir = commonDirOut.trim();
@@ -33,7 +34,7 @@ export async function detectGitWorktree(
     if (gitDir !== commonDir && gitDir !== '.git') {
       // The cwd itself is the worktree root (or a subdirectory of it)
       const { stdout: toplevelOut } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
-        cwd, timeout: 3000,
+        cwd, timeout: 3000, env
       });
       gitWorktree = toplevelOut.trim() || undefined;
     }
@@ -54,7 +55,7 @@ const GIT_STATUS_CACHE_TTL = 30_000;
  */
 export async function detectGitStatus(
   cwd: string,
-  execFileAsync: (cmd: string, args: string[], opts: { cwd: string; timeout: number }) => Promise<{ stdout: string }>
+  execFileAsync: (cmd: string, args: string[], opts: { cwd: string; timeout: number; env?: any }) => Promise<{ stdout: string }>
 ): Promise<GitStatus> {
   const cached = gitStatusCache.get(cwd);
   if (cached && Date.now() - cached.timestamp < GIT_STATUS_CACHE_TTL) {
@@ -62,14 +63,15 @@ export async function detectGitStatus(
   }
 
   const result: GitStatus = { ahead: 0, behind: 0, hasUpstream: false, isDirty: false };
+  const env = { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' };
 
   try {
     // Run upstream check, ahead/behind, and dirty check in parallel
     const [upstreamResult, dirtyResult] = await Promise.all([
-      execFileAsync('git', ['rev-parse', '--verify', '@{u}'], { cwd, timeout: 3000 })
+      execFileAsync('git', ['rev-parse', '--verify', '@{u}'], { cwd, timeout: 3000, env })
         .then(() => true)
         .catch(() => false),
-      execFileAsync('git', ['status', '--porcelain'], { cwd, timeout: 3000 })
+      execFileAsync('git', ['status', '--porcelain'], { cwd, timeout: 3000, env })
         .then(({ stdout }) => stdout.trim().length > 0)
         .catch(() => false),
     ]);
@@ -81,7 +83,7 @@ export async function detectGitStatus(
       try {
         const { stdout } = await execFileAsync(
           'git', ['rev-list', '--left-right', '--count', '@{u}...HEAD'],
-          { cwd, timeout: 3000 }
+          { cwd, timeout: 3000, env }
         );
         const parts = stdout.trim().split(/\s+/);
         if (parts.length >= 2) {
