@@ -9,6 +9,9 @@ import cors from 'cors';
 import { isAllowedOrigin } from './origin';
 import { clearTouchBarStatus } from './touchbar';
 
+// Set NoDefaultCurrentDirectoryInExePath globally to prevent current-directory executable hijacking on Windows
+process.env.NoDefaultCurrentDirectoryInExePath = '1';
+
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 const app = express();
