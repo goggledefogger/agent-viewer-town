@@ -8,6 +8,7 @@ import { validateHookEvent } from './validation';
 import cors from 'cors';
 import { isAllowedOrigin } from './origin';
 import { clearTouchBarStatus } from './touchbar';
+import { createRateLimiter } from './rateLimit';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
@@ -34,6 +35,14 @@ app.use(cors({
     }
   },
   methods: ['GET', 'POST'],
+}));
+
+// Rate limiting for all API endpoints
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '600', 10);
+app.use('/api/', createRateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  max: RATE_LIMIT_MAX,
+  message: 'Too many requests from this IP, please try again after a minute'
 }));
 
 // Health check endpoint
