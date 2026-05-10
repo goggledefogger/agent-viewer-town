@@ -36,6 +36,18 @@ app.use(cors({
   methods: ['GET', 'POST'],
 }));
 
+// Explicit fallback to reject disallowed origins that bypassed cors()
+// (e.g. simple requests that don't trigger preflight, cors() just omits headers)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !isAllowedOrigin(origin)) {
+    console.warn(`[cors] Rejected request from unauthorized origin: ${origin}`);
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+});
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
