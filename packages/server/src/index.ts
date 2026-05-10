@@ -11,6 +11,11 @@ import { isAllowedOrigin } from './origin';
 import { clearTouchBarStatus } from './touchbar';
 import { requireAuth, validateWebSocketAuth } from './auth';
 
+// Windows resolves binaries in the current directory before %PATH%, which lets
+// a planted git.exe hijack spawned child processes. Setting this env var
+// globally disables that lookup for every spawn, including library code.
+process.env.NoDefaultCurrentDirectoryInExePath = '1';
+
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
