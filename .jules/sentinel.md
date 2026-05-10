@@ -18,3 +18,8 @@
 **Vulnerability:** The local development server (`packages/server`) bound to `127.0.0.1` lacked CORS middleware for HTTP endpoints and `Origin` header validation for WebSocket handshakes (`/ws`). This allowed malicious websites visited by the developer to potentially perform Cross-Site WebSocket Hijacking (CSWSH) and unauthorized cross-origin HTTP requests against the local server.
 **Learning:** Local servers, even when bound safely to loopback (`127.0.0.1`), are still vulnerable to attacks from the browser context if cross-origin policies are not enforced. Attackers can pivot through the developer's browser to send payloads or exfiltrate state.
 **Prevention:** Always implement `cors` middleware configured with a strict allowlist (e.g., `localhost` and `127.0.0.1`) and enforce identical validation in WebSocket server configurations via `verifyClient`. Return `false` in CORS origin callbacks rather than throwing an Error to handle unauthorized requests gracefully.
+
+## 2024-05-11 - [CORS Library Fallback Bypass]
+**Vulnerability:** The `cors` library was configured to return `false` on invalid origins, but it just omitted CORS headers instead of actively blocking simple requests (e.g. standard form POST).
+**Learning:** Returning `callback(null, false)` in the `cors` Express middleware's origin function omits CORS headers but does not stop request execution on the server. To forcefully block unauthorized origins, an explicit fallback middleware checking `req.headers.origin` must be used.
+**Prevention:** Always implement an explicit 403 Forbidden fallback middleware when relying on `cors` for origin validation if unauthorized requests shouldn't be executed at all.
