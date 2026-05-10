@@ -8,6 +8,13 @@ import type { StateManager } from '../state';
 import type { PostToolUseEvent, TeammateIdleEvent, TaskCompletedEvent } from './types';
 import { inferRole } from '../parser';
 
+/** Internal logger gated by DEBUG_HOOKS env var */
+function debugLog(...args: unknown[]) {
+  if (process.env.DEBUG_HOOKS === 'true' || process.env.DEBUG_HOOKS === '1') {
+    console.log('[hooks]', ...args);
+  }
+}
+
 /** Resolve an agent name from a session ID */
 function resolveAgentName(stateManager: StateManager, sessionId: string): string {
   const agent = stateManager.getAgentById(sessionId);
@@ -64,6 +71,7 @@ export function extractTeamCreate(stateManager: StateManager, event: PostToolUse
   const teamName = typeof input.team_name === 'string' ? input.team_name : '';
   if (!teamName) return;
 
+  debugLog(`TeamCreate detected: ${teamName} session=${sessionId.slice(0, 8)}`);
   stateManager.setTeamName(teamName);
 
   // If response contains member info, register agents
@@ -102,6 +110,7 @@ export function extractTeamCreate(stateManager: StateManager, event: PostToolUse
 
 /** Handle TeamDelete — clear team state */
 export function extractTeamDelete(stateManager: StateManager, sessionId: string) {
+  debugLog(`TeamDelete detected: session=${sessionId.slice(0, 8)}`);
   stateManager.clearTeamAgents();
   stateManager.addMessage({
     id: `hook-team-${Date.now()}`,
@@ -131,6 +140,8 @@ export function extractTaskCreate(stateManager: StateManager, event: PostToolUse
     if (match) taskId = match[1];
   }
   if (!taskId) taskId = `hook-${Date.now()}`;
+
+  debugLog(`TaskCreate: #${taskId} "${subject}" session=${sessionId.slice(0, 8)}`);
 
   stateManager.updateTask({
     id: taskId,
@@ -165,9 +176,11 @@ export function extractTaskUpdate(stateManager: StateManager, event: PostToolUse
     }
     if (status === 'deleted') {
       stateManager.removeTask(taskId);
+      debugLog(`TaskUpdate: #${taskId} deleted session=${sessionId.slice(0, 8)}`);
       return;
     }
     stateManager.updateTask(updated);
+    debugLog(`TaskUpdate: #${taskId} → ${status || 'updated'} owner=${owner || existing.owner || 'none'} session=${sessionId.slice(0, 8)}`);
 
     // Track currentTaskId on the owning agent
     const taskOwner = updated.owner || existing.owner;
@@ -190,6 +203,8 @@ export function extractTaskUpdate(stateManager: StateManager, event: PostToolUse
 
 export function handleTeammateIdle(stateManager: StateManager, event: TeammateIdleEvent, sessionId: string) {
   const teammateName = event.teammate_name;
+  const teamName = event.team_name;
+  debugLog(`TeammateIdle: ${teammateName || sessionId.slice(0, 8)} team=${teamName || 'unknown'}`);
 
   if (teammateName) {
     stateManager.updateAgentActivity(teammateName, 'idle');
@@ -202,7 +217,9 @@ export function handleTeammateIdle(stateManager: StateManager, event: TeammateId
 
 export function handleTaskCompleted(stateManager: StateManager, event: TaskCompletedEvent, sessionId: string) {
   const taskId = event.task_id;
+  const taskSubject = event.task_subject;
   const teammateName = event.teammate_name;
+  debugLog(`TaskCompleted: #${taskId} "${taskSubject}" by ${teammateName || sessionId.slice(0, 8)}`);
 
   // Update the task status if we're tracking it
   if (taskId) {
