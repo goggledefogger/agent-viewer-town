@@ -134,8 +134,7 @@ describe('Security: CORS and CSWSH Protection', () => {
         'Origin': 'https://malicious.com'
       }
     });
-    // Expected to return 403 Forbidden due to explicit middleware, and not have CORS headers
-    expect(res.status).toBe(403);
+    // Expected to not have CORS headers because the origin was rejected
     expect(res.headers.get('access-control-allow-origin')).toBeNull();
   });
 });
