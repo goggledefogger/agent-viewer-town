@@ -37,7 +37,7 @@ describe('Auth Middleware', () => {
       requireAuth(req, res, next);
       expect(next).not.toHaveBeenCalled();
       expect(status).toHaveBeenCalledWith(401);
-      expect(json).toHaveBeenCalledWith({ error: 'Unauthorized' });
+      expect(json).toHaveBeenCalledWith({ ok: false, error: 'Unauthorized' });
     });
 
     it('rejects request with invalid token', () => {

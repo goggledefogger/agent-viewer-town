@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { BreadcrumbSegment } from '../hooks/useNavigation';
+import type { BreadcrumbSegment, ZoomLevel } from '../hooks/useNavigation';
 
 interface BreadcrumbProps {
   segments: BreadcrumbSegment[];
