@@ -4,9 +4,9 @@
 **Prevention:** Always validate `cwd` against an allowlist or ensure it resides within expected project paths, even for trusted internal tools. Enforce absolute path format and restrict session_id length.
 
 ## 2026-02-14 - Child Process Command Injection Risk
-**Vulnerability:** Use of `child_process.exec` allowing for potential shell command injection if arguments become dynamic, and vulnerability to executable hijacking via the current directory on Windows systems.
-**Learning:** `packages/server/src/touchbar.ts` used `exec` for external commands like `pgrep` and `open`.
-**Prevention:** Replace `child_process.exec` with `child_process.execFile` utilizing an array of arguments, and include `{ env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } }` in the options to mitigate current-directory executable hijacking.
+**Vulnerability:** Use of dynamic shell-spawning APIs allowing for potential shell command injection if arguments become dynamic, and vulnerability to executable hijacking via the current directory on Windows systems.
+**Learning:** `packages/server/src/touchbar.ts` previously invoked external commands like `pgrep` and `open` via a shell-based API.
+**Prevention:** Use `child_process.execFile` with an array of arguments, and include `{ env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } }` in the options to mitigate current-directory executable hijacking.
 
 ## 2024-05-01 - Insufficient File System Path Validation in Hook Payloads
 **Vulnerability:** The `/api/hook` endpoint accepted `cwd` parameters validated only by `path.isAbsolute(event.cwd)`, making it susceptible to path traversal via `..`, dangerous shell characters, and null bytes injection, allowing potential escape or shell injection upon execution.
@@ -23,3 +23,7 @@
 **Learning:** `spawn`ing `tsx` requires full `node_modules` resolution which can be flaky in restricted envs.
 **Prevention:** Prefer unit tests that mock Express/HTTP objects over integration tests that spawn processes, especially for logic like middleware.
 
+## 2026-05-06 - Preventing Git Executable Hijacking on Windows
+**Vulnerability:** Invoking commands like `git` via `execFile` can be susceptible to hijacking on Windows if a malicious `git.exe` is placed in the project directory, as Windows resolves executables in the current directory before checking the system path.
+**Learning:** Utilities invoking git operations via wrappers like `execFileAsync` in `packages/server/src/parsers/gitUtils.ts` must propagate appropriate environment guards. Simply passing `cwd` without configuring the execution environment ignores the path resolution mechanics on Windows.
+**Prevention:** When executing git operations via `execFileAsync` wrappers, always merge `process.env` and include `NoDefaultCurrentDirectoryInExePath: '1'` in the environment options to prevent Windows executable hijacking. This also necessitates updating wrapper signatures to accept an `env?: any` option.
