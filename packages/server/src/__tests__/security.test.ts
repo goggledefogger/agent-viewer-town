@@ -12,7 +12,7 @@ beforeAll(async () => {
   // We use 'npx tsx' to ensure we use the local tsx version
   serverProcess = spawn('npx', ['tsx', 'src/index.ts'], {
     cwd: serverDir,
-    env: { ...process.env, PORT: PORT.toString() },
+    env: { ...process.env, PORT: PORT.toString(), RATE_LIMIT_MAX: '50' },
     stdio: 'pipe',
   });
 
@@ -136,5 +136,32 @@ describe('Security: CORS and CSWSH Protection', () => {
     });
     // Expected to not have CORS headers because the origin was rejected
     expect(res.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
+describe('Security: Rate Limiting', () => {
+  it('eventually rate limits a spammer', async () => {
+    // The rate limit is set to 100 per minute in index.ts.
+    // We'll send a burst of requests and expect a 429 eventually.
+    // To speed up the test without actually sending 101 requests,
+    // we could have mocked the limiter, but since this is an integration
+    // test with a real spawned process, we have to hit it.
+
+    // Given 100 is quite high for a test, we could temporarily reduce it
+    // but that's complex with a spawned process.
+    // Let's just send 101 requests.
+
+    const requests = [];
+    for (let i = 0; i < 105; i++) {
+      requests.push(fetch(`http://127.0.0.1:${PORT}/api/health`));
+    }
+
+    const responses = await Promise.all(requests);
+    const statuses = responses.map(r => r.status);
+
+    expect(statuses).toContain(429);
+    const rateLimitedResponse = responses.find(r => r.status === 429);
+    const body = await rateLimitedResponse?.json();
+    expect(body.error).toMatch(/Too many requests/);
   });
 });

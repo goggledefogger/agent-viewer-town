@@ -10,6 +10,7 @@ import cors from 'cors';
 import { isAllowedOrigin } from './origin';
 import { clearTouchBarStatus } from './touchbar';
 import { requireAuth, validateWebSocketAuth } from './auth';
+import { createRateLimiter } from './rateLimit';
 
 // Windows resolves binaries in the current directory before %PATH%, which lets
 // a planted git.exe hijack spawned child processes. Setting this env var
@@ -60,6 +61,15 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Rate limiting for all API endpoints. Hooks fire on every tool call from
+// every Claude Code session, so this needs headroom — override RATE_LIMIT_MAX
+// (per minute, per IP) if you start seeing 429s during normal work.
+app.use('/api/', createRateLimiter({
+  windowMs: 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX || '600', 10),
+  message: 'Too many requests from this IP, please try again after a minute',
+}));
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
