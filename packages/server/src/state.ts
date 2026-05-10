@@ -19,6 +19,9 @@ export class StateManager {
   /** All agents keyed by id — never destructively filtered */
   private allAgents = new Map<string, AgentState>();
 
+  /** Agents indexed by name (can have multiple IDs due to name collisions) */
+  private agentsByName = new Map<string, Set<string>>();
+
   private listeners: Set<Listener> = new Set();
   private maxMessages = 200;
 
@@ -59,6 +62,9 @@ export class StateManager {
     for (const agent of agents) {
       const prev = this.allAgents.get(agent.id);
       if (prev) {
+        if (prev.name !== agent.name) {
+          this.removeFromNameIndex(prev);
+        }
         agent.tasksCompleted = prev.tasksCompleted;
         agent.status = prev.status;
         agent.currentAction = prev.currentAction;
@@ -74,6 +80,7 @@ export class StateManager {
         agent.teamName = prev.teamName;
       }
       this.allAgents.set(agent.id, agent);
+      this.addToNameIndex(agent);
     }
     this.state.agents = agents;
     this.broadcastFullState();
@@ -91,7 +98,12 @@ export class StateManager {
     if (this.wasRecentlyRemoved(agent.id)) {
       return;
     }
+    const prev = this.allAgents.get(agent.id);
+    if (prev && prev.name !== agent.name) {
+      this.removeFromNameIndex(prev);
+    }
     this.allAgents.set(agent.id, agent);
+    this.addToNameIndex(agent);
   }
 
   /** Add/update agent in both registry and displayed state.
@@ -101,7 +113,12 @@ export class StateManager {
     if (this.wasRecentlyRemoved(agent.id)) {
       return;
     }
+    const prev = this.allAgents.get(agent.id);
+    if (prev && prev.name !== agent.name) {
+      this.removeFromNameIndex(prev);
+    }
     this.allAgents.set(agent.id, agent);
+    this.addToNameIndex(agent);
     const idx = this.state.agents.findIndex((a) => a.id === agent.id);
     if (idx >= 0) {
       this.state.agents[idx] = agent;
@@ -127,6 +144,10 @@ export class StateManager {
       clearTimeout(pendingTimer);
       this.activityDebounceTimers.delete(id);
     }
+    const agent = this.allAgents.get(id);
+    if (agent) {
+      this.removeFromNameIndex(agent);
+    }
     this.allAgents.delete(id);
     this.state.agents = this.state.agents.filter((a) => a.id !== id);
     this.guards.markRemoved(id);
@@ -143,24 +164,34 @@ export class StateManager {
 
       // Track completed tasks for agent evolution
       if (oldTask.status !== 'completed' && task.status === 'completed' && task.owner) {
-        const agent = this.state.agents.find((a) => a.name === task.owner);
-        if (agent) {
-          agent.tasksCompleted += 1;
-          this.broadcast({ type: 'agent_update', data: agent });
+        const agentIds = this.agentsByName.get(task.owner);
+        if (agentIds) {
+          for (const id of agentIds) {
+            const agent = this.allAgents.get(id);
+            if (agent) {
+              agent.tasksCompleted += 1;
+              this.broadcast({ type: 'agent_update', data: agent });
+            }
+          }
         }
       }
 
       // Detect task ownership changes: clear old owner status if reassigned
       if (oldTask.owner && oldTask.owner !== task.owner && oldTask.status === 'in_progress') {
-        const oldAgent = this.state.agents.find((a) => a.name === oldTask.owner);
-        if (oldAgent && oldAgent.status === 'working') {
-          const hasOtherActiveTasks = this.state.tasks.some(
-            (t) => t.id !== task.id && t.owner === oldTask.owner && t.status === 'in_progress'
-          );
-          if (!hasOtherActiveTasks) {
-            oldAgent.status = 'idle';
-            oldAgent.currentAction = undefined;
-            this.broadcast({ type: 'agent_update', data: oldAgent });
+        const oldAgentIds = this.agentsByName.get(oldTask.owner);
+        if (oldAgentIds) {
+          for (const id of oldAgentIds) {
+            const oldAgent = this.allAgents.get(id);
+            if (oldAgent && oldAgent.status === 'working') {
+              const hasOtherActiveTasks = this.state.tasks.some(
+                (t) => t.id !== task.id && t.owner === oldTask.owner && t.status === 'in_progress'
+              );
+              if (!hasOtherActiveTasks) {
+                oldAgent.status = 'idle';
+                oldAgent.currentAction = undefined;
+                this.broadcast({ type: 'agent_update', data: oldAgent });
+              }
+            }
           }
         }
       }
@@ -190,41 +221,27 @@ export class StateManager {
   }
 
   updateAgentActivity(agentName: string, status: 'idle' | 'working' | 'done', action?: string, actionContext?: string) {
-    // Update in the full registry
-    let registryAgent: AgentState | undefined;
-    for (const agent of this.allAgents.values()) {
-      if (agent.name === agentName) {
-        agent.status = status;
-        agent.currentAction = action;
-        agent.actionContext = actionContext;
-        // Clear waiting flag when going idle or done
-        if (status === 'idle' || status === 'done') {
-          agent.waitingForInput = false;
-          agent.waitingType = undefined;
-        }
-        // Push to recent actions ring buffer
-        if (action && status === 'working') {
-          this.pushRecentAction(agent, action);
-        }
-        registryAgent = agent;
-        break;
-      }
-    }
-    // Update in the displayed state
-    const agent = this.state.agents.find((a) => a.name === agentName);
-    if (agent) {
+    const agentIds = this.agentsByName.get(agentName);
+    if (!agentIds) return;
+
+    for (const id of agentIds) {
+      const agent = this.allAgents.get(id);
+      if (!agent) continue;
+
       agent.status = status;
       agent.currentAction = action;
       agent.actionContext = actionContext;
+      // Clear waiting flag when going idle or done
       if (status === 'idle' || status === 'done') {
         agent.waitingForInput = false;
         agent.waitingType = undefined;
       }
-    }
-    // Broadcast using displayed entry or allAgents entry
-    const broadcastAgent = agent || registryAgent;
-    if (broadcastAgent) {
-      this.broadcast({ type: 'agent_update', data: broadcastAgent });
+      // Push to recent actions ring buffer
+      if (action && status === 'working') {
+        this.pushRecentAction(agent, action);
+      }
+
+      this.broadcast({ type: 'agent_update', data: agent });
     }
   }
 
@@ -305,28 +322,18 @@ export class StateManager {
   }
 
   setAgentWaiting(agentName: string, waiting: boolean, action?: string, actionContext?: string) {
-    // Update in the full registry
-    let registryAgent: AgentState | undefined;
-    for (const agent of this.allAgents.values()) {
-      if (agent.name === agentName) {
-        agent.waitingForInput = waiting;
-        if (action) agent.currentAction = action;
-        if (actionContext !== undefined) agent.actionContext = actionContext;
-        registryAgent = agent;
-        break;
-      }
-    }
-    // Update in the displayed state
-    const agent = this.state.agents.find((a) => a.name === agentName);
-    if (agent) {
+    const agentIds = this.agentsByName.get(agentName);
+    if (!agentIds) return;
+
+    for (const id of agentIds) {
+      const agent = this.allAgents.get(id);
+      if (!agent) continue;
+
       agent.waitingForInput = waiting;
       if (action) agent.currentAction = action;
       if (actionContext !== undefined) agent.actionContext = actionContext;
-    }
-    // Broadcast using displayed entry or allAgents entry
-    const broadcastAgent = agent || registryAgent;
-    if (broadcastAgent) {
-      this.broadcast({ type: 'agent_update', data: broadcastAgent });
+
+      this.broadcast({ type: 'agent_update', data: agent });
     }
   }
 
@@ -363,6 +370,26 @@ export class StateManager {
       this.broadcastSessionsList();
       // Update Touch Bar status file for MTMR/BTT integration
       updateTouchBarStatus(this.allAgents);
+    }
+  }
+
+  /** Add an agent ID to the name-based index */
+  private addToNameIndex(agent: AgentState) {
+    let ids = this.agentsByName.get(agent.name);
+    if (!ids) {
+      ids = new Set();
+      this.agentsByName.set(agent.name, ids);
+    }
+    ids.add(agent.id);
+  }
+
+  private removeFromNameIndex(agent: AgentState) {
+    const ids = this.agentsByName.get(agent.name);
+    if (ids) {
+      ids.delete(agent.id);
+      if (ids.size === 0) {
+        this.agentsByName.delete(agent.name);
+      }
     }
   }
 
@@ -434,6 +461,7 @@ export class StateManager {
       }
     }
 
+    // state.agents is already filtered and relatively small
     for (const agent of this.state.agents) {
       const shouldBeWorking = inProgressOwners.has(agent.name);
       if (shouldBeWorking && agent.status !== 'working') {
@@ -765,8 +793,9 @@ export class StateManager {
         .map((s) => s.sessionId)
     );
     // Remove non-solo agents from the full registry
-    for (const [id] of this.allAgents) {
+    for (const [id, agent] of this.allAgents) {
       if (!soloSessionIds.has(id)) {
+        this.removeFromNameIndex(agent);
         this.allAgents.delete(id);
       }
     }
@@ -786,6 +815,7 @@ export class StateManager {
     this.state = { name: '', agents: [], tasks: [], messages: [] };
     this.sessions.clear();
     this.allAgents.clear();
+    this.agentsByName.clear();
     this.guards.reset();
     this.broadcastFullState();
     updateTouchBarStatus(this.allAgents);
