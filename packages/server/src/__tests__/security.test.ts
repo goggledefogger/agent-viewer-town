@@ -136,5 +136,20 @@ describe('Security: CORS and CSWSH Protection', () => {
     });
     // Expected to not have CORS headers because the origin was rejected
     expect(res.headers.get('access-control-allow-origin')).toBeNull();
+    // And expected to be blocked by the explicit fallback middleware
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body).toEqual({ error: 'Forbidden' });
+  });
+
+  it('rejects request from "null" origin', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+      method: 'GET',
+      headers: {
+        'Origin': 'null'
+      }
+    });
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+    expect(res.status).toBe(403);
   });
 });

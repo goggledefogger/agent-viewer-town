@@ -36,6 +36,18 @@ app.use(cors({
   methods: ['GET', 'POST'],
 }));
 
+// Explicit fallback to block unauthorized cross-origin requests
+// 'cors' middleware just omits headers when returning false, which doesn't block the request.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !isAllowedOrigin(origin)) {
+    console.warn(`[http] Rejected request from unauthorized origin: ${origin}`);
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+});
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
