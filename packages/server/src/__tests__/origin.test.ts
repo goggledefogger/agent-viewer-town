@@ -10,6 +10,7 @@ describe('isAllowedOrigin', () => {
   it('denies other origins', () => {
     expect(isAllowedOrigin('http://example.com')).toBe(false);
     expect(isAllowedOrigin('https://malicious.com')).toBe(false);
+    expect(isAllowedOrigin('null')).toBe(false); // Sandboxed iframes
   });
 
   it('allows undefined origin (e.g. non-browser clients)', () => {
