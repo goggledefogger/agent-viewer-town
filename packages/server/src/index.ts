@@ -36,6 +36,18 @@ app.use(cors({
   methods: ['GET', 'POST'],
 }));
 
+// Fallback middleware to enforce 403 Forbidden for unauthorized origins
+// because cors() with callback(null, false) only omits headers.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !isAllowedOrigin(origin)) {
+    console.warn(`[cors] Rejected request from unauthorized origin: ${origin}`);
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+});
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
