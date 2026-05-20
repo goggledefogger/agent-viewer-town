@@ -18,3 +18,13 @@
 **Vulnerability:** The local development server (`packages/server`) bound to `127.0.0.1` lacked CORS middleware for HTTP endpoints and `Origin` header validation for WebSocket handshakes (`/ws`). This allowed malicious websites visited by the developer to potentially perform Cross-Site WebSocket Hijacking (CSWSH) and unauthorized cross-origin HTTP requests against the local server.
 **Learning:** Local servers, even when bound safely to loopback (`127.0.0.1`), are still vulnerable to attacks from the browser context if cross-origin policies are not enforced. Attackers can pivot through the developer's browser to send payloads or exfiltrate state.
 **Prevention:** Always implement `cors` middleware configured with a strict allowlist (e.g., `localhost` and `127.0.0.1`) and enforce identical validation in WebSocket server configurations via `verifyClient`. Return `false` in CORS origin callbacks rather than throwing an Error to handle unauthorized requests gracefully.
+
+## 2024-05-01 - Express CORS Middleware Bypass
+**Vulnerability:** The `cors` middleware was configured to return `false` on disallowed origins to gracefully avoid throwing a 500. However, this only omits CORS headers; the Express route still processes the request, exposing state-modifying endpoints to CSRF if browsers send simple requests (e.g., forms).
+**Learning:** `cors()` does not act as an authorization gatekeeper on its own unless the request is a preflight (OPTIONS). For standard GET/POST requests, it only controls what the browser can *read*, not what the server *executes*.
+**Prevention:** Implement a strict explicit fallback middleware immediately following the `cors()` block that actively checks `isAllowedOrigin(req.headers.origin)` and aborts unauthorized requests with a `403 Forbidden` status.
+
+## 2024-05-01 - Sandboxed Iframe Origin Bypass
+**Vulnerability:** The string `'null'` (sent by sandboxed iframes or `file://` local files) bypassed `isAllowedOrigin` if it wasn't explicitly caught, allowing malicious scripts running from local files or restricted iframes to access the local server.
+**Learning:** The URL constructor might misinterpret or fail on `'null'`, or bypass logic might just allow it if not careful.
+**Prevention:** Always explicitly check for and block `origin === 'null'` in origin validation logic.

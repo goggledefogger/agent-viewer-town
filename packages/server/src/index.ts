@@ -1,3 +1,6 @@
+// Prevent Windows current-directory executable hijacking for all child processes
+process.env.NoDefaultCurrentDirectoryInExePath = '1';
+
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -35,6 +38,15 @@ app.use(cors({
   },
   methods: ['GET', 'POST'],
 }));
+
+// Explicit fallback to block unauthorized origins that cors() just ignored
+app.use((req, res, next) => {
+  if (!isAllowedOrigin(req.headers.origin)) {
+    res.status(403).json({ error: 'Forbidden origin' });
+    return;
+  }
+  next();
+});
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
