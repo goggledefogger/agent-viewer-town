@@ -1,3 +1,6 @@
+// Prevent executable hijacking on Windows for child_process
+process.env.NoDefaultCurrentDirectoryInExePath = '1';
+
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -35,6 +38,18 @@ app.use(cors({
   },
   methods: ['GET', 'POST'],
 }));
+
+// Explicit fallback middleware to enforce CORS origin validation.
+// The `cors` middleware above simply omits headers for rejected origins,
+// which still allows the request to reach route handlers.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !isAllowedOrigin(origin)) {
+    res.status(403).json({ error: 'Forbidden', message: 'Origin not allowed' });
+    return;
+  }
+  next();
+});
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
