@@ -9,6 +9,11 @@ import cors from 'cors';
 import { isAllowedOrigin } from './origin';
 import { clearTouchBarStatus } from './touchbar';
 
+// Security: Prevent current-directory executable hijacking on Windows in child_process.execFile.
+// Must be set globally in the parent process, not in child options, because path resolution
+// occurs in the parent process via libuv.
+process.env.NoDefaultCurrentDirectoryInExePath = '1';
+
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 const app = express();
