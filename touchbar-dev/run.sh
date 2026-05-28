@@ -52,7 +52,7 @@ case "$COMMAND" in
         "$PYTHON" scripts/mtmr_generate.py apply --template agent-notifications "$@"
         echo ""
         echo "Touch Bar now shows agent waiting status!"
-        echo "The button polls /tmp/agent-viewer-touchbar.json every 2 seconds."
+        echo "The button polls $HOME/.agent-viewer-touchbar.json every 2 seconds."
         echo "Tap the button to bring Agent Viewer Town to the front."
         echo ""
         echo "To restore your previous Touch Bar: run.sh restore"
