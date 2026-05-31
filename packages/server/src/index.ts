@@ -9,6 +9,9 @@ import cors from 'cors';
 import { isAllowedOrigin } from './origin';
 import { clearTouchBarStatus } from './touchbar';
 
+// Set globally to prevent current-directory executable hijacking on Windows
+process.env.NoDefaultCurrentDirectoryInExePath = '1';
+
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 const app = express();
@@ -35,6 +38,16 @@ app.use(cors({
   },
   methods: ['GET', 'POST'],
 }));
+
+// Explicitly reject unauthorized origins with a 403 status
+app.use((req, res, next) => {
+  if (req.headers.origin && !isAllowedOrigin(req.headers.origin)) {
+    console.warn(`[cors] Rejected unauthorized origin: ${req.headers.origin}`);
+    res.status(403).send('Forbidden');
+    return;
+  }
+  next();
+});
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
