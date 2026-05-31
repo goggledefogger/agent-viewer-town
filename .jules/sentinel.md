@@ -18,3 +18,8 @@
 **Vulnerability:** The local development server (`packages/server`) bound to `127.0.0.1` lacked CORS middleware for HTTP endpoints and `Origin` header validation for WebSocket handshakes (`/ws`). This allowed malicious websites visited by the developer to potentially perform Cross-Site WebSocket Hijacking (CSWSH) and unauthorized cross-origin HTTP requests against the local server.
 **Learning:** Local servers, even when bound safely to loopback (`127.0.0.1`), are still vulnerable to attacks from the browser context if cross-origin policies are not enforced. Attackers can pivot through the developer's browser to send payloads or exfiltrate state.
 **Prevention:** Always implement `cors` middleware configured with a strict allowlist (e.g., `localhost` and `127.0.0.1`) and enforce identical validation in WebSocket server configurations via `verifyClient`. Return `false` in CORS origin callbacks rather than throwing an Error to handle unauthorized requests gracefully.
+
+## 2026-06-01 - Express CORS Middleware Omission and Null Origin Bypass
+**Vulnerability:** The express `cors` middleware omits CORS headers for rejected origins, but does not block the request. This leaves the server open to attack from bypass techniques (e.g. `sandbox` iframes sending `origin: "null"`).
+**Learning:** Returning `false` in the `cors` package `origin` callback is insufficient for protection. Additionally, `new URL('null')` causes `cors` rejection, but `!origin` allowlisting in custom validation could mistakenly permit 'null' if not explicitly handled.
+**Prevention:** Add a fallback middleware after `cors` to explicitly return 403 for unauthorized origins (`req.headers.origin`). Also, explicitly block the string `'null'` in origin validation logic.
