@@ -6,7 +6,7 @@ set -e
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="Agent Viewer Town"
 APP_PATH="/Applications/${APP_NAME}.app"
-TEMP_APPLESCRIPT="/tmp/Launcher.applescript"
+TEMP_APPLESCRIPT="$(mktemp)"
 
 echo "🚀 Preparing macOS App installation..."
 
@@ -59,8 +59,8 @@ if ! command -v npm &> /dev/null; then
 fi
 
 cd "$APP_DIR"
-npm run dev </dev/null > /tmp/agent-viewer-dev.log 2>&1 &
-echo $! > /tmp/agent-viewer-dev.pid
+npm run dev </dev/null > "$HOME/.agent-viewer-dev.log" 2>&1 &
+echo $! > "$HOME/.agent-viewer-dev.pid"
 EOF
 chmod +x "$START_SCRIPT_PATH"
 
