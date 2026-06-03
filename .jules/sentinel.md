@@ -18,3 +18,8 @@
 **Vulnerability:** The local development server (`packages/server`) bound to `127.0.0.1` lacked CORS middleware for HTTP endpoints and `Origin` header validation for WebSocket handshakes (`/ws`). This allowed malicious websites visited by the developer to potentially perform Cross-Site WebSocket Hijacking (CSWSH) and unauthorized cross-origin HTTP requests against the local server.
 **Learning:** Local servers, even when bound safely to loopback (`127.0.0.1`), are still vulnerable to attacks from the browser context if cross-origin policies are not enforced. Attackers can pivot through the developer's browser to send payloads or exfiltrate state.
 **Prevention:** Always implement `cors` middleware configured with a strict allowlist (e.g., `localhost` and `127.0.0.1`) and enforce identical validation in WebSocket server configurations via `verifyClient`. Return `false` in CORS origin callbacks rather than throwing an Error to handle unauthorized requests gracefully.
+
+## 2026-02-14 - Predictable Temporary Files in /tmp
+**Vulnerability:** Use of predictable temporary files in the world-writable `/tmp` directory exposes the application to symlink attacks, allowing arbitrary file overwrites.
+**Learning:** Hardcoded paths like `/tmp/agent-viewer-touchbar.json` or `/tmp/MTMR.dmg` can be created by a malicious local user as symlinks pointing to sensitive files (e.g. `/etc/passwd`). When the application runs with higher privileges or different user contexts, it will write to the symlink target.
+**Prevention:** Avoid writing to `/tmp` with predictable names. Use dynamically generated names using tools like `mktemp` (e.g., `mktemp -d` or `mktemp file.XXXXXX`) or store files in user-owned directories (e.g., using `$HOME` or `os.homedir()`).

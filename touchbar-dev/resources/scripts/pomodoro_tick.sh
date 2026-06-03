@@ -1,7 +1,7 @@
 #!/bin/bash
-# Pomodoro timer display — reads state from /tmp/touchbar-pomodoro-state
-STATE_FILE="/tmp/touchbar-pomodoro-state"
-CMD_FILE="/tmp/touchbar-pomodoro-state.cmd"
+# Pomodoro timer display — reads state from ~/.touchbar-pomodoro-state
+STATE_FILE="$HOME/.touchbar-pomodoro-state"
+CMD_FILE="$HOME/.touchbar-pomodoro-state.cmd"
 WORK_SECONDS=1500  # 25 minutes
 BREAK_SECONDS=300  # 5 minutes
 
