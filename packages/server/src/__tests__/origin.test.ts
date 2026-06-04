@@ -19,4 +19,8 @@ describe('isAllowedOrigin', () => {
   it('denies invalid origins', () => {
     expect(isAllowedOrigin('invalid-url')).toBe(false);
   });
+
+  it('denies null origin (sandboxed iframe)', () => {
+    expect(isAllowedOrigin('null')).toBe(false);
+  });
 });

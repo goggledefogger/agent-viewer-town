@@ -136,5 +136,7 @@ describe('Security: CORS and CSWSH Protection', () => {
     });
     // Expected to not have CORS headers because the origin was rejected
     expect(res.headers.get('access-control-allow-origin')).toBeNull();
+    // And explicit fallback should return 403
+    expect(res.status).toBe(403);
   });
 });
