@@ -2,7 +2,7 @@
 # Touch Bar button script — reads agent-viewer-town waiting status.
 # Returns formatted text for MTMR shellScriptTitledButton.
 
-STATUS_FILE="/tmp/agent-viewer-touchbar.json"
+STATUS_FILE="$HOME/.agent-viewer-touchbar.json"
 
 if [ ! -f "$STATUS_FILE" ]; then
     echo "🤖 —"
