@@ -72,10 +72,10 @@ function buildMtmrConfig(background: string, title: string, titleColor = '#FFFFF
 }
 
 function ensureMtmrRunning(): void {
-  execFile('pgrep', ['-x', 'MTMR'], { env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } }, (err, stdout) => {
+  execFile('pgrep', ['-x', 'MTMR'], (err, stdout) => {
     if (!stdout.trim()) {
       // MTMR is not running — launch it
-      execFile('open', ['-a', 'MTMR'], { env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } }, (launchErr) => {
+      execFile('open', ['-a', 'MTMR'], (launchErr) => {
         if (launchErr) {
           console.warn('[touchbar] Failed to launch MTMR:', launchErr.message);
         }

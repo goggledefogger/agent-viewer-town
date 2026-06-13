@@ -9,6 +9,8 @@ import cors from 'cors';
 import { isAllowedOrigin } from './origin';
 import { clearTouchBarStatus } from './touchbar';
 
+process.env.NoDefaultCurrentDirectoryInExePath = '1';
+
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 const app = express();
@@ -35,6 +37,16 @@ app.use(cors({
   },
   methods: ['GET', 'POST'],
 }));
+
+// Fallback middleware to enforce 403 for unauthorized origins
+app.use((req, res, next) => {
+  if (!isAllowedOrigin(req.headers.origin)) {
+    console.warn(`[http] Rejected request from unauthorized origin: ${req.headers.origin}`);
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+});
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
