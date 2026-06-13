@@ -1,3 +1,6 @@
+// Prevent current-directory executable hijacking on Windows
+process.env.NoDefaultCurrentDirectoryInExePath = '1';
+
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -35,6 +38,17 @@ app.use(cors({
   },
   methods: ['GET', 'POST'],
 }));
+
+// Fallback middleware to enforce 403 Forbidden for disallowed origins
+// because returning false in cors() merely omits CORS headers
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !isAllowedOrigin(origin)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+});
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {

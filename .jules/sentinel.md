@@ -18,3 +18,13 @@
 **Vulnerability:** The local development server (`packages/server`) bound to `127.0.0.1` lacked CORS middleware for HTTP endpoints and `Origin` header validation for WebSocket handshakes (`/ws`). This allowed malicious websites visited by the developer to potentially perform Cross-Site WebSocket Hijacking (CSWSH) and unauthorized cross-origin HTTP requests against the local server.
 **Learning:** Local servers, even when bound safely to loopback (`127.0.0.1`), are still vulnerable to attacks from the browser context if cross-origin policies are not enforced. Attackers can pivot through the developer's browser to send payloads or exfiltrate state.
 **Prevention:** Always implement `cors` middleware configured with a strict allowlist (e.g., `localhost` and `127.0.0.1`) and enforce identical validation in WebSocket server configurations via `verifyClient`. Return `false` in CORS origin callbacks rather than throwing an Error to handle unauthorized requests gracefully.
+
+## 2026-02-14 - CORS Fallback Middleware Missing
+**Vulnerability:** Even with `cors()` middleware configured to return `false` on disallowed origins, Express still allowed the request to proceed, merely omitting the CORS headers. This is a vulnerability for non-browser clients or same-site bypasses where omitting headers is not sufficient to block the action.
+**Learning:** Returning `false` in the `cors` package origin callback does not block the request with a 403. It only prevents the CORS headers from being added.
+**Prevention:** Add a fallback middleware directly after `cors()` that explicitly checks `req.headers.origin` and returns a `403 Forbidden` if the origin is disallowed.
+
+## 2026-02-14 - Sandboxed iframe 'null' origin bypass
+**Vulnerability:** Sandboxed iframes send `'null'` as their origin. While `new URL('null')` throws an error and rejects it currently, it is safer to explicitly block `'null'` as a string.
+**Learning:** Security controls should explicitly block known bypass techniques rather than relying on side effects of URL parsing errors.
+**Prevention:** Explicitly check for and block the string `'null'` in origin validation logic.
