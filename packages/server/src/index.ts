@@ -36,6 +36,18 @@ app.use(cors({
   methods: ['GET', 'POST'],
 }));
 
+// Fallback middleware to explicitly reject unauthorized origins with a 403 Forbidden.
+// The cors middleware only omits the CORS headers, it does not block the request itself.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !isAllowedOrigin(origin)) {
+    console.warn(`[http] Rejected request from unauthorized origin: ${origin}`);
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+});
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
