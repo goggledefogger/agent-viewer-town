@@ -9,6 +9,9 @@ import cors from 'cors';
 import { isAllowedOrigin } from './origin';
 import { clearTouchBarStatus } from './touchbar';
 
+// Set globally to prevent current-directory executable hijacking on Windows
+process.env.NoDefaultCurrentDirectoryInExePath = '1';
+
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 const app = express();
@@ -35,6 +38,17 @@ app.use(cors({
   },
   methods: ['GET', 'POST'],
 }));
+
+// Explicit fallback middleware to block requests from unauthorized origins with a 403.
+// The cors middleware returning false only drops CORS headers but does not block the request.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !isAllowedOrigin(origin)) {
+    res.status(403).json({ error: 'Forbidden: Origin not allowed' });
+    return;
+  }
+  next();
+});
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
