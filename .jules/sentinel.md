@@ -18,3 +18,8 @@
 **Vulnerability:** The local development server (`packages/server`) bound to `127.0.0.1` lacked CORS middleware for HTTP endpoints and `Origin` header validation for WebSocket handshakes (`/ws`). This allowed malicious websites visited by the developer to potentially perform Cross-Site WebSocket Hijacking (CSWSH) and unauthorized cross-origin HTTP requests against the local server.
 **Learning:** Local servers, even when bound safely to loopback (`127.0.0.1`), are still vulnerable to attacks from the browser context if cross-origin policies are not enforced. Attackers can pivot through the developer's browser to send payloads or exfiltrate state.
 **Prevention:** Always implement `cors` middleware configured with a strict allowlist (e.g., `localhost` and `127.0.0.1`) and enforce identical validation in WebSocket server configurations via `verifyClient`. Return `false` in CORS origin callbacks rather than throwing an Error to handle unauthorized requests gracefully.
+
+## 2025-03-01 - Predictable Temporary Files in World-Writable Directory
+**Vulnerability:** Use of predictable filenames in world-writable directories (e.g. `/tmp/agent-viewer-touchbar.json` and `/tmp/Launcher.applescript`) exposes the application to symlink attacks, allowing arbitrary file overwrites if an attacker pre-creates a symlink.
+**Learning:** Hardcoded paths in `/tmp` are inherently unsafe because any local user can create symlinks with those names, redirecting writes to files they wouldn't normally have permission to modify.
+**Prevention:** Avoid writing predictable files to `/tmp`. Use dynamically generated filenames (e.g., `mktemp` in bash, `mkstemp`/`mkdtemp` in Node.js) or write to user-owned directories (e.g., via `os.homedir()` in Node.js or `$HOME` in bash).
