@@ -36,6 +36,16 @@ app.use(cors({
   methods: ['GET', 'POST'],
 }));
 
+// Fallback middleware to explicitly return 403 Forbidden for rejected origins
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin !== undefined && !isAllowedOrigin(origin)) {
+    res.status(403).json({ error: 'Forbidden: Invalid Origin' });
+    return;
+  }
+  next();
+});
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
