@@ -36,6 +36,18 @@ app.use(cors({
   methods: ['GET', 'POST'],
 }));
 
+// Fallback strict origin blocking middleware for unauthorized simple cross-origin requests
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  // If the origin is present but not allowed, actively reject the request
+  if (origin && !isAllowedOrigin(origin)) {
+    console.warn(`[cors] Rejected request from unauthorized origin: ${origin}`);
+    res.status(403).json({ error: 'Forbidden: unauthorized origin' });
+    return;
+  }
+  next();
+});
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });

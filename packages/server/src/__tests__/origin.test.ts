@@ -12,6 +12,10 @@ describe('isAllowedOrigin', () => {
     expect(isAllowedOrigin('https://malicious.com')).toBe(false);
   });
 
+  it('denies "null" origin to block sandboxed iframes', () => {
+    expect(isAllowedOrigin('null')).toBe(false);
+  });
+
   it('allows undefined origin (e.g. non-browser clients)', () => {
     expect(isAllowedOrigin(undefined)).toBe(true);
   });
