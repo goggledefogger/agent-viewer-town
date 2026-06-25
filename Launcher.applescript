@@ -6,7 +6,7 @@ end run
 
 on quit
 	try
-		do shell script "kill $(cat /tmp/agent-viewer-dev.pid)"
+		do shell script "kill $(cat ~/.agent-viewer-dev.pid)"
 	end try
 	try
 		do shell script "pkill -f 'concurrently.*packages/server'"

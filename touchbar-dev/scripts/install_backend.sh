@@ -35,18 +35,22 @@ elif [ "$BACKEND" = "mtmr" ]; then
         else
             echo "Homebrew install failed (likely download server issue). Trying GitHub release directly..."
             # GitHub Release fallback
-            curl -L -o /tmp/MTMR.dmg "https://github.com/Toxblh/MTMR/releases/download/v0.27/MTMR.0.27.dmg"
-            hdiutil attach /tmp/MTMR.dmg -nobrowse -quiet
+            TMP_DMG=$(mktemp)
+            curl -L -o "$TMP_DMG" "https://github.com/Toxblh/MTMR/releases/download/v0.27/MTMR.0.27.dmg"
+            hdiutil attach "$TMP_DMG" -nobrowse -quiet
             cp -R /Volumes/MTMR*/MTMR.app /Applications/
             hdiutil detach /Volumes/MTMR* -quiet
+            rm -f "$TMP_DMG"
             echo "✅ MTMR installed from GitHub."
         fi
     else
         # No Homebrew, use GitHub Release directly
-        curl -L -o /tmp/MTMR.dmg "https://github.com/Toxblh/MTMR/releases/download/v0.27/MTMR.0.27.dmg"
-        hdiutil attach /tmp/MTMR.dmg -nobrowse -quiet
+        TMP_DMG=$(mktemp)
+        curl -L -o "$TMP_DMG" "https://github.com/Toxblh/MTMR/releases/download/v0.27/MTMR.0.27.dmg"
+        hdiutil attach "$TMP_DMG" -nobrowse -quiet
         cp -R /Volumes/MTMR*/MTMR.app /Applications/
         hdiutil detach /Volumes/MTMR* -quiet
+        rm -f "$TMP_DMG"
         echo "✅ MTMR installed from GitHub."
     fi
     
