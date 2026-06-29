@@ -36,6 +36,17 @@ app.use(cors({
   methods: ['GET', 'POST'],
 }));
 
+// Fallback middleware to actively reject unauthorized origins
+// cors() with callback(null, false) only omits headers, it doesn't block the request.
+// We must actively block unauthorized origins to prevent CSRF side-effects.
+app.use((req, res, next) => {
+  if (!isAllowedOrigin(req.headers.origin)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+});
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
