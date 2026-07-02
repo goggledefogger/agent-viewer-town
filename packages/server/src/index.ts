@@ -36,16 +36,6 @@ app.use(cors({
   methods: ['GET', 'POST'],
 }));
 
-// Explicit fallback middleware to return 403 for unauthorized origins
-// Express cors package returning false only omits headers, it doesn't block the request
-app.use((req, res, next) => {
-  if (req.headers.origin && !isAllowedOrigin(req.headers.origin)) {
-    res.status(403).json({ error: 'Forbidden' });
-    return;
-  }
-  next();
-});
-
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
