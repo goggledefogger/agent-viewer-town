@@ -6,7 +6,7 @@
  * Also writes a status JSON file for any external consumers.
  */
 
-import { writeFile, readFile, access } from 'fs/promises';
+import { writeFile, readFile, access, open } from 'fs/promises';
 import { constants } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
@@ -19,6 +19,23 @@ const FLASH_INTERVAL_MS = 800;
 
 /** Marker we inject into the config so we know we own it */
 const AVT_MARKER = '__agent_viewer_town';
+
+/**
+ * Write STATUS_FILE without following a symlink at its final path component.
+ * STATUS_FILE is a predictable name in world-writable /tmp, so a local user could
+ * pre-plant a symlink there and redirect our write onto an arbitrary file. O_NOFOLLOW
+ * makes open() fail with ELOOP instead of clobbering the target; mode 0o600 keeps the
+ * file owner-only. Callers already treat write failure as non-critical.
+ */
+async function writeStatusFile(data: string): Promise<void> {
+  const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW;
+  const fh = await open(STATUS_FILE, flags, 0o600);
+  try {
+    await fh.writeFile(data);
+  } finally {
+    await fh.close();
+  }
+}
 
 export interface TouchBarStatus {
   waitingCount: number;
@@ -173,7 +190,7 @@ export async function updateTouchBarStatus(allAgents: Map<string, AgentState>): 
   if (comparable !== lastWrittenJson) {
     lastWrittenJson = comparable;
     try {
-      await writeFile(STATUS_FILE, json + '\n');
+      await writeStatusFile(json + '\n');
     } catch {
       // non-critical
     }
@@ -248,7 +265,7 @@ export async function clearTouchBarStatus(): Promise<void> {
 
   const status: TouchBarStatus = { waitingCount: 0, agents: [], timestamp: Date.now() };
   try {
-    await writeFile(STATUS_FILE, JSON.stringify(status) + '\n');
+    await writeStatusFile(JSON.stringify(status) + '\n');
   } catch {
     // non-critical
   }
