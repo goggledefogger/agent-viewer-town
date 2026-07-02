@@ -134,7 +134,19 @@ describe('Security: CORS and CSWSH Protection', () => {
         'Origin': 'https://malicious.com'
       }
     });
-    // Expected to not have CORS headers because the origin was rejected
+    // Expected to actively block the request and not have CORS headers
+    expect(res.status).toBe(403);
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('rejects request with null origin via CORS', async () => {
+    const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+      method: 'GET',
+      headers: {
+        'Origin': 'null'
+      }
+    });
+    expect(res.status).toBe(403);
     expect(res.headers.get('access-control-allow-origin')).toBeNull();
   });
 });

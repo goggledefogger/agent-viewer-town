@@ -36,6 +36,17 @@ app.use(cors({
   methods: ['GET', 'POST'],
 }));
 
+// Explicit fallback middleware to block unauthorized origins from executing route handlers
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!isAllowedOrigin(origin)) {
+    console.warn(`[cors] Blocked request from unauthorized origin: ${origin}`);
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+});
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
