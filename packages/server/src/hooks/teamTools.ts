@@ -24,7 +24,7 @@ export function extractMessage(stateManager: StateManager, event: PostToolUseEve
   const recipient = typeof input.recipient === 'string' ? input.recipient : '';
   const summary = typeof input.summary === 'string' ? input.summary : '';
 
-  if (!content && !summary) return;
+  if (!content && !summary && msgType !== 'shutdown_request') return;
 
   const fromName = resolveAgentName(stateManager, sessionId);
 

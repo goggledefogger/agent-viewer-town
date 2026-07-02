@@ -99,6 +99,14 @@ describe('validateHookEvent', () => {
     expect(error).toMatch(/cwd must be a safe, absolute path/);
   });
 
+  it('rejects unnormalized paths', () => {
+    const error = validateHookEvent({
+      hook_event_name: 'SessionStart',
+      cwd: '/absolute/path//with/extra/slash',
+    });
+    expect(error).toMatch(/cwd must be a normalized path/);
+  });
+
   it('accepts valid Windows absolute paths', () => {
     const error = validateHookEvent({
       hook_event_name: 'SessionStart',

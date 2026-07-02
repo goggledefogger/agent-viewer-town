@@ -1,5 +1,6 @@
 import express from 'express';
-import { createServer } from 'http';
+import { createServer, IncomingMessage } from 'http';
+import path from 'path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { StateManager } from './state';
 import { startWatcher } from './watcher';
@@ -8,8 +9,18 @@ import { validateHookEvent } from './validation';
 import cors from 'cors';
 import { isAllowedOrigin } from './origin';
 import { clearTouchBarStatus } from './touchbar';
+import { requireAuth, validateWebSocketAuth } from './auth';
+import { createRateLimiter } from './rateLimit';
+
+// Windows resolves binaries in the current directory before %PATH%, which lets
+// a planted git.exe hijack spawned child processes. Setting this env var
+// globally disables that lookup for every spawn, including library code.
+process.env.NoDefaultCurrentDirectoryInExePath = '1';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://127.0.0.1:5173', 'http://localhost:5173'];
 
 const app = express();
 const server = createServer(app);
@@ -27,19 +38,45 @@ app.use((_req, res, next) => {
 // CORS configuration to prevent unauthorized cross-origin requests
 app.use(cors({
   origin: (origin, callback) => {
-    if (isAllowedOrigin(origin)) {
+    if (isAllowedOrigin(origin, ALLOWED_ORIGINS)) {
       callback(null, true);
     } else {
       callback(null, false); // Return false instead of Error to avoid 500s on rejected origins
     }
   },
   methods: ['GET', 'POST'],
+  credentials: true
 }));
 
+// Explicit origin validation middleware to block unauthorized cross-origin requests
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin === 'null') {
+    res.status(403).json({ error: 'Forbidden: null origin not allowed' });
+    return;
+  }
+  if (origin && !isAllowedOrigin(origin, ALLOWED_ORIGINS)) {
+    res.status(403).json({ error: 'Forbidden: origin not allowed' });
+    return;
+  }
+  next();
+});
+
+// Rate limiting for all API endpoints. Hooks fire on every tool call from
+// every Claude Code session, so this needs headroom — override RATE_LIMIT_MAX
+// (per minute, per IP) if you start seeing 429s during normal work.
+app.use('/api/', createRateLimiter({
+  windowMs: 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX || '600', 10),
+  message: 'Too many requests from this IP, please try again after a minute',
+}));
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
 });
+
+// Protect all other API routes
+app.use('/api', requireAuth);
 
 // JSON body parsing for hook events
 app.use(express.json({ limit: '1mb' }));
@@ -48,12 +85,13 @@ app.use(express.json({ limit: '1mb' }));
 const stateManager = new StateManager();
 const hookHandler = createHookHandler(stateManager);
 
-app.get('/api/state', (_req, res) => {
+app.get('/api/state', requireAuth, (_req, res) => {
   res.json(stateManager.getState());
 });
 
+
 // Hook event endpoint — receives events from Claude Code lifecycle hooks
-app.post('/api/hook', (req, res) => {
+app.post('/api/hook', requireAuth, (req, res) => {
   try {
     const event = req.body;
 
@@ -75,7 +113,7 @@ app.post('/api/hook', (req, res) => {
 });
 
 // Sessions list endpoint
-app.get('/api/sessions', (_req, res) => {
+app.get('/api/sessions', requireAuth, (_req, res) => {
   res.json(stateManager.getSessionsList());
 });
 
@@ -84,14 +122,20 @@ const wss = new WebSocketServer({
   server,
   path: '/ws',
   verifyClient: (info, cb) => {
-    // Protect against Cross-Site WebSocket Hijacking (CSWSH)
+    // 1. Protect against Cross-Site WebSocket Hijacking (CSWSH)
     const origin = info.origin;
-    if (isAllowedOrigin(origin)) {
-      cb(true);
-    } else {
+    if (!isAllowedOrigin(origin, ALLOWED_ORIGINS)) {
       console.warn(`[ws] Rejected connection from unauthorized origin: ${origin}`);
-      cb(false, 403, 'Forbidden');
+      return cb(false, 403, 'Forbidden');
     }
+
+    // 2. Token-based authentication
+    if (!validateWebSocketAuth(info.req)) {
+      console.warn('[ws] Rejected connection: Invalid or missing authentication token');
+      return cb(false, 401, 'Unauthorized');
+    }
+
+    cb(true);
   }
 });
 
@@ -122,7 +166,7 @@ function getClientActiveSessionId(ws: WebSocket): string | undefined {
   return clientStates.get(ws)?.selectedSessionId || stateManager.getDefaultSessionId();
 }
 
-wss.on('connection', (ws: WebSocket) => {
+wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
   console.log('[ws] client connected');
   // Pick the most interesting session for this new client, rather than using
   // the global default (which may be stale from a previous client's navigation).

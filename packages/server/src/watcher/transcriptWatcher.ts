@@ -1,5 +1,5 @@
 import chokidar from 'chokidar';
-import { basename, dirname } from 'path';
+import { basename } from 'path';
 import { stat as fsStat } from 'fs/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -10,7 +10,6 @@ import {
   cleanProjectName,
   detectGitWorktree,
 } from '../parser';
-import { isReadable } from './utils';
 import {
   PROJECTS_DIR,
   IDLE_THRESHOLD_S,
