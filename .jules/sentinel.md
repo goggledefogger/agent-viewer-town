@@ -27,3 +27,8 @@
 **Vulnerability:** Invoking commands like `git` via `execFile` can be susceptible to hijacking on Windows if a malicious `git.exe` is placed in the project directory, as Windows resolves executables in the current directory before checking the system path.
 **Learning:** Utilities invoking git operations via wrappers like `execFileAsync` in `packages/server/src/parsers/gitUtils.ts` must propagate appropriate environment guards. Simply passing `cwd` without configuring the execution environment ignores the path resolution mechanics on Windows.
 **Prevention:** When executing git operations via `execFileAsync` wrappers, always merge `process.env` and include `NoDefaultCurrentDirectoryInExePath: '1'` in the environment options to prevent Windows executable hijacking. This also necessitates updating wrapper signatures to accept an `env?: any` option.
+
+## 2026-07-02 - Predictable /tmp/ File Creation and Symlink Attack Vulnerability
+**Vulnerability:** Use of predictable temporary files in world-writable directories (e.g., `/tmp/`) allows malicious local users to conduct symlink attacks, potentially overwriting arbitrary files owned by the executing user.
+**Learning:** Scripts and application logic like the Touch Bar integration and shell templates previously wrote files (e.g. `/tmp/agent-viewer-touchbar.json`, `/tmp/MTMR.dmg`) with predictable names. On multi-user systems, attackers can pre-create symlinks at these paths to corrupt or overwrite sensitive files with elevated privileges when the app writes to them.
+**Prevention:** Avoid writing to `/tmp/` with hardcoded names. Use user-owned home directory paths (e.g. `$HOME` or `~/`) for predictable application state, or use dynamically generated temp files via `mktemp` or `mkdtemp`.
