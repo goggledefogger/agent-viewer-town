@@ -13,7 +13,7 @@ import { join } from 'path';
 import { execFile } from 'child_process';
 import type { AgentState } from '@agent-viewer/shared';
 
-const STATUS_FILE = '/tmp/agent-viewer-touchbar.json';
+const STATUS_FILE = join(homedir(), '.agent-viewer-touchbar.json');
 const MTMR_CONFIG = join(homedir(), 'Library', 'Application Support', 'MTMR', 'items.json');
 const FLASH_INTERVAL_MS = 800;
 
