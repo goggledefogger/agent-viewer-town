@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { IncomingMessage } from 'http';
 import { URL } from 'url';
+import crypto from 'crypto';
 
 /**
  * Validates a token against the server's configured AUTH_TOKEN.
@@ -11,8 +12,16 @@ export function validateToken(token?: string): boolean {
   if (!serverToken) {
     return true; // Auth disabled
   }
-  // Constant-time comparison could be better but strict equality is acceptable for this scope
-  return token === serverToken;
+  if (!token) {
+    return false;
+  }
+  // Constant-time comparison to prevent timing attacks.
+  // We hash both the server token and the provided token using SHA-256
+  // before comparing to avoid leaking token length or content.
+  const hashServerToken = crypto.createHash('sha256').update(serverToken).digest();
+  const hashToken = crypto.createHash('sha256').update(token).digest();
+
+  return crypto.timingSafeEqual(hashServerToken, hashToken);
 }
 
 /**
