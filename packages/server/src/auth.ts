@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { IncomingMessage } from 'http';
 import { URL } from 'url';
@@ -11,8 +12,14 @@ export function validateToken(token?: string): boolean {
   if (!serverToken) {
     return true; // Auth disabled
   }
-  // Constant-time comparison could be better but strict equality is acceptable for this scope
-  return token === serverToken;
+  if (!token) {
+    return false;
+  }
+
+  const expectedHash = crypto.createHash('sha256').update(serverToken).digest();
+  const actualHash = crypto.createHash('sha256').update(token).digest();
+
+  return crypto.timingSafeEqual(expectedHash, actualHash);
 }
 
 /**
