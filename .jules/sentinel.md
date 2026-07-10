@@ -32,3 +32,10 @@
 **Vulnerability:** Use of predictable temporary files in world-writable directories (e.g., `/tmp/`) allows malicious local users to conduct symlink attacks, potentially overwriting arbitrary files owned by the executing user.
 **Learning:** Scripts and application logic like the Touch Bar integration and shell templates previously wrote files (e.g. `/tmp/agent-viewer-touchbar.json`, `/tmp/MTMR.dmg`) with predictable names. On multi-user systems, attackers can pre-create symlinks at these paths to corrupt or overwrite sensitive files with elevated privileges when the app writes to them.
 **Prevention:** Avoid writing to `/tmp/` with hardcoded names. Use user-owned home directory paths (e.g. `$HOME` or `~/`) for predictable application state, or use dynamically generated temp files via `mktemp` or `mkdtemp`.
+## 2025-02-26 - Timing Attack Vulnerability in Token Validation
+
+**Vulnerability:** The authentication check `token === serverToken` in `validateToken` was susceptible to timing attacks, theoretically leaking the token's length or content due to short-circuiting during strict string equality comparisons.
+
+**Learning:** While V8 string comparisons offer some mitigations against pure byte-by-byte timing attacks, relying on standard strict equality for sensitive authentication tokens is considered unsafe, especially in multi-tenant or globally-accessible Node.js server environments.
+
+**Prevention:** Always hash secrets/tokens with a cryptographically secure hash function (e.g., `crypto.createHash('sha256')`) before comparison, and use `crypto.timingSafeEqual` to compare the resulting constant-length buffers, preventing both length and content leakage.
