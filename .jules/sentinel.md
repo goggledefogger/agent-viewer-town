@@ -32,3 +32,8 @@
 **Vulnerability:** Use of predictable temporary files in world-writable directories (e.g., `/tmp/`) allows malicious local users to conduct symlink attacks, potentially overwriting arbitrary files owned by the executing user.
 **Learning:** Scripts and application logic like the Touch Bar integration and shell templates previously wrote files (e.g. `/tmp/agent-viewer-touchbar.json`, `/tmp/MTMR.dmg`) with predictable names. On multi-user systems, attackers can pre-create symlinks at these paths to corrupt or overwrite sensitive files with elevated privileges when the app writes to them.
 **Prevention:** Avoid writing to `/tmp/` with hardcoded names. Use user-owned home directory paths (e.g. `$HOME` or `~/`) for predictable application state, or use dynamically generated temp files via `mktemp` or `mkdtemp`.
+
+## 2026-08-10 - Token Length/Content Leak via Timing Attacks
+**Vulnerability:** The authentication middleware used strict equality (`===`) to compare incoming tokens against the server token. This could allow an attacker to guess the token through timing attacks, as string comparison fails faster for strings of different lengths or earlier mismatched characters.
+**Learning:** Standard string comparisons in JavaScript are not constant-time. When comparing secrets like authentication tokens, small variations in execution time based on where the comparison fails can be measured by attackers to progressively guess the token contents or determine its length.
+**Prevention:** Always use `crypto.timingSafeEqual()` for comparing secret tokens. To ensure both inputs are of the same length and avoid leaking the actual token length, hash both tokens (e.g., with SHA-256) before performing the constant-time comparison.
