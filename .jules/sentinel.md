@@ -32,3 +32,8 @@
 **Vulnerability:** Use of predictable temporary files in world-writable directories (e.g., `/tmp/`) allows malicious local users to conduct symlink attacks, potentially overwriting arbitrary files owned by the executing user.
 **Learning:** Scripts and application logic like the Touch Bar integration and shell templates previously wrote files (e.g. `/tmp/agent-viewer-touchbar.json`, `/tmp/MTMR.dmg`) with predictable names. On multi-user systems, attackers can pre-create symlinks at these paths to corrupt or overwrite sensitive files with elevated privileges when the app writes to them.
 **Prevention:** Avoid writing to `/tmp/` with hardcoded names. Use user-owned home directory paths (e.g. `$HOME` or `~/`) for predictable application state, or use dynamically generated temp files via `mktemp` or `mkdtemp`.
+
+## 2024-05-18 - Timing Attacks on Authentication Token Comparison
+**Vulnerability:** The `validateToken` function compared tokens using strict equality (`===`), enabling attackers to guess the token by measuring the time taken to evaluate the comparison.
+**Learning:** `===` stops comparing as soon as it hits a mismatch, meaning the time it takes reveals how much of the guessed string matched.
+**Prevention:** Always compare sensitive tokens using `crypto.timingSafeEqual()`, and hash the tokens first with SHA-256 to ensure lengths match before calling it.
